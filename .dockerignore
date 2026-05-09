@@ -1,0 +1,13 @@
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+
+.cache/
+state/
+reports/
+
+scripts/
+moduleResolver.md
+OPEN_SOURCE_PLAN.md
+MAINTENANCE_LOCK_SPEC.md

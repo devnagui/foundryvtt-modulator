@@ -1,0 +1,40 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool runtime cache/state
+.cache/
+state/
+
+# Generated reports and logs
+reports/*.html
+reports/*.json
+reports/*.log
+reports/daily/
+reports/applied/
+reports/public/
+
+# Local databases and temp/runtime files
+*.db
+*.sqlite
+*.sqlite3
+*.tmp
+*.temp
+
+# Local secrets/config
+.env
+.env.*
+*.local
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

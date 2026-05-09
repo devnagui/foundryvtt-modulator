@@ -1,0 +1,28 @@
+services:
+  module-matcher-fvtt:
+    build:
+      context: .
+    container_name: module-matcher-fvtt
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      RESOLVER_BIND_HOST: 0.0.0.0
+      RESOLVER_BIND_PORT: 8787
+      RESOLVER_DATA_ROOT: /foundry-data
+      RESOLVER_CACHE_DIR: /app/.cache
+      RESOLVER_STATE_DIR: /app/state
+      RESOLVER_REPORTS_DIR: /app/reports
+      RESOLVER_REQUIRE_FOUNDRY_OFFLINE: "true"
+      RESOLVER_FOUNDRY_HOST: host.docker.internal
+      RESOLVER_FOUNDRY_PORT: 30000
+      RESOLVER_COOKIE_SECURE: "false"
+      RESOLVER_SESSION_TTL_HOURS: 12
+      RESOLVER_PBKDF2_ITERATIONS: 390000
+    volumes:
+      - /home/engrenado/foundry/data:/foundry-data
+      - ./reports:/app/reports
+      - ./state:/app/state
+      - ./.cache:/app/.cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

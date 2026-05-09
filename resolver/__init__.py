@@ -1,0 +1,1 @@
+"""Foundry module version resolver."""
