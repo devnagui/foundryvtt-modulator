@@ -1,0 +1,12 @@
+{
+  "id": "beta",
+  "title": "beta title",
+  "version": "2.0.0",
+  "manifest": "https://example.invalid/beta/module.json",
+  "url": "https://github.com/example/beta",
+  "compatibility": {
+    "minimum": "13.0",
+    "verified": "13.300",
+    "maximum": "13.999"
+  }
+}

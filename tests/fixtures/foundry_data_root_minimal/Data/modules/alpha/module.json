@@ -1,0 +1,12 @@
+{
+  "id": "alpha",
+  "title": "alpha title",
+  "version": "1.0.0",
+  "manifest": "https://example.invalid/alpha/module.json",
+  "url": "https://github.com/example/alpha",
+  "compatibility": {
+    "minimum": "13.0",
+    "verified": "13.300",
+    "maximum": "13.999"
+  }
+}

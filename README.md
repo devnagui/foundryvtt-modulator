@@ -239,7 +239,11 @@ Agora a ferramenta inclui um serviço HTTP local em `service/server.py` com:
 - `POST /api/actions/apply`
 - `POST /api/actions/force-compat`
 - `POST /api/actions/cleanup-backups`
+- `POST /api/actions/submit`
+- `GET /api/actions/jobs`
+- `GET /api/actions/jobs/{jobId}`
 - `GET /api/report/latest`
+- `GET /api/report/v3`
 
 ### Rodando em Docker (porta local para reverse proxy)
 
@@ -263,3 +267,14 @@ Veja `.env.resolver.example`. As mais importantes:
 - `RESOLVER_REQUIRE_FOUNDRY_OFFLINE=true`
 - `RESOLVER_FOUNDRY_HOST` e `RESOLVER_FOUNDRY_PORT`
 - `RESOLVER_COOKIE_SECURE` (use `true` quando estiver atrás de HTTPS)
+- `RESOLVER_AUTH_MAX_FAILED_ATTEMPTS` (padrao `5`)
+- `RESOLVER_AUTH_LOCKOUT_MINUTES` (padrao `15`)
+- `RESOLVER_MAX_SESSIONS` (padrao `200`)
+- `RESOLVER_AUDIT_FILE` (padrao `state/audit.log.jsonl`)
+
+### Notas de UX/API (estado atual)
+
+- A home (`/`) agora atua como gateway de autenticacao.
+- Apos login/setup com sucesso, o usuario e redirecionado para o `report_v3` (`/api/report/v3`).
+- Se ainda nao existir `module-resolver-latest-v3.html`, `/api/report/v3` mostra uma tela de bootstrap com botao para executar o primeiro `dry-run`.
+- Sessoes autenticadas sao persistidas em `state/auth.json` (campo `sessions`) para sobreviver a restart do servico, respeitando TTL.
