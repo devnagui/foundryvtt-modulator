@@ -32,6 +32,17 @@ reports/public/
 .env
 .env.*
 *.local
+*.secret
+*.secrets
+.python-version
+.npmrc
+.pypirc
+
+# Credentials / auth
+**/credentials.json
+**/token.json
+**/auth.json
+**/secrets.json
 
 # OS/editor noise
 .DS_Store

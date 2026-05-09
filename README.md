@@ -2,6 +2,13 @@
 
 Ferramenta externa para recomendar a melhor versão de módulos do Foundry VTT para uma versão-alvo do core.
 
+## Licença e uso comercial
+
+- Licença open-source: `AGPL-3.0-or-later` (veja [LICENSE](LICENSE)).
+- Avisos de atribuição: veja [NOTICE](NOTICE).
+- Se houver uso comercial (produto/serviço), o projeto solicita crédito visível ao autor/projeto.
+- Para termos comerciais personalizados, entre em contato com o autor para licenciamento comercial.
+
 ## O que faz
 
 - Lê os `module.json` instalados localmente
