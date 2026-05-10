@@ -1,0 +1,12 @@
+﻿{
+  "bootstrap.title": "Preparing your report",
+  "bootstrap.heading": "Your first report is not ready yet",
+  "bootstrap.body": "Start the initial scan below. You will be redirected automatically when it finishes.",
+  "bootstrap.button.start": "Start Initial Scan",
+  "bootstrap.status.idle": "Waiting to start.",
+  "bootstrap.status.queue": "Preparing your request...",
+  "bootstrap.status.running": "Processing... {progress}%",
+  "bootstrap.status.done": "Done. Redirecting...",
+  "bootstrap.status.failed": "Could not generate the report. Please try again.",
+  "bootstrap.status.error_start": "Could not start the process. Please try again."
+}

@@ -71,3 +71,16 @@
   - `docker-compose.prod.yml`
 - guia inicial de release/self-hosting:
   - `docs/release/packaging.md`
+
+## Seguranca operacional extra
+
+- deteccao de Foundry online aprimorada no `service/server.py`:
+  - tcp probe + process probe no Windows
+  - bloqueio de manutencao quando qualquer sinal indica Foundry em execucao
+- testes adicionados em `tests/test_foundry_online_detection.py`
+- [x] hardening adicional de auth/login:
+  - usuario + senha (nao apenas senha)
+  - lockout por tentativas com orientacao de recuperacao
+  - protecao CSRF para endpoints autenticados `POST` (`X-CSRF-Token`)
+  - rate limit global por IP (`RESOLVER_REQUEST_RATE_LIMIT_PER_MINUTE`)
+  - auditoria inclui `userAgent` e `origin`

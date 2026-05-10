@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
@@ -72,15 +72,21 @@ def render_html_report_v3(payload: dict) -> str:
         "<main class=\"page\">",
         "<header class=\"hero\">",
         "<div>",
-        "<h1>Foundry Dependencies Resolver</h1>",
+        "<h1>FoundryVTT Modulator</h1>",
         "<p class=\"hero-copy\">Single-page flow focused on decisions: health, immediate actions, next-version planning, backups, and unused modules.</p>",
         "</div>",
+        "<div class=\"hero-actions\">",
+        "<button id=\"add-module-open-btn\" class=\"theme-toggle\" type=\"button\" aria-label=\"Add module\" title=\"Add module\"><span aria-hidden=\"true\">+</span></button>",
+        "<button id=\"settings-open-btn\" class=\"theme-toggle\" type=\"button\" aria-label=\"Settings\" title=\"Settings\"><span aria-hidden=\"true\">âš™</span></button>",
+        "<button id=\"theme-toggle\" class=\"theme-toggle\" type=\"button\" aria-label=\"Toggle dark mode\" title=\"Toggle dark mode\"><span aria-hidden=\"true\">â—</span></button>",
+        "<button id=\"logout-btn\" class=\"logout-btn\" type=\"button\" aria-label=\"Logout\" title=\"Logout\"><span class=\"logout-icon\" aria-hidden=\"true\">âŽ‹</span></button>",
+        "</div>",
         "<div class=\"hero-meta\">",
-        "<button id=\"theme-toggle\" class=\"theme-toggle\" type=\"button\" aria-label=\"Toggle dark mode\" title=\"Toggle dark mode\"><span aria-hidden=\"true\">◐</span></button>",
-        f"<div class=\"meta-pill\">Foundry {escape(foundry_version)}</div>",
+        (f"<div class=\"meta-pill\">Foundry {escape(foundry_version)}</div>" if foundry_version and foundry_version != "-" else ""),
         f"<div class=\"meta-pill\" data-generated-at=\"{escape(generated_at)}\">Generated {_relative_time(generated_at)}</div>",
         "</div>",
         "</header>",
+        "<input id=\"foundry-root-picker\" type=\"file\" webkitdirectory directory multiple class=\"hidden-input\">",
         "<section class=\"tab-hub\" id=\"tab-hub\">",
         "<div class=\"tab-nav\" role=\"tablist\" aria-label=\"Resolver views\">",
         "<button class=\"tab-btn is-active\" type=\"button\" data-tab-target=\"actions\" aria-selected=\"true\" title=\"Shows the current module status and immediate actions.\">Current</button>",
@@ -103,6 +109,22 @@ def render_html_report_v3(payload: dict) -> str:
         "</div>",
         "</div>",
         "<p class=\"section-copy\">Health snapshot + immediate module actions with filters and pagination.</p>",
+        "<div id=\"module-suggest-panel\" class=\"panel subtle\"><p class=\"section-copy\">Use the <strong>+</strong> button in the header to add a module from its <code>module.json</code> URL.</p></div>",
+        "<dialog id=\"settings-modal\" class=\"panel\">",
+        "<h3>Settings</h3><p class=\"section-copy\">Manage Foundry path.</p>",
+        "<div class=\"toolbar toolbar-right foundry-root-toolbar\">",
+        "<label class=\"toolbar-field grow\"><span>Path</span><input id=\"foundry-root-input-modal\" type=\"text\" placeholder=\"Select folder or paste path\"></label>",
+        "<div class=\"foundry-root-actions\">",
+        "<button id=\"foundry-root-browse-modal\" class=\"copy-btn\" type=\"button\">Select Folder</button>",
+        "<button id=\"foundry-root-save-modal\" class=\"copy-btn\" type=\"button\">Validate & Save</button>",
+        "<button id=\"foundry-root-reset-modal\" class=\"copy-btn\" type=\"button\">Reset</button>",
+        "</div></div><p id=\"foundry-root-status-modal\" class=\"pager-status\"></p><button id=\"settings-close-btn\" class=\"copy-btn\" type=\"button\">Close</button>",
+        "</dialog>",
+        "<dialog id=\"add-module-modal\" class=\"panel\">",
+        "<h3>Add Module</h3><p class=\"section-copy\">Paste the module.json URL. Other fields are not required.</p>",
+        "<div class=\"toolbar\"><label class=\"toolbar-field grow\"><span>module.json URL</span><input id=\"suggest-manifest-url\" type=\"text\" placeholder=\"https://.../module.json\"></label><button id=\"suggest-module-btn\" class=\"copy-btn\" type=\"button\">Suggest Best Version</button></div>",
+        "<p id=\"suggest-module-status\" class=\"pager-status\">Provide a module.json URL.</p><button id=\"add-module-close-btn\" class=\"copy-btn\" type=\"button\">Close</button>",
+        "</dialog>",
         "<div id=\"actions-lazy-root\" class=\"lazy-root\"></div>",
         "</section>",
         "<section class=\"planning tab-section\" id=\"planning\" data-tab-section=\"planning\" hidden>",
@@ -128,6 +150,9 @@ def render_html_report_v3(payload: dict) -> str:
         f"<script type=\"application/json\" id=\"report-v3-data\">{_json_for_html(client_payload)}</script>",
         "<script>",
         _SCRIPT,
+        "</script>",
+        "<script>",
+        _SERVICE_GATEWAY_SCRIPT,
         "</script>",
         "</main>",
         "</body>",
@@ -924,21 +949,67 @@ a:visited {
 h1 { margin: 0; font-size: 34px; line-height: 1.05; }
 .hero-copy { margin: 10px 0 0; color: var(--muted); max-width: 70ch; }
 .hero-meta { display: grid; gap: 8px; justify-items: end; margin-top: 54px; margin-left: auto; }
-.theme-toggle {
+.hero-actions {
   position: absolute;
   top: 14px;
   right: 14px;
   z-index: 2;
-  width: 42px;
-  height: 42px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.theme-toggle {
+  width: 52px;
+  height: 52px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface-elevated);
   color: var(--ink);
   font: inherit;
+  font-size: 35px;
   display: inline-grid;
   place-items: center;
   cursor: pointer;
+}
+.theme-toggle.needs-config {
+  border-color: #d29922;
+  background: rgba(210, 153, 34, 0.2);
+  color: #f6d28b;
+  box-shadow: 0 0 0 2px rgba(210, 153, 34, 0.25);
+}
+.logout-btn {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  color: var(--ink);
+  font: inherit;
+  font-size: 35px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.logout-icon {
+  display: inline-block;
+  font-weight: 800;
+}
+.logout-btn span:not(.logout-icon) {
+  display: none !important;
+}
+.hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .meta-pill, .meta-link {
   border: 1px solid var(--line);
@@ -1115,6 +1186,44 @@ body.is-dark .forced h2 { color: #ffb3ad; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.toolbar-right {
+  justify-content: flex-end;
+  width: 100%;
+}
+.toolbar-right .toolbar-field.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  grid-column: auto;
+}
+.toolbar-right .toolbar-field.grow input {
+  width: 100%;
+}
+.toolbar-right .copy-btn {
+  flex: 0 0 auto;
+}
+.foundry-root-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+.foundry-root-toolbar .toolbar-field.grow {
+  width: 100%;
+  min-width: 0;
+  grid-column: auto;
+}
+.foundry-root-actions {
+  display: inline-flex;
+  gap: 8px;
+  justify-self: end;
 }
 .toolbar-field {
   display: grid;
@@ -1675,9 +1784,13 @@ body.is-dark .row-compat {
 @media (max-width: 980px) {
   .hero { flex-direction: column; }
   .hero-meta { justify-items: end; width: 100%; }
+  .hero-actions { right: 12px; top: 12px; }
   .target-columns { grid-template-columns: 1fr; }
   .list-toolbar { grid-template-columns: 1fr 1fr; }
   .toolbar-field.grow { grid-column: span 2; }
+  .foundry-root-toolbar { grid-template-columns: 1fr; }
+  .foundry-root-toolbar .toolbar-field.grow { grid-column: auto; }
+  .foundry-root-actions { justify-self: end; width: auto; }
   .bulk-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .pager-right { margin-left: 0; width: 100%; justify-content: flex-end; }
   .section-stack > .list-toolbar {
@@ -2088,7 +2201,7 @@ function pager(scope, total, page, totalPages, options = {}) {
     `<div class="pager">` +
     `<button type="button" data-page-scope="${escapeHtml(scope)}" data-page-delta="-1" ${page <= 1 ? "disabled" : ""} title="Moves to the previous page of results.">Prev</button>` +
     `<button type="button" data-page-scope="${escapeHtml(scope)}" data-page-delta="1" ${page >= totalPages ? "disabled" : ""} title="Moves to the next page of results.">Next</button>` +
-    `<span class="pager-status">Page ${page} of ${totalPages} · ${total} items</span>` +
+    `<span class="pager-status">Page ${page} of ${totalPages} Â· ${total} items</span>` +
     pageSizeHtml +
     `</div>`
   );
@@ -2127,7 +2240,7 @@ function renderActionCard(row) {
     : "";
   return (
     `<article class="row-card action-item row-${escapeHtml(state)} mobile-collapsible">` +
-    `<header><div><h3 class="module-title">${renderModuleLabel(row)}</h3><p class="row-meta">${escapeHtml(row.module || "-")} · ${escapeHtml(row.systemsLabel || "-")}</p></div></header>` +
+    `<header><div><h3 class="module-title">${renderModuleLabel(row)}</h3><p class="row-meta">${escapeHtml(row.module || "-")} Â· ${escapeHtml(row.systemsLabel || "-")}</p></div></header>` +
     `${mobileToggleButton()}` +
     `<p class="row-version mobile-detail">${escapeHtml(formatVersionDisplay(row.installed || "-", row.recommended || "-"))}</p>` +
     `<p class="row-reason mobile-detail">${escapeHtml(compatibilityLine)}</p>` +
@@ -2152,7 +2265,7 @@ function renderListRow(row, state, subtitle, buttonLabel, commandOverride = null
 }
 
 function renderUnusedCompatibilityCard(row) {
-  const systemsSuffix = row.systemsLabel ? ` · systems: ${row.systemsLabel}` : "";
+  const systemsSuffix = row.systemsLabel ? ` Â· systems: ${row.systemsLabel}` : "";
   const status = String(row.compatibilityStatus || "unknown");
   const statusLabel = compatibilityStatusLabel(status);
   const compatibilityLine = `${statusLabel} with Foundry ${row.foundryVersion || DATA.foundryVersion || "-"}${systemsSuffix}`;
@@ -2244,15 +2357,13 @@ function renderActionsTab() {
   const pageInfo = paginate(filtered, ui.actions.page, ui.actions.pageSize);
   ui.actions.page = pageInfo.page;
 
-  const bulk = DATA.bulkCommands || {};
-  const bulkButtons = [
-    copyButton(bulk.upgrade || "", "Copy All", "Copies one command that applies update actions for the full Current table."),
-    copyButton(bulk.unused || "", "Copy All", "Copies one command that removes all currently unused modules."),
-  ].filter(Boolean).join("");
+  const updateModules = filtered.map((row) => String(row.module || "")).filter(Boolean);
+  const bulkButtons =
+    `<button class="copy-btn" type="button" id="update-all-btn" ${updateModules.length ? "" : "disabled"} data-update-modules='${escapeHtml(JSON.stringify(updateModules))}' title="Updates every module currently visible in Current table.">Update All</button>`;
 
   root.innerHTML =
     `<div class="section-stack">` +
-    `<div class="bulk-actions">${bulkButtons || '<span class="pager-status">No bulk commands available.</span>'}</div>` +
+    `<div class="bulk-actions">${bulkButtons}</div>` +
     `<div class="list-toolbar">` +
     `<label class="toolbar-field grow"><span>Search modules</span><input type="search" value="${escapeHtml(ui.actions.search)}" placeholder="name, id, system..." data-actions-search title="Filters Current modules by title, id, system, or reason."></label>` +
     `</div>` +
@@ -2289,9 +2400,9 @@ function renderForcedTab() {
         ? pageInfo.rows
             .map((row) =>
               `<article class="row-card row-manual mobile-collapsible">` +
-              `<header><div><h3>${escapeHtml(row.title || row.module || "-")}</h3><p class="row-meta">${escapeHtml(row.module || "-")} · ${escapeHtml(row.systemsLabel || "-")}</p></div><span class="state-badge state-manual">Forced ${escapeHtml(row.targetVersion || "-")}</span></header>` +
+              `<header><div><h3>${escapeHtml(row.title || row.module || "-")}</h3><p class="row-meta">${escapeHtml(row.module || "-")} Â· ${escapeHtml(row.systemsLabel || "-")}</p></div><span class="state-badge state-manual">Forced ${escapeHtml(row.targetVersion || "-")}</span></header>` +
               `${mobileToggleButton()}` +
-              `<p class="row-version mobile-detail">${escapeHtml(`version ${row.version || "-"} · compat ${row.verified || "-"} -> ${row.maximum || "-"}`)}</p>` +
+              `<p class="row-version mobile-detail">${escapeHtml(`version ${row.version || "-"} Â· compat ${row.verified || "-"} -> ${row.maximum || "-"}`)}</p>` +
               `<p class="row-reason mobile-detail">${escapeHtml(row.compatibilityLabel || formatCompatibilityRequirements({ minimum: row.minimum, verified: row.verified, maximum: row.maximum }))}</p>` +
               `<p class="row-reason mobile-detail">${escapeHtml(row.reason || "-")}</p>` +
               `<div class="row-actions mobile-detail">${copyButton(row.command || "", "Force Compatibility", "Copies the command that forces compatibility for this module.", "danger")}</div>` +
@@ -2331,8 +2442,8 @@ function renderPlannerModulePanel(title, rows, key) {
     ? pageInfo.rows
         .map((row) => {
           const subtitle = key === "blocked"
-            ? `${String(row.installedVersion || "-")} · No new compatible versions yet.`
-            : `${formatVersionDisplay(row.installedVersion || "-", row.recommendedVersion || "-")} · target compat: ${compatibilityStatusLabel(compatibilityStatusForTarget(row, ui.planning.target))}`;
+            ? `${String(row.installedVersion || "-")} Â· No new compatible versions yet.`
+            : `${formatVersionDisplay(row.installedVersion || "-", row.recommendedVersion || "-")} Â· target compat: ${compatibilityStatusLabel(compatibilityStatusForTarget(row, ui.planning.target))}`;
           const status = String(row.status || row.state || key);
           const buttonLabel = key === "blocked" ? "Force Compatibility" : "Copy command";
           const buttonVariant = key === "blocked" ? "danger" : "default";
@@ -2380,8 +2491,8 @@ function renderPlannerUnusedStatusPanel(title, rows, pageKey, scope, mode) {
     ? pageInfo.rows
         .map((row) => {
           const subtitle = mode === "incompatible"
-            ? `${String(row.installedVersion || "-")} · No new compatible versions yet.`
-            : `${formatVersionDisplay(row.installedVersion || "-", row.recommendedVersion || "-")} · target compat: ${compatibilityStatusLabel(compatibilityStatusForTarget(row, ui.planning.target))}`;
+            ? `${String(row.installedVersion || "-")} Â· No new compatible versions yet.`
+            : `${formatVersionDisplay(row.installedVersion || "-", row.recommendedVersion || "-")} Â· target compat: ${compatibilityStatusLabel(compatibilityStatusForTarget(row, ui.planning.target))}`;
           const rowCommand = mode === "incompatible"
             ? buildForceCompatibilityCommand(row.module || "", ui.planning.target)
             : (mode === "updates" ? buildUpgradeCommandForRow(row) : "");
@@ -2488,7 +2599,7 @@ function renderPlanningTab() {
     ? ((modulesReadyCount + Number(quick.modulesNeedUpdate || 0)) / consideredForReadiness) * 100
     : 0;
   const selectedToneClass = readinessPercent >= 80 ? "tone-ok" : (readinessPercent >= 50 ? "tone-update" : "tone-critical");
-  const selectedBanner = `<div class="selection-banner ${selectedToneClass}"><div class="banner-title">Selected target</div><div class="banner-value">Foundry v${escapeHtml(active.foundryVersion || "-")} · ${escapeHtml(formatPercent(readinessPercent))} upgradable</div></div>`;
+  const selectedBanner = `<div class="selection-banner ${selectedToneClass}"><div class="banner-title">Selected target</div><div class="banner-value">Foundry v${escapeHtml(active.foundryVersion || "-")} Â· ${escapeHtml(formatPercent(readinessPercent))} upgradable</div></div>`;
   const view = String(ui.planning.view || "");
   const unusedFilter = String(ui.planning.unusedFilter || "all");
   const isUnusedFocused = view === "unused";
@@ -2536,7 +2647,7 @@ function renderPlanningTab() {
   if (showUnusedIncompatible) {
     primaryPanels.push(
       renderPlannerUnusedStatusPanel(
-        "Unused Modules · Incompatible",
+        "Unused Modules Â· Incompatible",
         unusedBreakdown.incompatible,
         "unusedIncompatible",
         "planning-unused-incompatible",
@@ -2547,7 +2658,7 @@ function renderPlanningTab() {
   if (showUnusedCompatible) {
     primaryPanels.push(
       renderPlannerUnusedStatusPanel(
-        "Unused Modules · Compatible",
+        "Unused Modules Â· Compatible",
         unusedBreakdown.compatible,
         "unusedCompatible",
         "planning-unused-compatible",
@@ -2558,7 +2669,7 @@ function renderPlanningTab() {
   if (showUnusedUpdates) {
     primaryPanels.push(
       renderPlannerUnusedStatusPanel(
-        "Unused Modules · Update",
+        "Unused Modules Â· Update",
         unusedBreakdown.updates,
         "unusedUpdates",
         "planning-unused-updates",
@@ -2612,7 +2723,7 @@ function renderBackupsTab() {
         `<li class="list-row list-row-ready mobile-collapsible">` +
         `<span>${escapeHtml(row.title || row.module || "-")}</span>` +
         `${mobileToggleButton()}` +
-        `<small class="mobile-detail">${escapeHtml(`${row.backupCount || 0} backups · ${row.backupSizeLabel || "-"} · newest ${row.newestBackupLabel || "-"}`)}</small>` +
+        `<small class="mobile-detail">${escapeHtml(`${row.backupCount || 0} backups Â· ${row.backupSizeLabel || "-"} Â· newest ${row.newestBackupLabel || "-"}`)}</small>` +
         `<div class="row-actions mobile-detail">${copyButton(row.command || "", "Copy Delete", "Copies the backup delete command for this module.")}</div>` +
         `</li>`
       )).join("")}</ul>`
@@ -2897,6 +3008,26 @@ document.addEventListener("click", async (event) => {
   }
 
   const copyButtonNode = event.target.closest("[data-copy-command]");
+  const updateAllBtn = event.target.closest("#update-all-btn");
+  if (updateAllBtn) {
+    try {
+      const modulesRaw = String(updateAllBtn.dataset.updateModules || "[]");
+      const modules = JSON.parse(modulesRaw);
+      if (!Array.isArray(modules) || modules.length === 0) return;
+      updateAllBtn.disabled = true;
+      const csrfToken = (document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("mm_csrf=")) || "").split("=", 2)[1] || "";
+      await fetch("/api/actions/submit", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrfToken) },
+        body: JSON.stringify({ action: "apply", payload: { modules: modules, batchSize: 10 } }),
+      });
+      updateAllBtn.textContent = "Queued";
+    } catch (_err) {
+      updateAllBtn.disabled = false;
+    }
+    return;
+  }
   if (!copyButtonNode) return;
   const command = copyButtonNode.dataset.copyCommand || "";
   if (!command) return;
@@ -3051,3 +3182,157 @@ if (themeToggle) {
 syncMetricButtons();
 activateTab("actions", { forceRender: true });
 """
+
+
+_SERVICE_GATEWAY_SCRIPT = r"""
+(function () {
+  const input = document.getElementById("foundry-root-input");
+  const inputModal = document.getElementById("foundry-root-input-modal");
+  const saveBtn = document.getElementById("foundry-root-save");
+  const saveBtnModal = document.getElementById("foundry-root-save-modal");
+  const browseBtn = document.getElementById("foundry-root-browse");
+  const browseBtnModal = document.getElementById("foundry-root-browse-modal");
+  const resetBtn = document.getElementById("foundry-root-reset");
+  const resetBtnModal = document.getElementById("foundry-root-reset-modal");
+  const changeBtn = document.getElementById("foundry-root-change");
+  const pickerInput = document.getElementById("foundry-root-picker");
+  const statusEl = document.getElementById("foundry-root-status");
+  const statusModalEl = document.getElementById("foundry-root-status-modal");
+  const logoutBtn = document.getElementById("logout-btn");
+  const settingsOpenBtn = document.getElementById("settings-open-btn");
+  const settingsCloseBtn = document.getElementById("settings-close-btn");
+  const settingsModal = document.getElementById("settings-modal");
+  const addModuleOpenBtn = document.getElementById("add-module-open-btn");
+  const addModuleCloseBtn = document.getElementById("add-module-close-btn");
+  const addModuleModal = document.getElementById("add-module-modal");
+  const tabHub = document.getElementById("tab-hub");
+  const tabSections = Array.from(document.querySelectorAll(".tab-section"));
+  const suggestBtn = document.getElementById("suggest-module-btn");
+  const suggestStatus = document.getElementById("suggest-module-status");
+  const suggestManifestUrl = document.getElementById("suggest-manifest-url");
+  const firstRunBtn = document.getElementById("first-run-btn");
+
+  function setInteractive(enabled) {
+    if (tabHub) tabHub.style.display = enabled ? "" : "none";
+    tabSections.forEach((section) => { section.style.display = enabled ? "" : "none"; });
+    if (firstRunBtn) { firstRunBtn.style.display = enabled ? "" : "none"; firstRunBtn.disabled = !enabled; }
+    if (input) input.style.display = enabled ? "none" : "";
+    if (saveBtn) saveBtn.style.display = enabled ? "none" : "";
+    if (changeBtn) changeBtn.style.display = enabled ? "" : "none";
+    if (resetBtn) resetBtn.style.display = enabled ? "" : "none";
+    if (settingsOpenBtn) settingsOpenBtn.classList.toggle("needs-config", !enabled);
+  }
+
+  async function api(path, method, body) {
+    const csrfToken = (document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("mm_csrf=")) || "").split("=", 2)[1] || "";
+    const response = await fetch(path, {
+      method: method || "GET",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrfToken) },
+      body: body ? JSON.stringify(body) : null
+    });
+    const text = await response.text();
+    let payload = {};
+    try { payload = JSON.parse(text || "{}"); } catch { payload = { raw: text }; }
+    if (!response.ok) throw new Error(payload.message || payload.error || ("HTTP " + response.status));
+    return payload;
+  }
+
+  function setStatus(message, ok) {
+    if (statusEl) { statusEl.textContent = message || ""; statusEl.style.color = ok ? "#16a34a" : "#b91c1c"; }
+    if (statusModalEl) { statusModalEl.textContent = message || ""; statusModalEl.style.color = ok ? "#16a34a" : "#b91c1c"; }
+  }
+
+  async function refreshConfig() {
+    try {
+      const payload = await api("/api/config/foundry-root", "GET");
+      if (input) input.value = payload.selected || "";
+      if (inputModal) inputModal.value = payload.selected || "";
+      if (payload.valid) { setStatus(payload.message || "Foundry path is valid.", true); setInteractive(true); }
+      else { setStatus(payload.message || "Select a valid Foundry path to continue.", false); setInteractive(false); }
+    } catch (err) { setStatus(String(err && err.message ? err.message : err), false); setInteractive(false); }
+  }
+
+  async function validatePath(pathValue) {
+    const payload = await api("/api/config/foundry-root", "POST", { path: pathValue || "" });
+    if (input) input.value = payload.selected || pathValue || "";
+    if (inputModal) inputModal.value = payload.selected || pathValue || "";
+    setStatus(payload.message || "Path saved.", !!payload.valid);
+    setInteractive(!!payload.valid);
+  }
+
+  async function pickPath(targetInput) {
+    try {
+      const payload = await api("/api/config/foundry-root/pick", "POST", {});
+      const p = payload.selected || payload.normalized || payload.selectedPath || "";
+      if (targetInput) targetInput.value = p;
+      await validatePath(p);
+      return;
+    } catch (_err) {
+      if (pickerInput) pickerInput.click();
+    }
+  }
+
+  if (saveBtn) saveBtn.addEventListener("click", async function () { await validatePath((input && input.value) || ""); });
+  if (saveBtnModal) saveBtnModal.addEventListener("click", async function () { await validatePath((inputModal && inputModal.value) || ""); });
+  if (browseBtn) browseBtn.addEventListener("click", async function () { await pickPath(input); });
+  if (browseBtnModal) browseBtnModal.addEventListener("click", async function () { await pickPath(inputModal); });
+  if (changeBtn) changeBtn.addEventListener("click", async function () { await pickPath(input); });
+
+  if (pickerInput) {
+    pickerInput.addEventListener("change", async function () {
+      const files = pickerInput.files;
+      if (!files || files.length === 0) return;
+      const first = files[0];
+      let selectedPath = "";
+      if (first && typeof first.path === "string" && first.path) {
+        const normalized = first.path.replace(/\\\\/g, "/");
+        const idx = normalized.lastIndexOf("/");
+        selectedPath = idx > 0 ? normalized.slice(0, idx) : normalized;
+      }
+      if (!selectedPath) { setStatus("Browser blocked full path. Use Select Folder again.", false); return; }
+      await validatePath(selectedPath);
+    });
+  }
+
+  async function resetPath() {
+    await api("/api/config/foundry-root/reset", "POST", {});
+    if (input) input.value = "";
+    if (inputModal) inputModal.value = "";
+    setStatus("Foundry path reset.", false);
+    setInteractive(false);
+  }
+  if (resetBtn) resetBtn.addEventListener("click", async function () { await resetPath(); });
+  if (resetBtnModal) resetBtnModal.addEventListener("click", async function () { await resetPath(); });
+
+  if (settingsOpenBtn && settingsModal && settingsModal.showModal) settingsOpenBtn.addEventListener("click", function () { settingsModal.showModal(); });
+  if (settingsCloseBtn && settingsModal) settingsCloseBtn.addEventListener("click", function () { settingsModal.close(); });
+  if (addModuleOpenBtn && addModuleModal && addModuleModal.showModal) addModuleOpenBtn.addEventListener("click", function () { addModuleModal.showModal(); });
+  if (addModuleCloseBtn && addModuleModal) addModuleCloseBtn.addEventListener("click", function () { addModuleModal.close(); });
+
+  if (logoutBtn) logoutBtn.addEventListener("click", async function () { try { await api("/api/auth/logout", "POST", {}); } catch (_err) {} window.location.replace("/"); });
+
+  if (suggestBtn) {
+    suggestBtn.addEventListener("click", async function () {
+      const manifestUrl = String((suggestManifestUrl && suggestManifestUrl.value) || "").trim();
+      if (!manifestUrl) { if (suggestStatus) suggestStatus.textContent = "Provide module.json URL."; return; }
+      try {
+        suggestBtn.disabled = true;
+        if (suggestStatus) suggestStatus.textContent = "Resolving best compatible version...";
+        const payload = await api("/api/actions/suggest-module", "POST", { manifestUrl: manifestUrl });
+        const suggestion = payload.suggestion || {};
+        const msg = ["Recommended: " + String(suggestion.recommendedVersion || "-"), "Compatible: " + String(!!suggestion.isCompatible), "Checked releases: " + String(suggestion.checkedReleases || 0)].join(" | ");
+        if (suggestStatus) suggestStatus.textContent = msg;
+      } catch (err) {
+        if (suggestStatus) suggestStatus.textContent = String(err && err.message ? err.message : err);
+      } finally { suggestBtn.disabled = false; }
+    });
+  }
+
+  refreshConfig();
+})();
+"""
+
+
+
+

@@ -1,0 +1,12 @@
+﻿{
+  "bootstrap.title": "Preparando seu relatório",
+  "bootstrap.heading": "Seu primeiro relatório ainda não está pronto",
+  "bootstrap.body": "Inicie a varredura inicial abaixo. Você será redirecionado automaticamente quando ela terminar.",
+  "bootstrap.button.start": "Iniciar Varredura Inicial",
+  "bootstrap.status.idle": "Aguardando início.",
+  "bootstrap.status.queue": "Preparando sua solicitação...",
+  "bootstrap.status.running": "Processando... {progress}%",
+  "bootstrap.status.done": "Concluído. Redirecionando...",
+  "bootstrap.status.failed": "Não foi possível gerar o relatório. Tente novamente.",
+  "bootstrap.status.error_start": "Não foi possível iniciar o processo. Tente novamente."
+}

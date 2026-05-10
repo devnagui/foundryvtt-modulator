@@ -11,7 +11,7 @@ from .scoring import (
 )
 
 STALE_CACHE_WARNING_PREFIX = "Used stale release cache:"
-MODULE_RELEASE_LIMIT_STEPS = (5,)
+MODULE_RELEASE_LIMIT_STEPS = (5, 20, 50)
 STOP_ON_FIRST_OPTIMAL_COMPATIBLE = True
 
 

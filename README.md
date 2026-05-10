@@ -294,3 +294,16 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 - `CI` (`.github/workflows/ci.yml`): testes em Linux/Windows/macOS.
 - `Release` (`.github/workflows/release.yml`): em tags `v*`, faz build de artefatos (`.deb`, `.exe`, `.app.zip`), gera `SHA256SUMS.txt` e publica release no GitHub.
+
+## Foundry online detection (safety)
+
+Para bloquear acoes destrutivas com mais confiabilidade, o servico agora combina:
+
+- probe TCP (`RESOLVER_FOUNDRY_HOST` + `RESOLVER_FOUNDRY_PORT`)
+- probe de processo no Windows via `tasklist` (processo configuravel)
+
+Variavel nova:
+
+- `RESOLVER_FOUNDRY_PROCESS_NAME` (padrao: `Foundry Virtual Tabletop.exe`)
+
+Se qualquer probe indicar que o Foundry esta online, operacoes de manutencao retornam precondition failed (`412`).
