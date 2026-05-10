@@ -136,6 +136,16 @@ def load_env_file(env_path: str) -> None:
         return
 
 
+def _normalize_data_root(raw_data_root: str) -> str:
+    path = Path(str(raw_data_root or "")).expanduser().resolve()
+    # Common user input mistake: passing "<foundry-root>/Data" instead of "<foundry-root>".
+    if path.name.lower() == "data":
+        parent = path.parent
+        if (path / "modules").exists() and (parent / "Logs").exists():
+            return str(parent)
+    return str(path)
+
+
 def _is_upgrade(installed_version: str | None, recommended_version: str | None) -> bool:
     if not installed_version or not recommended_version:
         return False
@@ -452,6 +462,7 @@ def main() -> int:
     resolved_database_path = args.database_path or default_database_path(str(TOOL_ROOT))
     configure_logging(resolved_log_file)
 
+    args.data_root = _normalize_data_root(args.data_root)
     logging.info("Starting module resolution for data root %s", args.data_root)
     if pruned["removedFiles"]:
         logging.info(

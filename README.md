@@ -264,6 +264,7 @@ Em outros servidores, cada usuário decide como expor.
 Veja `.env.resolver.example`. As mais importantes:
 
 - `RESOLVER_DATA_ROOT` (ex: `/foundry-data`)
+  - pode apontar para a raiz do Foundry (`Data/`, `Logs/`, `Config/`) ou para a pasta `Data`; a CLI normaliza automaticamente quando recebe a pasta `Data`.
 - `RESOLVER_REQUIRE_FOUNDRY_OFFLINE=true`
 - `RESOLVER_FOUNDRY_HOST` e `RESOLVER_FOUNDRY_PORT`
 - `RESOLVER_COOKIE_SECURE` (use `true` quando estiver atrás de HTTPS)
@@ -278,3 +279,18 @@ Veja `.env.resolver.example`. As mais importantes:
 - Apos login/setup com sucesso, o usuario e redirecionado para o `report_v3` (`/api/report/v3`).
 - Se ainda nao existir `module-resolver-latest-v3.html`, `/api/report/v3` mostra uma tela de bootstrap com botao para executar o primeiro `dry-run`.
 - Sessoes autenticadas sao persistidas em `state/auth.json` (campo `sessions`) para sobreviver a restart do servico, respeitando TTL.
+- O bootstrap do primeiro `dry-run` usa o motor assincrono (`POST /api/actions/submit`) e acompanha o status do job ate redirecionar para o v3.
+
+## Docker (producao)
+
+Use `docker-compose.prod.yml` com healthcheck e variaveis por ambiente:
+
+```bash
+export FOUNDRY_DATA_ROOT=/path/to/foundry/root
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+## CI/CD
+
+- `CI` (`.github/workflows/ci.yml`): testes em Linux/Windows/macOS.
+- `Release` (`.github/workflows/release.yml`): em tags `v*`, faz build de artefatos (`.deb`, `.exe`, `.app.zip`), gera `SHA256SUMS.txt` e publica release no GitHub.

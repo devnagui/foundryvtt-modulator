@@ -1,0 +1,1750 @@
+{
+  "generatedAt": "2026-05-10T19:07:16Z",
+  "dataRoot": "/home/engrenado/foundry/data/Data",
+  "count": 249,
+  "items": [
+    {
+      "type": "module",
+      "id": "ActiveAuras",
+      "name": "Active Auras",
+      "repositoryUrl": "https://github.com/kandashi/Active-Auras",
+      "version": "0.12.7"
+    },
+    {
+      "type": "module",
+      "id": "arctic-music-vol-1",
+      "name": "Arctic Music Vol. 1 - Michael Ghelfi Studios",
+      "repositoryUrl": "",
+      "version": "1.8"
+    },
+    {
+      "type": "module",
+      "id": "art-for-daggerheart",
+      "name": "Art for Daggerheart",
+      "repositoryUrl": "https://github.com/mordachai/art-for-daggerheart",
+      "version": "1.0.0"
+    },
+    {
+      "type": "module",
+      "id": "auraeffects",
+      "name": "Aura Effects",
+      "repositoryUrl": "https://github.com/roth-michael/Aura-Effects",
+      "version": "1.5.2"
+    },
+    {
+      "type": "module",
+      "id": "autoanimations",
+      "name": "Automated Animations",
+      "repositoryUrl": "https://github.com/theripper93/autoanimations",
+      "version": "6.8.2"
+    },
+    {
+      "type": "module",
+      "id": "automated-conditions-5e",
+      "name": "Automated Conditions 5e",
+      "repositoryUrl": "https://github.com/thatlonelybugbear/automated-conditions-5e",
+      "version": "13.5300.1"
+    },
+    {
+      "type": "module",
+      "id": "automated-evocations",
+      "name": "Automated Evocations - Companion Manager",
+      "repositoryUrl": "https://github.com/theripper93/automated-evocations",
+      "version": "5.0.0"
+    },
+    {
+      "type": "module",
+      "id": "avclient-livekit",
+      "name": "LiveKit AVClient",
+      "repositoryUrl": "https://github.com/bekriebel/fvtt-module-avclient-livekit",
+      "version": "0.6.6"
+    },
+    {
+      "type": "module",
+      "id": "babele",
+      "name": "Babele",
+      "repositoryUrl": "https://gitlab.com/riccisi/foundryvtt-babele",
+      "version": "2.7.9"
+    },
+    {
+      "type": "module",
+      "id": "betterroofs",
+      "name": "Better Roofs",
+      "repositoryUrl": "https://github.com/theripper93/Better-Roofs",
+      "version": "3.0.0"
+    },
+    {
+      "type": "module",
+      "id": "biomes-themes-vol-1",
+      "name": "Biomes Themes Vol. 1 - Michael Ghelfi Studios",
+      "repositoryUrl": "https://www.dropbox.com/scl/fi/t5m5qwkgfderj3u904xwp/module.json?rlkey=cqhtxbcy7eo3sz8fcmeesie0v&dl=1",
+      "version": "1.1.0"
+    },
+    {
+      "type": "module",
+      "id": "bossbar",
+      "name": "Bossbar",
+      "repositoryUrl": "https://github.com/theripper93/Boss-Bar",
+      "version": "4.0.0"
+    },
+    {
+      "type": "module",
+      "id": "bsa-dnd5e",
+      "name": "Beaver's System Adaptation dnd5e",
+      "repositoryUrl": "https://github.com/AngryBeaver/bsa-dnd5e",
+      "version": "2.1.10"
+    },
+    {
+      "type": "module",
+      "id": "campaign-builder",
+      "name": "World & Campaign Builder",
+      "repositoryUrl": "https://github.com/dovrosenberg/fvtt-campaign-builder",
+      "version": "1.10.2"
+    },
+    {
+      "type": "module",
+      "id": "campaign-codex",
+      "name": "Campaign Codex",
+      "repositoryUrl": "https://github.com/xthesaintx/cc13",
+      "version": "3.8.1"
+    },
+    {
+      "type": "module",
+      "id": "chat-trimmer",
+      "name": "Chat Trimmer",
+      "repositoryUrl": "https://github.com/roi007leaf/chat-trimmer",
+      "version": "1.0.6"
+    },
+    {
+      "type": "module",
+      "id": "chris-premades",
+      "name": "Cauldron of Plentiful Resources",
+      "repositoryUrl": "https://github.com/chrisk123999/chris-premades/",
+      "version": "1.5.20"
+    },
+    {
+      "type": "module",
+      "id": "color-picker",
+      "name": "Color Picker",
+      "repositoryUrl": "https://github.com/Larkinabout/fvtt-color-picker",
+      "version": "1.7"
+    },
+    {
+      "type": "module",
+      "id": "colorsettings",
+      "name": "lib - Color Settings",
+      "repositoryUrl": "https://github.com/ardittristan/VTTColorSettings",
+      "version": "3.0.4"
+    },
+    {
+      "type": "module",
+      "id": "combat-tracker-dock",
+      "name": "Carousel Combat Tracker",
+      "repositoryUrl": "https://github.com/theripper93/combat-tracker-dock",
+      "version": "4.1.8"
+    },
+    {
+      "type": "module",
+      "id": "combatbooster",
+      "name": "Combat Booster: Turn Marker, Recent Actions and more",
+      "repositoryUrl": "https://github.com/theripper93/Combat-Booster",
+      "version": "5.0.2"
+    },
+    {
+      "type": "module",
+      "id": "compact-scene-navigation",
+      "name": "Compact Scene Navigation",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "1.0.2"
+    },
+    {
+      "type": "module",
+      "id": "crlngn-ui",
+      "name": "Carolingian UI",
+      "repositoryUrl": "https://github.com/crlngn/crlngn-ui",
+      "version": "2.29.6"
+    },
+    {
+      "type": "module",
+      "id": "cthulhu-architect-maps-nyarlathotep-tier",
+      "name": "Cthulhu Architect Maps - Nyarlathotep Tier",
+      "repositoryUrl": "https://www.patreon.com/cthulhu_architect",
+      "version": "1.0.89"
+    },
+    {
+      "type": "module",
+      "id": "dae",
+      "name": "Dynamic effects using Active Effects (DAE)",
+      "repositoryUrl": "https://gitlab.com/tposney/dae",
+      "version": "13.0.26"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-br",
+      "name": "Daggerheart - Tradução Corrigida para Brasileiro",
+      "repositoryUrl": "https://github.com/raposoel/DH-BR",
+      "version": "1.4.5"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-death-moves",
+      "name": "Daggerheart: Death Moves",
+      "repositoryUrl": "https://github.com/brunocalado/daggerheart-death-moves",
+      "version": "2.0.1"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-extra-content",
+      "name": "Daggerheart - Extra Content",
+      "repositoryUrl": "https://github.com/brunocalado/daggerheart-extra-content",
+      "version": "1.5.9"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-gm-hud",
+      "name": "Daggerheart GM HUD",
+      "repositoryUrl": "https://github.com/mordachai/daggerheart-gm-hud",
+      "version": "1.4.0"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-hud",
+      "name": "Daggerheart HUD",
+      "repositoryUrl": "https://github.com/mordachai/daggerheart-hud",
+      "version": "1.11.1"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-plus",
+      "name": "Daggerheart Plus",
+      "repositoryUrl": "https://raw.githubusercontent.com/featureJosh/daggerheart-plus/refs/heads/main/module.json",
+      "version": "1.5.0"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-pt-BR",
+      "name": "Tradução: Português Brasileiro [Daggerheart]",
+      "repositoryUrl": "https://github.com/shuanz/fvtt-daggerheart-pt-BR",
+      "version": "1.2.1"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-quickactions",
+      "name": "Daggerheart: Quick Actions",
+      "repositoryUrl": "https://github.com/brunocalado/daggerheart-quickactions",
+      "version": "0.3.2"
+    },
+    {
+      "type": "module",
+      "id": "daggerheart-store",
+      "name": "Daggerheart: Store",
+      "repositoryUrl": "https://github.com/brunocalado/daggerheart-store",
+      "version": "0.4.4"
+    },
+    {
+      "type": "module",
+      "id": "damage-numbers",
+      "name": "RPG Damage Numbers",
+      "repositoryUrl": "https://github.com/theripper93/damage-numbers",
+      "version": "5.0.2"
+    },
+    {
+      "type": "module",
+      "id": "ddb-importer",
+      "name": "DDB-Importer: A D&D Beyond Integrator",
+      "repositoryUrl": "https://github.com/mrprimate/ddb-importer",
+      "version": "7.1.9"
+    },
+    {
+      "type": "module",
+      "id": "df-architect",
+      "name": "DF Architect",
+      "repositoryUrl": "https://dragonflagon.cafe/mods/url/df-architect",
+      "version": "5.0.0"
+    },
+    {
+      "type": "module",
+      "id": "df-settings-clarity",
+      "name": "DF Settings Clarity",
+      "repositoryUrl": "https://dragonflagon.cafe/mods/url/df-settings-clarity",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "df-templates",
+      "name": "DF Template Enhancements",
+      "repositoryUrl": "https://dragonflagon.cafe/mods/url/df-templates",
+      "version": "2.0.0"
+    },
+    {
+      "type": "module",
+      "id": "dice-so-nice",
+      "name": "Dice So Nice!",
+      "repositoryUrl": "https://gitlab.com/riccisi/foundryvtt-dice-so-nice",
+      "version": "5.3.4"
+    },
+    {
+      "type": "module",
+      "id": "diceaddiction",
+      "name": "Handyfon's Dice Addiction",
+      "repositoryUrl": "https://github.com/Handyfon/diceaddiction",
+      "version": "13.1"
+    },
+    {
+      "type": "module",
+      "id": "downtime-dnd5e",
+      "name": "Downtime (Dnd5e)",
+      "repositoryUrl": "https://github.com/laquasicinque/foundryvtt-downtime-dnd5e",
+      "version": "13.0.7"
+    },
+    {
+      "type": "module",
+      "id": "duality-roller",
+      "name": "Daggerheart Duality Dice Roller",
+      "repositoryUrl": "https://git.geeks.gay/cosmo/DualityDiceRoller",
+      "version": "0.1.6"
+    },
+    {
+      "type": "module",
+      "id": "dynamic-soundscapes",
+      "name": "Dynamic Soundscapes",
+      "repositoryUrl": "https://theripper93.com/",
+      "version": "3.1.1"
+    },
+    {
+      "type": "module",
+      "id": "em-tile-utilities",
+      "name": "Dorman Lakely's Tile Utilities",
+      "repositoryUrl": "https://github.com/jesshmusic/em-tile-utilities",
+      "version": "2.0.1"
+    },
+    {
+      "type": "module",
+      "id": "enhanced-region-behavior",
+      "name": "Enhanced Region Behavior",
+      "repositoryUrl": "https://github.com/txm3278/Enhanced-Region-Behaviors",
+      "version": "1.4.4"
+    },
+    {
+      "type": "module",
+      "id": "enhancedcombathud",
+      "name": "Argon - Combat HUD (CORE)",
+      "repositoryUrl": "https://github.com/theripper93/enhancedcombathud",
+      "version": "4.1.2"
+    },
+    {
+      "type": "module",
+      "id": "enhancedcombathud-dnd5e",
+      "name": "Argon - Combat HUD (DND5E)",
+      "repositoryUrl": "https://github.com/theripper93/enhancedcombathud-dnd5e",
+      "version": "5.1.5"
+    },
+    {
+      "type": "module",
+      "id": "epic-rolls-5e",
+      "name": "Epic Rolls 5e",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "5.1.3"
+    },
+    {
+      "type": "module",
+      "id": "farchievements",
+      "name": "Foundry Achievements",
+      "repositoryUrl": "https://github.com/Handyfon/Farchievements/tree/master",
+      "version": "13.03"
+    },
+    {
+      "type": "module",
+      "id": "fear-tracker",
+      "name": "Fear Tracker for Foundry",
+      "repositoryUrl": "https://github.com/andrewbrick/Fear-Tracker-for-Foundry/",
+      "version": "0.4.09"
+    },
+    {
+      "type": "module",
+      "id": "filepicker-plus",
+      "name": "Filepicker Plus",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "5.0.8"
+    },
+    {
+      "type": "module",
+      "id": "flash-rolls-5e",
+      "name": "Flash Token Bar 5e",
+      "repositoryUrl": "https://github.com/crlngn/flash-rolls-5e",
+      "version": "1.26.0"
+    },
+    {
+      "type": "module",
+      "id": "flutes-and-lutes-michael-ghelfi-studios",
+      "name": "Flutes And Lutes - Michael Ghelfi Studios",
+      "repositoryUrl": "",
+      "version": "1.0.0"
+    },
+    {
+      "type": "module",
+      "id": "follow-me-if-you-can",
+      "name": "Follow Me If You Can!",
+      "repositoryUrl": "https://github.com/Frenchy-s-module/follow-me-if-you-can",
+      "version": "1.4.0"
+    },
+    {
+      "type": "module",
+      "id": "follow-the-token",
+      "name": "Follow The Token",
+      "repositoryUrl": "https://github.com/mateusrodrigo/foundryvtt-follow-the-token",
+      "version": "1.2.0"
+    },
+    {
+      "type": "module",
+      "id": "forien-copy-environment",
+      "name": "Forien's Copy Environment",
+      "repositoryUrl": "https://github.com/League-of-Foundry-Developers/foundryvtt-forien-copy-environment",
+      "version": "v3.0.0"
+    },
+    {
+      "type": "module",
+      "id": "forien-quest-log",
+      "name": "Forien's Quest Log",
+      "repositoryUrl": "https://github.com/Forien/foundryvtt-forien-quest-log",
+      "version": "v0.9.0"
+    },
+    {
+      "type": "module",
+      "id": "foundry-quick-upload",
+      "name": "Quick Upload",
+      "repositoryUrl": "https://github.com/kagangtuya-star/foundry-quick-upload",
+      "version": "1.0.3"
+    },
+    {
+      "type": "module",
+      "id": "fvtt-paper-doll-ui",
+      "name": "Paper Doll",
+      "repositoryUrl": "https://r2.foundryvtt.com/packages-public/fvtt-paper-doll-ui/module.json",
+      "version": "2.1.1"
+    },
+    {
+      "type": "module",
+      "id": "fvtt-perf-optim",
+      "name": "Prime Performance",
+      "repositoryUrl": "https://github.com/Codas/foundryvtt-performance-hacks",
+      "version": "0.11.11"
+    },
+    {
+      "type": "module",
+      "id": "fvtt-youtube-player",
+      "name": "Youtube Player Widget",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "3.1.3"
+    },
+    {
+      "type": "module",
+      "id": "gambits-premades",
+      "name": "Gambit's Premades",
+      "repositoryUrl": "https://github.com/gambit07/gambits-premades",
+      "version": "2.1.42"
+    },
+    {
+      "type": "module",
+      "id": "gatherer",
+      "name": "Gatherer",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "4.1.9"
+    },
+    {
+      "type": "module",
+      "id": "give-item",
+      "name": "Give item to another player",
+      "repositoryUrl": "https://github.com/Sepichat/FoundryVTT-GiveItem",
+      "version": "2.1.1"
+    },
+    {
+      "type": "module",
+      "id": "gm-screen",
+      "name": "GM Screen",
+      "repositoryUrl": "https://github.com/samulopez/foundryvtt-gmScreen",
+      "version": "5.6.2"
+    },
+    {
+      "type": "module",
+      "id": "healthEstimate",
+      "name": "Health Estimate",
+      "repositoryUrl": "https://github.com/mclemente/healthEstimate",
+      "version": "34.3.6"
+    },
+    {
+      "type": "module",
+      "id": "heartbeat",
+      "name": "Heartbeat",
+      "repositoryUrl": "https://github.com/Handyfon/heartbeat/tree/master",
+      "version": "13.3.3"
+    },
+    {
+      "type": "module",
+      "id": "hexplorer",
+      "name": "Hexplorer",
+      "repositoryUrl": "https://github.com/theripper93/hexplorer",
+      "version": "2.0.8"
+    },
+    {
+      "type": "module",
+      "id": "hover-distance",
+      "name": "Hover Distance",
+      "repositoryUrl": "https://r2.foundryvtt.com/packages-public/hover-distance/module.json",
+      "version": "5.0.1"
+    },
+    {
+      "type": "module",
+      "id": "image-context",
+      "name": "Image Context",
+      "repositoryUrl": "https://r2.foundryvtt.com/packages-public/image-context/module.json",
+      "version": "3.1.3"
+    },
+    {
+      "type": "module",
+      "id": "indy-dice-stats",
+      "name": "Indy Dice Stats",
+      "repositoryUrl": "https://github.com/jwrpalmer99/indy-dice-stats",
+      "version": "1.1.4"
+    },
+    {
+      "type": "module",
+      "id": "indy-downtime",
+      "name": "Indy Downtime Tracker",
+      "repositoryUrl": "https://github.com/jwrpalmer99/indy-downtime",
+      "version": "1.1.6"
+    },
+    {
+      "type": "module",
+      "id": "items-with-spells-5e",
+      "name": "Items with Spells DnD5e",
+      "repositoryUrl": "https://github.com/morepurplemorebetter/fvtt-items-with-spells-5e",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "journal-font-scaler",
+      "name": "Journal Scaler",
+      "repositoryUrl": "https://hub.adventurer-backpack.com/module/journal-font-scaler",
+      "version": "1.1.0"
+    },
+    {
+      "type": "module",
+      "id": "levels",
+      "name": "Levels",
+      "repositoryUrl": "https://github.com/theripper93/Levels",
+      "version": "6.1.0"
+    },
+    {
+      "type": "module",
+      "id": "levels-layer-effects",
+      "name": "Levels - Depth Blur",
+      "repositoryUrl": "https://r2.foundryvtt.com/packages-public/levels-layer-effects/module.json",
+      "version": "2.0.1"
+    },
+    {
+      "type": "module",
+      "id": "levelsautocover",
+      "name": "AutoCover - Automatic Cover Calculator",
+      "repositoryUrl": "https://github.com/theripper93/Levels-Auto-Cover",
+      "version": "3.0.3"
+    },
+    {
+      "type": "module",
+      "id": "lib-wrapper",
+      "name": "libWrapper",
+      "repositoryUrl": "https://github.com/ruipin/fvtt-lib-wrapper",
+      "version": "1.13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "lmrtfy",
+      "name": "Let Me Roll That For You!",
+      "repositoryUrl": "https://github.com/League-of-Foundry-Developers/fvtt-module-lmrtfy",
+      "version": "3.1.9"
+    },
+    {
+      "type": "module",
+      "id": "lordudice",
+      "name": "Lordu's Custom Dice for Dice So Nice",
+      "repositoryUrl": "https://github.com/LorduFreeman/foundry-lordudice",
+      "version": "0.41"
+    },
+    {
+      "type": "module",
+      "id": "macro-runner",
+      "name": "Macro Runner",
+      "repositoryUrl": "https://gitlab.com/sir.sly/macro-runner",
+      "version": "0.0.1"
+    },
+    {
+      "type": "module",
+      "id": "macro-wheel",
+      "name": "Macro Wheel",
+      "repositoryUrl": "https://theripper93.com",
+      "version": "3.1.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-astral",
+      "name": "Astral Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-astral2",
+      "name": "Astral 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-badlands",
+      "name": "Badlands Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-blackbottom",
+      "name": "The Fall of Blackbottom Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.3.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-buildabase",
+      "name": "Build-a-Base Modular Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-caverns",
+      "name": "Caverns Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-classicdun",
+      "name": "Classic Dungeons Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-classicdun-2",
+      "name": "Classic Dungeons 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-commerce",
+      "name": "Commerce Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-craftycollection",
+      "name": "The MAD Cartographer | The Crafty Collection | Battlemap Pack",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "12.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-crooked",
+      "name": "Crooked Wood Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-curseoffrost",
+      "name": "Cursed Frostmaiden Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-deserts",
+      "name": "Deserts Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-downtown",
+      "name": "Downtown Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-drakehall",
+      "name": "TMC | Drake Hall",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.9.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-dreadeddomains",
+      "name": "Dreaded Domains Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-dreadeddomains2",
+      "name": "Dreaded Domains 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-dungeondelve",
+      "name": "Dungeon Delve Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-dungeondelve2",
+      "name": "Dungeon Delve 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-dungeons",
+      "name": "Dungeons Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-endlesswiz",
+      "name": "Wizard's Tower Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-endlesswiz2",
+      "name": "Wizard's Tower 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-faecarnival",
+      "name": "Fae Carnival Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-faewilds",
+      "name": "Faewilds Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-faewilds2",
+      "name": "Faewilds 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.3.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-farmlife",
+      "name": "Farm Life Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-forestwild",
+      "name": "Forest Wilderness Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-frozen",
+      "name": "Frozen Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-frozen2",
+      "name": "Frozen 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-gommage",
+      "name": "Gommage Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.3.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-heists",
+      "name": "Heists Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-hellscapes",
+      "name": "Hellscapes Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-lairs",
+      "name": "Lairs Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-lairs2",
+      "name": "Lairs 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-madtv",
+      "name": "MAD TV Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.3"
+    },
+    {
+      "type": "module",
+      "id": "mad-modcaverns",
+      "name": "Modular Caverns Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-moddungeons",
+      "name": "Modular Dungeons Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-modulargalleon",
+      "name": "Modular Galleon Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-mythicgreece",
+      "name": "Mythic Greece Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-oceans",
+      "name": "Oceans Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-oceans2",
+      "name": "Oceans 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.2.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-phandelver",
+      "name": "Phandelver & Below | The MAD Cartographer Map Pack",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix1",
+      "name": "PicknMix 1 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix10",
+      "name": "PicknMix 10 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix2",
+      "name": "PicknMix 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix3",
+      "name": "PicknMix 3 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix4",
+      "name": "PicknMix 4 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix5",
+      "name": "PicknMix 5 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix6",
+      "name": "PicknMix 6 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix7",
+      "name": "PicknMix 7 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix8",
+      "name": "PicknMix 8 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-picknmix9",
+      "name": "The MAD Cartographer | PicknMix 9 | Battlemap Pack",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "12.3.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-strongholds",
+      "name": "Strongholds Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-swamps",
+      "name": "Swamps Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-swamps2",
+      "name": "Swamps 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-taverns",
+      "name": "Taverns Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-taverns2",
+      "name": "Taverns 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.3.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-temples",
+      "name": "Temples Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-thewormwitch",
+      "name": "The Worm Witch | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-titan",
+      "name": "World of War Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-tropics",
+      "name": "Tropics Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-twilight",
+      "name": "Twilight Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-undercavern",
+      "name": "Undercaverns Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-uptown",
+      "name": "Uptown Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-urbanext",
+      "name": "The MAD Cartographer | Urban Exteriors | Battlemap Pack",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "12.1.2"
+    },
+    {
+      "type": "module",
+      "id": "mad-vampirehunters",
+      "name": "Vampire Hunters 5e Adventure Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-wilderwoods",
+      "name": "Wilderwoods Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-wildwoods",
+      "name": "Wild Woods Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-wildwoods2",
+      "name": "Wild Woods 2 Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvbloodm",
+      "name": "Bloodmine Strike | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvbunker",
+      "name": "The MAD Cartographer | Bunker of Shazsha",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvdeclab",
+      "name": "Decayed Laboratory | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvdorgathcrypt",
+      "name": "Dorgath's Crypt | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvhydrasw",
+      "name": "Shrine of the Swamp Hydra | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvmonden",
+      "name": "The Monster Den | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvpurpleknife",
+      "name": "Cult of the Purple Knife | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvrottem",
+      "name": "The Rotten Temple | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvsilvcor",
+      "name": "The Silver Corsair | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-woadvsurestone",
+      "name": "Beneath Surestone Abbey | The MAD Cartographer",
+      "repositoryUrl": "https://www.themadcartographer.com",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "mad-worldwonders",
+      "name": "World Wonders Map Pack | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.1"
+    },
+    {
+      "type": "module",
+      "id": "madv-ambushlanche",
+      "name": "Ambushes and Avalances | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "madv-cobaltcloister",
+      "name": "The Cobalt Cloister | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "madv-illuminated",
+      "name": "Illuminated Cavern | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "madv-mindforge",
+      "name": "The Duergar Mindforge | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "madv-rootrot",
+      "name": "Rootbound Rot | The MAD Cartographer",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "13.0.0"
+    },
+    {
+      "type": "module",
+      "id": "madventures-5e",
+      "name": "The MAD Cartographer | Patreon 5e MADventures",
+      "repositoryUrl": "https://www.patreon.com/themadcartographer",
+      "version": "12.1.0"
+    },
+    {
+      "type": "module",
+      "id": "mastercrafted",
+      "name": "Mastercrafted - Crafting Manager",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "4.0.6"
+    },
+    {
+      "type": "module",
+      "id": "media-optimizer",
+      "name": "Media Optimizer",
+      "repositoryUrl": "https://theripper93.com/",
+      "version": "5.0.5"
+    },
+    {
+      "type": "module",
+      "id": "michaelghelfi",
+      "name": "Michael Ghelfi Studios Audio Pack",
+      "repositoryUrl": "https://michaelghelfi.com/",
+      "version": "1.4"
+    },
+    {
+      "type": "module",
+      "id": "midi-item-showcase-community",
+      "name": "Midi Item Showcase - Community",
+      "repositoryUrl": "https://github.com/txm3278/midi-item-showcase-community",
+      "version": "1.6.9"
+    },
+    {
+      "type": "module",
+      "id": "midi-qol",
+      "name": "Midi QOL",
+      "repositoryUrl": "https://gitlab.com/tposney/midi-qol",
+      "version": "13.0.58"
+    },
+    {
+      "type": "module",
+      "id": "mmm",
+      "name": "Maxwell's Manual of Malicious Maladies",
+      "repositoryUrl": "https://github.com/theripper93/Maxwell-s-Manual-of-Malicious-Maladies",
+      "version": "5.0.1"
+    },
+    {
+      "type": "module",
+      "id": "mobile-companion-dnd5e",
+      "name": "Mobile Companion - Dungeons & Dragons 5th Edition",
+      "repositoryUrl": "https://hub.adventurer-backpack.com/module/mobile-companion-dnd5e",
+      "version": "0.21.11-light"
+    },
+    {
+      "type": "module",
+      "id": "mobile-improvements",
+      "name": "Mobile Improvements",
+      "repositoryUrl": "https://gitlab.com/fvtt-modules-lab/mobile-improvements",
+      "version": "2.0.0"
+    },
+    {
+      "type": "module",
+      "id": "monks-active-tiles",
+      "name": "Monk's Active Tile Triggers",
+      "repositoryUrl": "https://github.com/ironmonk108/monks-active-tiles",
+      "version": "13.06"
+    },
+    {
+      "type": "module",
+      "id": "monks-combat-details",
+      "name": "Monk's Combat Details",
+      "repositoryUrl": "https://github.com/ironmonk108/monks-combat-details",
+      "version": "13.05"
+    },
+    {
+      "type": "module",
+      "id": "monks-combat-marker",
+      "name": "Monk's Combat Marker",
+      "repositoryUrl": "https://github.com/ironmonk88/monks-combat-marker",
+      "version": "12.01"
+    },
+    {
+      "type": "module",
+      "id": "monks-little-details",
+      "name": "Monk's Little Details",
+      "repositoryUrl": "https://github.com/ironmonk108/monks-little-details",
+      "version": "13.03"
+    },
+    {
+      "type": "module",
+      "id": "monks-tokenbar",
+      "name": "Monk's TokenBar",
+      "repositoryUrl": "https://github.com/ironmonk108/monks-tokenbar",
+      "version": "13.02"
+    },
+    {
+      "type": "module",
+      "id": "more-dynamic-token-rings",
+      "name": "SETT: Some Extra Token (ring) Types",
+      "repositoryUrl": "https://github.com/ChasarooniZ/More-Dynamic-Token-Rings",
+      "version": "2.0.0"
+    },
+    {
+      "type": "module",
+      "id": "moulinette",
+      "name": "Moulinette Media Search",
+      "repositoryUrl": "https://www.moulinette.cloud",
+      "version": "2.1.1"
+    },
+    {
+      "type": "module",
+      "id": "moulinette-compendiums",
+      "name": "Moulinette Compendiums (module)",
+      "repositoryUrl": "https://github.com/SvenWerlen/moulinette-compendiums",
+      "version": "12.1.0"
+    },
+    {
+      "type": "module",
+      "id": "moulinette-soundboards",
+      "name": "Soundboard & Soundpad (by Moulinette)",
+      "repositoryUrl": "https://www.moulinette.cloud",
+      "version": "1.2.3"
+    },
+    {
+      "type": "module",
+      "id": "multi-token-edit",
+      "name": "Baileywiki Mass Edit",
+      "repositoryUrl": "https://github.com/Aedif/multi-token-edit",
+      "version": "2.7.15"
+    },
+    {
+      "type": "module",
+      "id": "obs-utils",
+      "name": "OBS Utils",
+      "repositoryUrl": "https://github.com/FaeyUmbrea/obs-utils",
+      "version": "4.3.2"
+    },
+    {
+      "type": "module",
+      "id": "patrol",
+      "name": "Patrol",
+      "repositoryUrl": "https://github.com/theripper93/Patrol",
+      "version": "3.0.3"
+    },
+    {
+      "type": "module",
+      "id": "pf2e-reactive-token-ring",
+      "name": "REDY: Reactive Dynamic Token Rings",
+      "repositoryUrl": "https://github.com/ChasarooniZ/PF2e-Reactive-Token-Ring",
+      "version": "3.0.0"
+    },
+    {
+      "type": "module",
+      "id": "pixels",
+      "name": "Pixels - Electronic Dice",
+      "repositoryUrl": "https://gamewithpixels.com/",
+      "version": "1.0.3"
+    },
+    {
+      "type": "module",
+      "id": "plutonium",
+      "name": "Plutonium",
+      "repositoryUrl": "https://www.patreon.com/Giddy5e",
+      "version": "2.15.1"
+    },
+    {
+      "type": "module",
+      "id": "popout",
+      "name": "PopOut!",
+      "repositoryUrl": "https://github.com/League-of-Foundry-Developers/fvtt-module-popout",
+      "version": "2.23"
+    },
+    {
+      "type": "module",
+      "id": "portal-lib",
+      "name": "Portal",
+      "repositoryUrl": "https://github.com/theripper93/portal-lib",
+      "version": "3.0.4"
+    },
+    {
+      "type": "module",
+      "id": "potion-crafting-and-gathering",
+      "name": "Potion Crafting & Gathering",
+      "repositoryUrl": "https://github.com/theripper93/potion-crafting-and-gathering",
+      "version": "4.0.0"
+    },
+    {
+      "type": "module",
+      "id": "progress-countdown-tracker",
+      "name": "Progress/Countdown Tracker",
+      "repositoryUrl": "https://github.com/andrewbrick/progress-countdown-tracker-for-foundry/",
+      "version": "1.0.23"
+    },
+    {
+      "type": "module",
+      "id": "proper-pixels",
+      "name": "Proper Pixels",
+      "repositoryUrl": "https://github.com/Tronikart/proper-pixels",
+      "version": "1.4.0"
+    },
+    {
+      "type": "module",
+      "id": "puzzle-locks",
+      "name": "Puzzle Locks",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "3.1.3"
+    },
+    {
+      "type": "module",
+      "id": "ready-set-roll-5e",
+      "name": "Ready Set Roll for D&D5e",
+      "repositoryUrl": "https://github.com/MangoFVTT/fvtt-ready-set-roll-5e",
+      "version": "3.5.0"
+    },
+    {
+      "type": "module",
+      "id": "region-attacher",
+      "name": "Region Attacher",
+      "repositoryUrl": "https://github.com/roth-michael/region-attacher",
+      "version": "1.11.2"
+    },
+    {
+      "type": "module",
+      "id": "remote-highlight-ui",
+      "name": "Remote Highlight UI",
+      "repositoryUrl": "https://github.com/shemetz/remote-highlight-ui",
+      "version": "2.3.5"
+    },
+    {
+      "type": "module",
+      "id": "resizable-camera-bar",
+      "name": "Resizable Camera Bar",
+      "repositoryUrl": "https://github.com/jacksands/resizable-camera-bar",
+      "version": "3.0.0"
+    },
+    {
+      "type": "module",
+      "id": "scene-packer",
+      "name": "Library: Scene Packer",
+      "repositoryUrl": "https://github.com/League-of-Foundry-Developers/scene-packer",
+      "version": "2.8.11"
+    },
+    {
+      "type": "module",
+      "id": "scene-preview",
+      "name": "Scene Preview",
+      "repositoryUrl": "https://github.com/saif-ellafi/foundryvtt-scene-preview.git",
+      "version": "3.3.0"
+    },
+    {
+      "type": "module",
+      "id": "sequencer",
+      "name": "Sequencer",
+      "repositoryUrl": "https://github.com/fantasycalendar/FoundryVTT-Sequencer",
+      "version": "3.6.11"
+    },
+    {
+      "type": "module",
+      "id": "settings-markers",
+      "name": "Settings Markers",
+      "repositoryUrl": "https://github.com/reonZ/settings-markers",
+      "version": "2.1.0"
+    },
+    {
+      "type": "module",
+      "id": "sheet-export",
+      "name": "Sheet export",
+      "repositoryUrl": "https://github.com/gioppoluca/sheet-export",
+      "version": "0.14.1"
+    },
+    {
+      "type": "module",
+      "id": "simple-quest",
+      "name": "Simple Quest",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "3.0.19"
+    },
+    {
+      "type": "module",
+      "id": "simple-timekeeping",
+      "name": "Simple Timekeeping & Calendar",
+      "repositoryUrl": "https://github.com/theripper93/simple-timekeeping",
+      "version": "1.1.5"
+    },
+    {
+      "type": "module",
+      "id": "simple-weather",
+      "name": "Simple Weather",
+      "repositoryUrl": "https://github.com/dovrosenberg/foundry-simple-weather",
+      "version": "2.2.2"
+    },
+    {
+      "type": "module",
+      "id": "skill-tree",
+      "name": "Skill Tree",
+      "repositoryUrl": "https://github.com/theripper93/skill-tree",
+      "version": "2.0.3"
+    },
+    {
+      "type": "module",
+      "id": "smarttarget",
+      "name": "Smart Target",
+      "repositoryUrl": "https://github.com/theripper93/Smart-Target",
+      "version": "3.0.1"
+    },
+    {
+      "type": "module",
+      "id": "socketlib",
+      "name": "socketlib",
+      "repositoryUrl": "https://github.com/farling42/foundryvtt-socketlib",
+      "version": "v1.1.4"
+    },
+    {
+      "type": "module",
+      "id": "spell-book",
+      "name": "Spell Book",
+      "repositoryUrl": "https://github.com/Sayshal/spell-book",
+      "version": "1.4.0"
+    },
+    {
+      "type": "module",
+      "id": "splatter",
+      "name": "Splatter",
+      "repositoryUrl": "https://github.com/theripper93/Splatter",
+      "version": "5.0.1"
+    },
+    {
+      "type": "module",
+      "id": "spotlight-omnisearch",
+      "name": "Spotlight Omnisearch",
+      "repositoryUrl": "https://github.com/theripper93/spotlight-omnisearch",
+      "version": "3.1.5"
+    },
+    {
+      "type": "module",
+      "id": "swipe-vtt",
+      "name": "Swipe VTT",
+      "repositoryUrl": "https://github.com/crlngn/swipe-vtt",
+      "version": "1.18.2"
+    },
+    {
+      "type": "module",
+      "id": "tagger",
+      "name": "Tagger",
+      "repositoryUrl": "https://github.com/fantasycalendar/FoundryVTT-Tagger",
+      "version": "1.5.4"
+    },
+    {
+      "type": "module",
+      "id": "the-southern-alliance",
+      "name": "The Southern Alliance",
+      "repositoryUrl": "https://github.com/piecesofcodecom/the-southern-alliance",
+      "version": "1.1.0"
+    },
+    {
+      "type": "module",
+      "id": "the-void-unofficial",
+      "name": "The Void (Unofficial) - Daggerheart",
+      "repositoryUrl": "https://github.com/brunocalado/the-void-unofficial",
+      "version": "1.1.6"
+    },
+    {
+      "type": "module",
+      "id": "theripper-premium-hub",
+      "name": "TheRipper93's Module Hub",
+      "repositoryUrl": "https://github.com/theripper93/theripper-premium-hub",
+      "version": "5.0.7"
+    },
+    {
+      "type": "module",
+      "id": "tidy5e-sheet",
+      "name": "Tidy 5e Sheets",
+      "repositoryUrl": "https://github.com/kgar/foundry-vtt-tidy-5e-sheets",
+      "version": "13.2.1"
+    },
+    {
+      "type": "module",
+      "id": "tile-scroll",
+      "name": "Tile Scroll",
+      "repositoryUrl": "https://github.com/theripper93/tile-scroll",
+      "version": "4.0.0"
+    },
+    {
+      "type": "module",
+      "id": "times-up",
+      "name": "Times Up",
+      "repositoryUrl": "https://gitlab.com/tposney/times-up",
+      "version": "13.1.8"
+    },
+    {
+      "type": "module",
+      "id": "token-action-hud-core",
+      "name": "Token Action HUD Core",
+      "repositoryUrl": "https://github.com/Larkinabout/fvtt-token-action-hud-core",
+      "version": "2.0.16"
+    },
+    {
+      "type": "module",
+      "id": "token-action-hud-dnd5e",
+      "name": "Token Action HUD D&D 5e",
+      "repositoryUrl": "https://github.com/Larkinabout/fvtt-token-action-hud-dnd5e",
+      "version": "2.0.7"
+    },
+    {
+      "type": "module",
+      "id": "token-attacher",
+      "name": "Token Attacher",
+      "repositoryUrl": "https://github.com/KayelGee/token-attacher",
+      "version": "v4.6.12"
+    },
+    {
+      "type": "module",
+      "id": "token-notes",
+      "name": "Token Notes",
+      "repositoryUrl": "https://github.com/theripper93/token-notes",
+      "version": "3.0.1"
+    },
+    {
+      "type": "module",
+      "id": "tokenmagic",
+      "name": "Token Magic FX",
+      "repositoryUrl": "https://github.com/Feu-Secret/Tokenmagic",
+      "version": "0.7.6.3"
+    },
+    {
+      "type": "module",
+      "id": "touch-vtt",
+      "name": "TouchVTT",
+      "repositoryUrl": "https://github.com/Aioros/touch-vtt",
+      "version": "2.3.13"
+    },
+    {
+      "type": "module",
+      "id": "tph-aquaexpedition",
+      "name": "Aqua Expedition Map Pack | TMC Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-boardingparty",
+      "name": "Boarding Party Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-cybercity",
+      "name": "Cyber City Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-demeter",
+      "name": "Demeter Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-doomworld",
+      "name": "Doomworld Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-jungleexpedition",
+      "name": "The Planet Hoppers | Jungle Expedition",
+      "repositoryUrl": "https://www.patreon.com/theplanethoppers",
+      "version": "13.2.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-scificity",
+      "name": "Sci-Fi City Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-solarpunk",
+      "name": "Solarpunk Expedition Map Pack | TMC Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-variance",
+      "name": "Variance Map Pack | The MAD Cartographer Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tph-volcano",
+      "name": "Volcano Planet Expedition Map Pack | TMC Sci-Fi",
+      "repositoryUrl": "https://patreon.com/themadcartographerscifi",
+      "version": "13.4.0"
+    },
+    {
+      "type": "module",
+      "id": "tsamys-secret-rolls",
+      "name": "Tsamys Secret Rolls",
+      "repositoryUrl": "https://github.com/devnagui/tsamys-secret-rolls",
+      "version": "0.5"
+    },
+    {
+      "type": "module",
+      "id": "unfulfilled-rolls",
+      "name": "Unfulfilled Rolls",
+      "repositoryUrl": "https://github.com/foundryvtt/unfulfilled-rolls",
+      "version": "0.1.4"
+    },
+    {
+      "type": "module",
+      "id": "vtta-tokenizer",
+      "name": "Tokenizer",
+      "repositoryUrl": "https://github.com/mrprimate/tokenizer/",
+      "version": "5.0.3"
+    },
+    {
+      "type": "module",
+      "id": "wall-height",
+      "name": "Wall Height",
+      "repositoryUrl": "https://github.com/theripper93/wall-height",
+      "version": "7.0.8"
+    },
+    {
+      "type": "module",
+      "id": "wm5e",
+      "name": "Automated Masteries 5e",
+      "repositoryUrl": "https://github.com/thatlonelybugbear/wm5e",
+      "version": "14.530.1"
+    },
+    {
+      "type": "module",
+      "id": "world-setting-sync",
+      "name": "World Setting Sync",
+      "repositoryUrl": "https://www.patreon.com/theripper93",
+      "version": "2.0.1"
+    },
+    {
+      "type": "system",
+      "id": "CoC7",
+      "name": "Call of Cthulhu 7th Edition",
+      "repositoryUrl": "https://github.com/Miskatonic-Investigative-Society/CoC7-FoundryVTT",
+      "version": "7.24"
+    },
+    {
+      "type": "system",
+      "id": "daggerheart",
+      "name": "Daggerheart",
+      "repositoryUrl": "https://github.com/Foundryborne/daggerheart",
+      "version": "1.7.2"
+    },
+    {
+      "type": "system",
+      "id": "dnd5e",
+      "name": "Dungeons & Dragons Fifth Edition",
+      "repositoryUrl": "https://github.com/foundryvtt/dnd5e/",
+      "version": "5.3.0"
+    }
+  ]
+}

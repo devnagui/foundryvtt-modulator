@@ -45,6 +45,55 @@ Output:
 docker compose -f docker-compose.resolver.yml up -d --build
 ```
 
+Production-oriented compose (healthcheck + parametrized env):
+
+```bash
+export FOUNDRY_DATA_ROOT=/path/to/foundry/root
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+## Service install helpers
+
+### Linux (`systemd` via `.deb`)
+
+- package installs `foundryvtt-modulator.service`
+- env file: `/etc/foundryvtt-modulator/env.conf`
+
+### Windows
+
+Install service:
+
+```powershell
+.\packaging\windows\install_service.ps1
+```
+
+Remove service:
+
+```powershell
+.\packaging\windows\uninstall_service.ps1
+```
+
+### macOS (`launchd`)
+
+Install service:
+
+```bash
+chmod +x packaging/macos/install_launchd.sh
+./packaging/macos/install_launchd.sh
+```
+
+Remove service:
+
+```bash
+chmod +x packaging/macos/uninstall_launchd.sh
+./packaging/macos/uninstall_launchd.sh
+```
+
+## CI/CD release
+
+- `CI` workflow runs tests on push/PR.
+- `Release` workflow runs on tags `v*`, builds platform artifacts, generates `SHA256SUMS.txt`, and publishes GitHub Release assets.
+
 ## Notes
 
 - Use environment variables for auth and security hardening.

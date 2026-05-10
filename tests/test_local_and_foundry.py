@@ -4,10 +4,19 @@ import unittest
 from pathlib import Path
 
 from resolver.foundry import detect_foundry_version
+from resolver.cli import _normalize_data_root
 from resolver.local import build_local_dependency_map, load_modules, load_system_versions
 
 
 class TestLocalAndFoundry(unittest.TestCase):
+    def test_normalize_data_root_accepts_data_subdir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "FoundryRoot"
+            (root / "Data" / "modules").mkdir(parents=True)
+            (root / "Logs").mkdir(parents=True)
+            normalized = _normalize_data_root(str(root / "Data"))
+            self.assertEqual(Path(normalized), root.resolve())
+
     def test_detect_foundry_version_from_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

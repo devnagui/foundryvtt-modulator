@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build Linux .deb
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev
+          chmod +x packaging/deb/build_deb.sh
+          ./packaging/deb/build_deb.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Build Windows exe
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          ./packaging/windows/build_windows.ps1 -Version $version
+
+      - name: Build macOS app
+        if: matrix.os == 'macos-latest'
+        run: |
+          chmod +x packaging/macos/build_macos_app.sh
+          ./packaging/macos/build_macos_app.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p out
+          find dist -type f -name "*.deb" -exec cp {} out/ \;
+          find dist -type f -name "*.exe" -exec cp {} out/ \;
+          find dist -maxdepth 2 -type d -name "*.app" -exec cp -R {} out/ \;
+          ls -la out || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: out/**
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -name "*.deb" -exec cp {} release/ \;
+          find artifacts -type f -name "*.exe" -exec cp {} release/ \;
+          find artifacts -type d -name "*.app" -exec bash -lc 'src="$1"; base="$(basename "$src")"; cd "$(dirname "$src")"; zip -r "$GITHUB_WORKSPACE/release/${base}.zip" "$base"' _ {} \;
+          ls -la release
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*

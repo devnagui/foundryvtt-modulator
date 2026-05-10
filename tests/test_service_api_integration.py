@@ -207,6 +207,33 @@ class TestServiceApiIntegration(unittest.TestCase):
             server.server_close()
             thread.join(timeout=1)
 
+    def test_report_v3_bootstrap_page_when_missing(self) -> None:
+        server, thread = self._start_server()
+        try:
+            port = server.server_address[1]
+            status, _, set_cookie = self._request(
+                "POST",
+                "/api/auth/setup",
+                {"password": "supersecret", "confirmPassword": "supersecret"},
+                port=port,
+            )
+            self.assertEqual(status, 201)
+            session_cookie = set_cookie.split(";", 1)[0]
+
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            conn.request("GET", "/api/report/v3", headers={"Cookie": session_cookie})
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+            conn.close()
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Primeiro relat", body)
+            self.assertIn("Gerar primeiro relat", body)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1)
+
 
 if __name__ == "__main__":
     unittest.main()
