@@ -7,6 +7,7 @@ from resolver.foundry import detect_foundry_version
 from resolver.cli import _normalize_data_root
 from resolver.local import (
     _extract_enabled_modules_from_text,
+    _extract_enabled_modules_from_binary_candidates,
     build_local_dependency_map,
     load_modules,
     load_system_versions,
@@ -150,6 +151,17 @@ class TestLocalAndFoundry(unittest.TestCase):
         )
         enabled = _extract_enabled_modules_from_text(blob)
         self.assertEqual(enabled, {"midi-qol", "monks-tokenbar"})
+
+    def test_extract_enabled_modules_from_binary_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings"
+            settings.mkdir(parents=True)
+            # Simulate binary file with one exact id and one truncated plural variant.
+            payload = b"\x00\x01module\x02midi-qol\x03....monks-combat-detail!\x04"
+            (settings / "000001.ldb").write_bytes(payload)
+            ids = ["midi-qol", "monks-combat-details", "dae"]
+            enabled = _extract_enabled_modules_from_binary_candidates(settings, ids)
+            self.assertEqual(enabled, {"midi-qol", "monks-combat-details"})
 
 
 if __name__ == "__main__":

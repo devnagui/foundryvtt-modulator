@@ -87,14 +87,17 @@ def load_system_records(data_root: str) -> list[ModuleRecord]:
     return systems
 
 
-def load_world_usage(data_root: str) -> list[dict]:
+def load_world_usage(data_root: str, known_module_ids: list[str] | None = None) -> list[dict]:
     worlds_root = Path(data_root) / "Data" / "worlds"
     world_rows: list[dict] = []
     for world_json in sorted(worlds_root.glob("*/world.json")):
         with world_json.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         world_dir = world_json.parent
-        enabled_modules, module_source, module_method = _load_world_enabled_modules(world_dir / "data" / "settings")
+        enabled_modules, module_source, module_method = _load_world_enabled_modules(
+            world_dir / "data" / "settings",
+            known_module_ids=known_module_ids or [],
+        )
         world_rows.append(
             {
                 "id": str(data.get("id") or world_dir.name),
@@ -148,7 +151,7 @@ def _collect_transitive_dependencies(module_id: str, direct_map: dict[str, list[
         _collect_transitive_dependencies(dependency_id, direct_map, visited)
 
 
-def _load_world_enabled_modules(settings_dir: Path) -> tuple[set[str], str | None, str]:
+def _load_world_enabled_modules(settings_dir: Path, known_module_ids: list[str] | None = None) -> tuple[set[str], str | None, str]:
     if not settings_dir.exists():
         return set(), None, "missing-settings"
     if plyvel is not None:
@@ -168,6 +171,11 @@ def _load_world_enabled_modules(settings_dir: Path) -> tuple[set[str], str | Non
         enabled = _extract_enabled_modules_from_text(text)
         if enabled:
             return enabled, str(candidate), "binary-scrape"
+    # Final fallback: scan binary bytes for installed module ids (heuristic).
+    if known_module_ids:
+        inferred = _extract_enabled_modules_from_binary_candidates(settings_dir, known_module_ids)
+        if inferred:
+            return inferred, str(settings_dir), "binary-id-scan"
     return set(), None, "binary-scrape" if plyvel is None else "plyvel-fallback"
 
 
@@ -276,3 +284,29 @@ def _extract_enabled_modules_from_config_blob(blob: str) -> set[str]:
     for match in re.finditer(r'"([^"]+)"\s*:\s*true', cleaned):
         enabled_modules.add(match.group(1))
     return enabled_modules
+
+
+def _extract_enabled_modules_from_binary_candidates(settings_dir: Path, known_module_ids: list[str]) -> set[str]:
+    hits: set[str] = set()
+    files = [entry for entry in settings_dir.iterdir() if entry.is_file()]
+    for file_path in files:
+        try:
+            data = file_path.read_bytes()
+        except OSError:
+            continue
+        if not data:
+            continue
+        for module_id in known_module_ids:
+            mod = str(module_id or "").strip()
+            if not mod:
+                continue
+            needle = mod.encode("utf-8", errors="ignore")
+            if needle and needle in data:
+                hits.add(mod)
+                continue
+            # Tolerate common truncated/plural variants observed in raw LevelDB blobs.
+            if mod.endswith("s"):
+                alt = mod[:-1].encode("utf-8", errors="ignore")
+                if alt and alt in data:
+                    hits.add(mod)
+    return hits

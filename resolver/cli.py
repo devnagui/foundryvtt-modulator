@@ -517,7 +517,7 @@ def main() -> int:
             all_modules = load_modules(str(modules_dir))
             used_modules = {
                 str(module_id).strip()
-                for world in (load_world_usage(args.data_root) or [])
+                for world in (load_world_usage(args.data_root, known_module_ids=[m.module_id for m in all_modules]) or [])
                 for module_id in (world.get("enabledModules") or [])
                 if str(module_id).strip()
             }
@@ -638,12 +638,12 @@ def main() -> int:
     modules_dir = modules_dir_from_data_root(args.data_root)
     installed_system_versions = load_system_versions(args.data_root)
     installed_system_records = load_system_records(args.data_root)
-    world_usage = load_world_usage(args.data_root)
+    all_modules = load_modules(str(modules_dir))
+    world_usage = load_world_usage(args.data_root, known_module_ids=[m.module_id for m in all_modules])
     logging.info("Scanning modules in %s", modules_dir)
     if installed_system_versions:
         logging.info("Detected installed systems: %s", ", ".join(f"{k}={v}" for k, v in sorted(installed_system_versions.items())))
 
-    all_modules = load_modules(str(modules_dir))
     module_filter = set(args.module or [])
     modules = [module for module in all_modules if not module_filter or module.module_id in module_filter]
     if not modules:
