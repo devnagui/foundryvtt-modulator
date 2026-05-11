@@ -15,6 +15,7 @@
   - Workflow oficial de upgrade (orientacao/UI pronta; automacao end-to-end ainda pendente)
   - Backup/snapshot transacional (metadados e historico prontos; rollback automatico ainda pendente)
   - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
+  - Module Health Check (endpoint + acao na UI entregues; validacoes profundas e gates de apply ainda pendentes)
 
 - Pendente principal:
   - Automacao completa de rollback por lote
@@ -214,6 +215,9 @@
   - Criar tela/acao de "Module Health Check":
     - detectar modulos invalidos para o Foundry atual
     - sugerir corrigir, reinstalar, remover ou restaurar backup
+  - [x] Entregue (fase atual):
+    - endpoint `GET /api/v1/actions/module-health`
+    - botao de execucao na aba Backups com resumo imediato (`total/invalid/warnings`)
 
 - [ ] Confiabilidade de "Used in world" (world moduleConfiguration)
   - Expandir parser de `core.moduleConfiguration` para variantes adicionais do LevelDB

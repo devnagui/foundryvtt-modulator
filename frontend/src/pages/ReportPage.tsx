@@ -742,6 +742,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <button
                   className="btn secondary"
+                  onClick={async () => {
+                    try {
+                      const health = await api.moduleHealth();
+                      setSuggestResult(`Module Health: total=${health.count || 0}, invalid=${health.invalidCount || 0}, warnings=${health.warningCount || 0}`);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Could not run module health check.");
+                    }
+                  }}
+                >
+                  Run Module Health Check
+                </button>
+                <button
+                  className="btn secondary"
                   disabled={applyHistoryRows.length === 0}
                   onClick={async () => {
                     const latest = applyHistoryRows[0];

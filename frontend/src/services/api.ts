@@ -113,6 +113,10 @@ export const api = {
     request<{ ok: boolean; scanRunId: number; modules?: string[]; backupPaths?: string[]; notes?: string }>(
       `/api/v1/actions/rollback-plan?scanRunId=${encodeURIComponent(String(scanRunId))}`
     ),
+  moduleHealth: () =>
+    request<{ ok: boolean; count?: number; invalidCount?: number; warningCount?: number; rows?: Array<Record<string, unknown>> }>(
+      "/api/v1/actions/module-health"
+    ),
   foundryRootStatus: () => request<FoundryRootStatus>("/api/v1/config/foundry-root"),
   setFoundryRoot: (path: string) =>
     request<FoundryRootStatus>("/api/v1/config/foundry-root", {

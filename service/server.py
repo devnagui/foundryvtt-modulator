@@ -718,6 +718,16 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path == "/api/actions/module-health":
+            if not self._require_auth():
+                return
+            data_root = self.config_store.get_data_root() or self.config.data_root
+            ok, normalized_root, details = _validate_foundry_root_path(data_root)
+            if not ok:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_foundry_root", "message": details.get("message") or "Invalid Foundry root."})
+                return
+            self._send_json(HTTPStatus.OK, _run_module_health_check(normalized_root))
+            return
         if path.startswith("/api/actions/jobs/"):
             if not self._require_auth():
                 return
@@ -1503,6 +1513,71 @@ def _validate_foundry_root_path(raw_path: str) -> tuple[bool, str, dict[str, Any
         return False, "", {"message": "Logs/diagnostics.json not found.", "path": str(candidate)}
 
     return True, str(candidate), {"message": "Foundry root validated.", "path": str(candidate)}
+
+
+def _run_module_health_check(data_root: str) -> dict[str, Any]:
+    modules_root = Path(data_root) / "Data" / "modules"
+    rows: list[dict[str, Any]] = []
+    if not modules_root.exists():
+        return {"ok": False, "error": "modules_root_not_found", "path": str(modules_root), "rows": []}
+    for module_json in sorted(modules_root.glob("*/module.json")):
+        module_dir = module_json.parent
+        module_id = module_dir.name
+        normalized = module_id.lower()
+        if normalized.startswith("_backup_") or ".bak." in normalized:
+            continue
+        issues: list[str] = []
+        warnings: list[str] = []
+        try:
+            manifest = json.loads(module_json.read_text(encoding="utf-8"))
+        except Exception as exc:
+            rows.append({"module": module_id, "title": module_id, "status": "invalid", "issues": [f"manifest_read_error:{exc}"], "warnings": []})
+            continue
+        title = str(manifest.get("title") or module_id)
+        if manifest.get("minimumCoreVersion") is not None or manifest.get("compatibleCoreVersion") is not None:
+            warnings.append("legacy_core_compat_fields_detected")
+        if not isinstance(manifest.get("compatibility"), dict):
+            warnings.append("compatibility_object_missing")
+        for key in ("styles", "scripts", "esmodules"):
+            values = manifest.get(key) or []
+            if not isinstance(values, list):
+                warnings.append(f"{key}_is_not_array")
+                continue
+            for rel in values:
+                rel_path = str(rel or "").strip()
+                if not rel_path:
+                    continue
+                if not (module_dir / rel_path).exists():
+                    issues.append(f"missing_file:{rel_path}")
+        relationships = manifest.get("relationships") or {}
+        requires = relationships.get("requires") or []
+        if isinstance(requires, list):
+            for dep in requires:
+                if not isinstance(dep, dict):
+                    continue
+                dep_type = str(dep.get("type") or "")
+                dep_id = str(dep.get("id") or "")
+                if dep_type == "module" and dep_id:
+                    if not (modules_root / dep_id).exists():
+                        warnings.append(f"missing_dependency:{dep_id}")
+        rows.append(
+            {
+                "module": str(manifest.get("id") or module_id),
+                "title": title,
+                "status": "ok" if not issues else "invalid",
+                "issues": sorted(set(issues)),
+                "warnings": sorted(set(warnings)),
+                "manifestPath": str(module_json),
+            }
+        )
+    return {
+        "ok": True,
+        "path": str(modules_root),
+        "count": len(rows),
+        "invalidCount": len([r for r in rows if r.get("status") != "ok"]),
+        "warningCount": sum(len(r.get("warnings") or []) for r in rows),
+        "rows": rows,
+    }
 
 
 def _pick_folder_native() -> str:
