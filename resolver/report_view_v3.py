@@ -26,6 +26,7 @@ def build_report_view_v3(payload: dict) -> dict:
         system_release_map,
         dependency_reference_counts,
     )
+    planner_summary = _build_planner_summary(planner_targets)
     backup_management = _build_backup_management(payload, dependency_reference_counts)
     unused_modules = _build_unused_modules(payload, dependency_reference_counts)
     foundry_options = _build_foundry_options(current_foundry, stable_future_releases, planner_targets)
@@ -52,6 +53,7 @@ def build_report_view_v3(payload: dict) -> dict:
         "unusedModules": unused_modules,
         "systemUpgradePlanner": {
             "targets": planner_targets,
+            "summary": planner_summary,
         },
     }
 
@@ -390,7 +392,76 @@ def _build_planner_targets(
                 dependency_reference_counts,
             )
         )
+    for target in targets:
+        quick = target.get("quickStatus") or {}
+        target["score"] = _compute_planner_score(quick)
+    targets.sort(
+        key=lambda row: (
+            -float((row.get("score") or {}).get("value") or 0.0),
+            _version_sort_key(str(row.get("foundryVersion") or "")),
+        ),
+        reverse=False,
+    )
     return targets
+
+
+def _compute_planner_score(quick: dict) -> dict:
+    total = max(int(quick.get("modulesTotal") or 0), 0)
+    ready = max(int(quick.get("modulesReady") or 0), 0)
+    update = max(int(quick.get("modulesNeedUpdate") or 0), 0)
+    blocked = max(int(quick.get("modulesBlocked") or 0), 0)
+    unknown = max(int(quick.get("modulesNeedsVerification") or 0), 0)
+    missing = max(int(quick.get("modulesManualUpdate") or 0), 0)
+    readiness = (ready + update) / total if total else 1.0
+    # Weighted score in [0, 100].
+    value = round(
+        max(
+            0.0,
+            min(
+                100.0,
+                100.0 * readiness
+                - (blocked * 18.0)
+                - (missing * 10.0)
+                - (unknown * 6.0),
+            ),
+        ),
+        1,
+    )
+    tone = "green" if value >= 75 else ("yellow" if value >= 45 else "red")
+    return {
+        "value": value,
+        "tone": tone,
+        "readinessPercent": round(readiness * 100.0, 1),
+        "blocked": blocked,
+        "missing": missing,
+        "unknown": unknown,
+    }
+
+
+def _build_planner_summary(targets: list[dict]) -> dict:
+    if not targets:
+        return {"bestTargetVersion": "", "bestTargetReason": "No stable targets available."}
+    ranked = sorted(
+        targets,
+        key=lambda row: (
+            -float((row.get("score") or {}).get("value") or 0.0),
+            _version_sort_key(str(row.get("foundryVersion") or "")),
+        ),
+    )
+    best = ranked[0]
+    score = best.get("score") or {}
+    quick = best.get("quickStatus") or {}
+    reason = (
+        f"Best balance of coverage and risk for this environment: "
+        f"{quick.get('modulesReady', 0)} ready, {quick.get('modulesNeedUpdate', 0)} updates, "
+        f"{quick.get('modulesBlocked', 0)} blocked, {quick.get('modulesNeedsVerification', 0)} verification."
+    )
+    return {
+        "bestTargetVersion": str(best.get("foundryVersion") or ""),
+        "bestTargetScore": float(score.get("value") or 0.0),
+        "bestTargetTone": str(score.get("tone") or "yellow"),
+        "bestTargetReason": reason,
+    }
 
 
 def _build_future_foundry_target(

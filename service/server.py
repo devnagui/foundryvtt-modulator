@@ -248,6 +248,70 @@ class RuntimeConfigStore:
         self._path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+class ModuleSourceStore:
+    def __init__(self, config: ServiceConfig) -> None:
+        self._config = config
+        self._path = config.state_dir / "module-sources.json"
+        self._lock = threading.Lock()
+
+    def list_sources(self) -> dict[str, dict[str, Any]]:
+        payload = self._read()
+        rows = payload.get("sources")
+        if not isinstance(rows, dict):
+            return {}
+        normalized: dict[str, dict[str, Any]] = {}
+        for module_id, item in rows.items():
+            if not isinstance(item, dict):
+                continue
+            key = str(module_id or "").strip()
+            if not key:
+                continue
+            normalized[key] = {
+                "moduleId": key,
+                "manifestUrl": str(item.get("manifestUrl") or "").strip(),
+                "projectUrl": str(item.get("projectUrl") or "").strip(),
+                "updatedAt": str(item.get("updatedAt") or ""),
+            }
+        return normalized
+
+    def upsert_source(self, module_id: str, manifest_url: str, project_url: str = "") -> dict[str, Any]:
+        clean_id = str(module_id or "").strip()
+        if not clean_id:
+            raise ValueError("module_id_required")
+        clean_manifest = str(manifest_url or "").strip()
+        clean_project = str(project_url or "").strip()
+        if not clean_manifest and not clean_project:
+            raise ValueError("manifest_or_project_required")
+        with self._lock:
+            payload = self._read()
+            rows = payload.get("sources")
+            if not isinstance(rows, dict):
+                rows = {}
+            row = {
+                "moduleId": clean_id,
+                "manifestUrl": clean_manifest,
+                "projectUrl": clean_project,
+                "updatedAt": _utc_now_iso(),
+            }
+            rows[clean_id] = row
+            payload["sources"] = rows
+            self._write(payload)
+            return row
+
+    def _read(self) -> dict[str, Any]:
+        if not self._path.exists():
+            return {}
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        self._config.state_dir.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 class AuthStore:
     def __init__(self, config: ServiceConfig) -> None:
         self._config = config
@@ -486,6 +550,7 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
     lock_store: MaintenanceLock
     action_engine: ActionEngine
     config_store: "RuntimeConfigStore"
+    module_source_store: "ModuleSourceStore"
     rate_limiter: RequestRateLimiter
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -606,6 +671,11 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(HTTPStatus.OK, self.config_store.status())
             return
+        if path == "/api/config/module-sources":
+            if not self._require_auth():
+                return
+            self._send_json(HTTPStatus.OK, {"sources": self.module_source_store.list_sources()})
+            return
         if path == "/api/actions/jobs":
             if not self._require_auth():
                 return
@@ -712,6 +782,13 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                     return
                 self.config_store.set_data_root("")
                 self._send_json(HTTPStatus.OK, self.config_store.status())
+                return
+            if path == "/api/config/module-sources":
+                if not self._require_auth():
+                    return
+                if not self._require_csrf():
+                    return
+                self._handle_save_module_source(body)
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
         except ValueError as exc:
@@ -972,6 +1049,30 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 "suggestion": suggestion,
             },
         )
+
+    def _handle_save_module_source(self, body: dict[str, Any]) -> None:
+        module_id = str(body.get("moduleId") or "").strip()
+        manifest_url = str(body.get("manifestUrl") or "").strip()
+        project_url = str(body.get("projectUrl") or "").strip()
+        if not module_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "module_id_required"})
+            return
+        if not manifest_url and not project_url:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "manifest_or_project_required"})
+            return
+        # Validate by attempting a suggestion against current environment.
+        try:
+            suggestion = _suggest_best_release_for_module(
+                module=_build_candidate_module(module_id, manifest_url=manifest_url, project_url=project_url),
+                target_foundry_version=detect_foundry_version(self.config_store.get_data_root() or self.config.data_root)[0],
+                installed_system_versions=load_system_versions(self.config_store.get_data_root() or self.config.data_root),
+                cache_dir=self.config.cache_dir,
+            )
+        except Exception as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "source_validation_failed", "message": str(exc)})
+            return
+        saved = self.module_source_store.upsert_source(module_id=module_id, manifest_url=manifest_url, project_url=project_url)
+        self._send_json(HTTPStatus.OK, {"ok": True, "saved": saved, "suggestion": suggestion})
 
     def _ensure_foundry_offline(self) -> None:
         if not self.config.require_foundry_offline:
@@ -2064,6 +2165,7 @@ def run() -> None:
     lock_store = MaintenanceLock(config.state_dir)
     action_engine = ActionEngine()
     config_store = RuntimeConfigStore(config)
+    module_source_store = ModuleSourceStore(config)
 
     handler = ResolverAPIHandler
     handler.config = config
@@ -2071,6 +2173,7 @@ def run() -> None:
     handler.lock_store = lock_store
     handler.action_engine = action_engine
     handler.config_store = config_store
+    handler.module_source_store = module_source_store
     handler.rate_limiter = RequestRateLimiter(config.request_rate_limit_per_minute)
 
     _start_action_worker(config, config_store, action_engine, lock_store)

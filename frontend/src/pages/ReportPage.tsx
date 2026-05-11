@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "../components/Header";
-import { api, type FoundryRootStatus, type ReportModel } from "../services/api";
+import { api, type FoundryRootStatus, type ModuleSourceRow, type ReportModel } from "../services/api";
 
 type ReportPageProps = { onLoggedOut: () => void };
 type TabId = "current" | "planning" | "backups";
@@ -102,6 +102,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [foundryPathInput, setFoundryPathInput] = useState("");
   const [suggestInput, setSuggestInput] = useState("");
   const [suggestResult, setSuggestResult] = useState("");
+  const [moduleSources, setModuleSources] = useState<Record<string, ModuleSourceRow>>({});
   const foundryConfigured = Boolean(foundryRoot?.valid);
   const [clockTick, setClockTick] = useState(0);
   const showSearch = tab === "current" || tab === "planning" || tab === "backups";
@@ -142,7 +143,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     }
   };
 
-  useEffect(() => { void loadModel(); void loadFoundryConfig(); }, []);
+  const loadModuleSources = async () => {
+    try {
+      const payload = await api.moduleSources();
+      setModuleSources(payload.sources || {});
+    } catch {
+      setModuleSources({});
+    }
+  };
+
+  useEffect(() => { void loadModel(); void loadFoundryConfig(); void loadModuleSources(); }, []);
 
   const logout = async () => { await api.logout(); onLoggedOut(); };
 
@@ -178,6 +188,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const view = model?.view || {};
   const currentSystems = asArray(view.currentSystemUpgrades?.rows);
   const planningTargets = asArray(view.systemUpgradePlanner?.targets);
+  const planningSummary = (view.systemUpgradePlanner?.summary as Record<string, unknown> | undefined) || {};
   const backupRows = asArray(view.backupManagement?.rows);
   const unusedRows = asArray(view.unusedModules?.rows);
   const worldUsage = asArray(model?.worldUsage);
@@ -557,6 +568,26 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     }
   };
 
+  const findSourceForModule = (moduleId: string, title: string) => {
+    const q = encodeURIComponent(`${title || moduleId} ${moduleId} foundry module manifest`);
+    window.open(`https://www.google.com/search?q=${q}`, "_blank", "noopener,noreferrer");
+  };
+
+  const setModuleSource = async (moduleId: string) => {
+    const raw = window.prompt(`Paste manifest URL for ${moduleId}`);
+    if (!raw) return;
+    const manifestUrl = raw.trim();
+    if (!manifestUrl) return;
+    try {
+      const saved = await api.saveModuleSource(moduleId, manifestUrl);
+      setSuggestResult(`Saved source for ${moduleId}. Recommended: ${String(saved.suggestion?.recommendedVersion || "-")}`);
+      await loadModuleSources();
+      await loadModel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save source.");
+    }
+  };
+
   return (
     <main className="dashboard-shell">
       <Header
@@ -632,7 +663,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <table className="report-table"><thead><tr><th><input type="search" placeholder="Name Search" value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></th><th>Used in</th><th>Update Path</th><th>Reason</th><th>Actions {updateModules.length > 0 ? <button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: updateModules, batchSize: 10 })}>Update All ({updateModules.length})</button> : null}</th></tr></thead><tbody>
                 {currentPage.rows.map((item) => item.kind === "system"
                   ? <tr key={item.key}><td>{item.systemId} <small>(system)</small></td><td>{item.usedInWorlds.length > 0 ? item.usedInWorlds.join(", ") : "Unused"}</td><td>{(item.installedVersion || "-")} {" → "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</td><td>{item.status === "update" ? `Update suggested for this system. ${compatibilitySummary(item.compatibility)}` : `No system update required. ${compatibilitySummary(item.compatibility)}`}</td><td>{item.status === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</td></tr>
-                  : <tr key={item.key}><td>{item.row.hasMissingDependencies ? <span title="Missing dependencies" style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}{(item.row.title || "Unknown module")} <small>({item.row.module || "unknown"})</small></td><td>{item.row.usedInWorlds.length > 0 ? item.row.usedInWorlds.join(", ") : "Unused"}</td><td>{(item.row.installedVersion || "-")} {" → "} {item.row.releaseUrl ? <a href={item.row.releaseUrl} target="_blank" rel="noreferrer">{(item.row.recommendedVersion || "-")}</a> : (item.row.recommendedVersion || "-")}</td><td>{`${item.row.reason || "-"} | ${compatibilitySummary(item.row.compatibility)}`}</td><td><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{item.row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Get</button> : item.row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</div></td></tr>)}
+                  : (() => { const source = moduleSources[item.row.module || ""] || {}; const effectiveUrl = item.row.releaseUrl || asString(source.manifestUrl) || asString(source.projectUrl); return <tr key={item.key}><td>{item.row.hasMissingDependencies ? <span title="Missing dependencies" style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}{(item.row.title || "Unknown module")} <small>({item.row.module || "unknown"})</small></td><td>{item.row.usedInWorlds.length > 0 ? item.row.usedInWorlds.join(", ") : "Unused"}</td><td>{(item.row.installedVersion || "-")} {" → "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{(item.row.recommendedVersion || "-")}</a> : (item.row.recommendedVersion || "-")}</td><td>{`${item.row.reason || "-"} | ${compatibilitySummary(item.row.compatibility)}`}</td><td><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{item.row.hasMissingDependencies && !effectiveUrl ? <><button className="btn" style={{ background: "#ef4444", color: "#fff" }} onClick={() => findSourceForModule(item.row.module, item.row.title)}>Find Source</button><button className="btn secondary" onClick={() => void setModuleSource(item.row.module)}>Set URL</button></> : item.row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Get</button> : item.row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</div></td></tr>; })())}
               </tbody></table>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="btn secondary" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button><span style={{ alignSelf: "center" }}>{currentPage.page} / {currentPage.totalPages}</span><button className="btn secondary" onClick={() => setPage((p) => Math.min(currentPage.totalPages, p + 1))}>Next</button></div>
             </article>
@@ -641,18 +672,31 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           {tab === "planning" ? (
             <article className="panel">
               <h3>Planning</h3>
+              {asString(planningSummary.bestTargetVersion) ? (
+                <p style={{ marginTop: 0, color: "var(--muted)" }}>
+                  Recommended target: <strong>v{asString(planningSummary.bestTargetVersion)}</strong> ({String(planningSummary.bestTargetScore || 0)} score). {asString(planningSummary.bestTargetReason)}
+                </p>
+              ) : null}
               <div className="metrics-row">
                 {planningTargets.map((row) => {
                   const version = asString(row.foundryVersion) || "-";
                   const quick = (row.quickStatus as Record<string, unknown> | undefined) || {};
+                  const score = (row.score as Record<string, unknown> | undefined) || {};
                   const total = Number(quick.modulesTotal || 0);
                   const ready = Number(quick.modulesReady || 0);
                   const pct = total > 0 ? Math.round((ready / total) * 100) : 0;
                   const active = planningVersionFilters.includes(version);
+                  const tone = asString(score.tone);
+                  const toneStyle = tone === "green"
+                    ? { borderColor: "#22c55e", background: "#052e16", color: "#dcfce7" }
+                    : tone === "red"
+                      ? { borderColor: "#ef4444", background: "#3f0b12", color: "#fee2e2" }
+                      : { borderColor: "#f59e0b", background: "#3a2404", color: "#ffedd5" };
                   return (
-                    <button key={version} className={`metric-card ${active ? "active" : ""}`} onClick={() => { setPage(1); setPlanningVersionFilters((arr) => arr.includes(version) ? arr.filter((v) => v !== version) : [...arr, version]); }}>
+                    <button key={version} className={`metric-card ${active ? "active" : ""}`} style={toneStyle} onClick={() => { setPage(1); setPlanningVersionFilters((arr) => arr.includes(version) ? arr.filter((v) => v !== version) : [...arr, version]); }}>
                       <span>v{version}</span>
                       <strong>{pct}% ready</strong>
+                      <small style={{ opacity: 0.9 }}>{String(score.value || 0)} score</small>
                     </button>
                   );
                 })}

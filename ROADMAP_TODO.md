@@ -150,6 +150,10 @@
   - Adicionar explicacao de impacto:
     - "por que essa versao e recomendada"
     - "quais modulos/sistemas impedem targets superiores"
+  - [x] Entregue (fase atual):
+    - score por target com semaforo no view-model e UI
+    - recomendacao automatica de melhor target com justificativa
+    - filtros e tabela Planning alinhados ao padrao Current
 
 - [ ] Definir workflow oficial de upgrade (produto)
   - Fluxo recomendado: atualizar modulos/sistemas primeiro, atualizar Foundry depois
@@ -184,6 +188,9 @@
   - Validar leitura com worlds reais onde `enabledModules` vinha vazio
   - Adicionar fallback por arquivos/indices auxiliares quando payload estiver binario/compactado
   - Cobrir com testes de regressao para `midi-qol`, Monk family e sistemas ativos
+  - [x] Entregue (fase atual):
+    - fallback `binary-id-scan` com ids conhecidos para worlds com payload LevelDB opaco
+    - testes unitarios de regressao para parser tolerante e fallback binario
 
 - [ ] Fluxo para dependencias faltantes sem URL conhecida
   - Na tabela Current, trocar acao `Get` por `Find Source` quando faltar `release/manifest URL`
@@ -192,3 +199,7 @@
   - Backend valida URL informada (manifest valido + compatibilidade + dependencias)
   - Salvar URL validada em catalogo local para reuso
   - Atualizar linha automaticamente: de `Blocked` para `Get/Update` quando houver metadata valida
+  - [x] Entregue (fase atual):
+    - `Find Source` + `Set URL` na tabela Current quando URL estiver ausente
+    - endpoint backend para validar/salvar fonte em catalogo local (`/api/config/module-sources`)
+    - reutilizacao de URL salva na renderizacao para habilitar acao na linha

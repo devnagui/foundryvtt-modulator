@@ -23,7 +23,7 @@ export type ReportModel = {
   view: {
     summary?: { usedModuleCount?: number };
     currentSystemUpgrades?: { rows?: Array<Record<string, unknown>> };
-    systemUpgradePlanner?: { targets?: Array<Record<string, unknown>> };
+    systemUpgradePlanner?: { targets?: Array<Record<string, unknown>>; summary?: Record<string, unknown> };
     backupManagement?: { rows?: Array<Record<string, unknown>>; totalBackupCount?: number };
     unusedModules?: { rows?: Array<Record<string, unknown>>; count?: number };
   };
@@ -48,6 +48,13 @@ export type FoundryRootStatus = {
   normalized?: string;
   valid: boolean;
   message?: string;
+};
+
+export type ModuleSourceRow = {
+  moduleId: string;
+  manifestUrl?: string;
+  projectUrl?: string;
+  updatedAt?: string;
 };
 
 function csrfToken(): string {
@@ -110,6 +117,12 @@ export const api = {
     }),
   resetFoundryRoot: () => request<FoundryRootStatus>("/api/v1/config/foundry-root/reset", { method: "POST" }),
   pickFoundryRoot: () => request<FoundryRootStatus>("/api/v1/config/foundry-root/pick", { method: "POST", body: "{}" }),
+  moduleSources: () => request<{ sources: Record<string, ModuleSourceRow> }>("/api/v1/config/module-sources"),
+  saveModuleSource: (moduleId: string, manifestUrl: string, projectUrl = "") =>
+    request<{ ok: boolean; saved: ModuleSourceRow; suggestion?: Record<string, unknown> }>("/api/v1/config/module-sources", {
+      method: "POST",
+      body: JSON.stringify({ moduleId, manifestUrl, projectUrl })
+    }),
   suggestModule: (manifestUrl: string) =>
     request<{ suggestion?: Record<string, unknown> }>("/api/v1/actions/suggest-module", {
       method: "POST",
