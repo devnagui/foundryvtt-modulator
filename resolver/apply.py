@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
+import re
 import shutil
 import tempfile
 import time
@@ -12,6 +14,8 @@ from pathlib import Path
 
 from .models import ModuleRecord, Recommendation
 from .sources import delete_cached_zip, download_to_temp
+
+MODULE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def apply_recommendation(
@@ -37,12 +41,12 @@ def apply_recommendation(
     try:
         with tempfile.TemporaryDirectory(prefix=f"{module.module_id}-upgrade-") as temp_dir:
             temp_root = Path(temp_dir)
-            with zipfile.ZipFile(archive_path, "r") as archive:
-                archive.extractall(temp_root)
+            _safe_extract_archive(archive_path, temp_root)
 
             extracted_dir = _find_module_root(temp_root, module.module_id)
             if extracted_dir is None:
                 raise ValueError(f"Could not locate extracted module root for {module.module_id} in {archive_path}.")
+            _validate_extracted_module_package(module, recommendation, extracted_dir)
 
             if target_dir.exists():
                 if target_dir.is_dir():
@@ -212,3 +216,75 @@ def _find_module_root(extract_root: Path, module_id: str) -> Path | None:
     if len(roots) == 1:
         return roots[0]
     return None
+
+
+def _safe_extract_archive(archive_path: str, temp_root: Path) -> None:
+    root = temp_root.resolve()
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for member in archive.infolist():
+            name = str(member.filename or "")
+            if not name:
+                continue
+            candidate = Path(name)
+            if candidate.is_absolute() or ":" in name.split("/")[0]:
+                raise ValueError(f"Unsafe archive entry path: {name}")
+            resolved_target = (root / candidate).resolve()
+            if resolved_target != root and not str(resolved_target).startswith(str(root) + os.sep):
+                raise ValueError(f"Unsafe archive entry traversal detected: {name}")
+        archive.extractall(root)
+
+
+def _validate_extracted_module_package(module: ModuleRecord, recommendation: Recommendation, extracted_dir: Path) -> None:
+    module_json_path = extracted_dir / "module.json"
+    if not module_json_path.exists():
+        raise ValueError(f"Package validation failed for {module.module_id}: module.json not found.")
+    try:
+        manifest = json.loads(module_json_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Package validation failed for {module.module_id}: invalid module.json ({exc}).") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError(f"Package validation failed for {module.module_id}: module.json root must be an object.")
+
+    manifest_id = str(manifest.get("id") or "").strip()
+    if not manifest_id or not MODULE_ID_RE.match(manifest_id):
+        raise ValueError(f"Package validation failed for {module.module_id}: manifest id is invalid.")
+    if manifest_id != module.module_id:
+        raise ValueError(
+            f"Package validation failed for {module.module_id}: manifest id mismatch ({manifest_id})."
+        )
+
+    version = str(manifest.get("version") or "").strip()
+    if not version:
+        raise ValueError(f"Package validation failed for {module.module_id}: manifest version is required.")
+    expected_version = str(recommendation.recommended_version or "").strip()
+    if expected_version and version != expected_version:
+        raise ValueError(
+            f"Package validation failed for {module.module_id}: manifest version {version} does not match recommended {expected_version}."
+        )
+
+    if manifest.get("minimumCoreVersion") is not None or manifest.get("compatibleCoreVersion") is not None:
+        raise ValueError(
+            f"Package validation failed for {module.module_id}: legacy core compatibility fields detected."
+        )
+    compatibility = manifest.get("compatibility")
+    if not isinstance(compatibility, dict):
+        raise ValueError(f"Package validation failed for {module.module_id}: compatibility object is required.")
+
+    missing_files: list[str] = []
+    for key in ("styles", "scripts", "esmodules"):
+        values = manifest.get(key) or []
+        if values is None:
+            values = []
+        if not isinstance(values, list):
+            raise ValueError(f"Package validation failed for {module.module_id}: {key} must be an array.")
+        for rel in values:
+            rel_path = str(rel or "").strip()
+            if not rel_path:
+                continue
+            file_path = extracted_dir / rel_path
+            if not file_path.exists() or not file_path.is_file():
+                missing_files.append(rel_path)
+    if missing_files:
+        raise ValueError(
+            f"Package validation failed for {module.module_id}: declared files missing ({', '.join(sorted(set(missing_files)))})."
+        )

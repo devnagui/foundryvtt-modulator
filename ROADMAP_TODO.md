@@ -219,6 +219,12 @@
     - endpoint `GET /api/v1/actions/module-health`
     - botao de execucao na aba Backups com resumo imediato (`total/invalid/warnings`)
     - gate inicial no `apply`: preflight/postflight bloqueando quando houver `missing_file` e `missing_dependency`
+    - validacao profunda de pacote no `apply_recommendation`:
+      - protecao contra zip-slip (paths inseguros no zip)
+      - bloqueio por `module.json` invalido/ausente
+      - bloqueio por `id`/`version` inconsistentes com recomendacao
+      - bloqueio por campos legados de core compatibility
+      - bloqueio por arquivos declarados ausentes (`styles/scripts/esmodules`)
 
 - [ ] Confiabilidade de "Used in world" (world moduleConfiguration)
   - Expandir parser de `core.moduleConfiguration` para variantes adicionais do LevelDB
