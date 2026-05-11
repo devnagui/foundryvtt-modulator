@@ -739,6 +739,25 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <div className="metrics-row" style={{ marginBottom: 8 }}>
                 <div className="metric-card static"><span>Apply History</span><strong>{applyHistoryRows.length}</strong></div>
               </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <button
+                  className="btn secondary"
+                  disabled={applyHistoryRows.length === 0}
+                  onClick={async () => {
+                    const latest = applyHistoryRows[0];
+                    const scanRunId = Number(latest?.scanRunId || 0);
+                    if (!scanRunId) return;
+                    try {
+                      const plan = await api.rollbackPlan(scanRunId);
+                      setSuggestResult(`Rollback plan for #${scanRunId}: modules=${(plan.modules || []).join(", ") || "-"} | backups=${(plan.backupPaths || []).length}`);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Could not load rollback plan.");
+                    }
+                  }}
+                >
+                  Show Rollback Plan (Latest)
+                </button>
+              </div>
               <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th></tr></thead><tbody>
                 {applyHistoryRows.length === 0 ? <tr><td colSpan={5}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td><td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td></tr>)}
               </tbody></table>

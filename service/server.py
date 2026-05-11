@@ -19,7 +19,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 import mimetypes
 
@@ -687,6 +687,36 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
             if not self._require_auth():
                 return
             self._send_json(HTTPStatus.OK, self.action_engine.list_jobs())
+            return
+        if path == "/api/actions/rollback-plan":
+            if not self._require_auth():
+                return
+            qs = parse_qs(parsed.query or "")
+            raw_scan = (qs.get("scanRunId") or [""])[0]
+            try:
+                scan_id = int(str(raw_scan).strip())
+            except Exception:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": "scan_run_id_required"})
+                return
+            history = load_apply_history(str(self.config.state_dir / "resolver.db"), limit=200)
+            found = next((row for row in history if int(row.get("scanRunId") or 0) == scan_id), None)
+            if not found:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "scan_run_not_found"})
+                return
+            backup_paths = [str(p).strip() for p in (found.get("backupPaths") or []) if str(p).strip()]
+            modules = [str(m).strip() for m in (found.get("modulesChanged") or []) if str(m).strip()]
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "scanRunId": scan_id,
+                    "generatedAt": found.get("generatedAt"),
+                    "targetVersion": found.get("targetVersion"),
+                    "modules": modules,
+                    "backupPaths": backup_paths,
+                    "notes": "Rollback execution is not yet automatic. Use backup paths to restore module folders.",
+                },
+            )
             return
         if path.startswith("/api/actions/jobs/"):
             if not self._require_auth():

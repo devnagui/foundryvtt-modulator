@@ -178,6 +178,7 @@
     - historico de applies/snapshots exibido na aba Backups (quando, alvo, modulos alterados, backups criados)
     - endpoint/modelo inclui `applyHistory` a partir de `scan_runs` (SQLite)
     - payload de apply inclui `batchSnapshot` com pre/post versions e changedModules
+    - endpoint de `rollback plan` por `scanRunId` + botao na UI para o lote mais recente
 
 - [ ] Instalacao de modulos + higiene Foundry (novo)
   - Validar pacote baixado antes de aplicar:

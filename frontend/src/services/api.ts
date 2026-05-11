@@ -109,6 +109,10 @@ export const api = {
       body: JSON.stringify({ action, payload })
     }),
   jobStatus: (jobId: string) => request<JobStatus>(`/api/v1/actions/jobs/${encodeURIComponent(jobId)}`),
+  rollbackPlan: (scanRunId: number) =>
+    request<{ ok: boolean; scanRunId: number; modules?: string[]; backupPaths?: string[]; notes?: string }>(
+      `/api/v1/actions/rollback-plan?scanRunId=${encodeURIComponent(String(scanRunId))}`
+    ),
   foundryRootStatus: () => request<FoundryRootStatus>("/api/v1/config/foundry-root"),
   setFoundryRoot: (path: string) =>
     request<FoundryRootStatus>("/api/v1/config/foundry-root", {
