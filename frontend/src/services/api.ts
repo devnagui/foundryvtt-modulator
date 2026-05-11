@@ -103,7 +103,7 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }),
   reportV3Model: () => request<ReportModel>("/api/v1/report/v3/model"),
-  submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups", payload: Record<string, unknown>) =>
+  submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "rollback-batch", payload: Record<string, unknown>) =>
     request<ActionSubmitResponse>("/api/v1/actions/submit", {
       method: "POST",
       body: JSON.stringify({ action, payload })
@@ -116,6 +116,14 @@ export const api = {
   moduleHealth: () =>
     request<{ ok: boolean; count?: number; invalidCount?: number; warningCount?: number; rows?: Array<Record<string, unknown>> }>(
       "/api/v1/actions/module-health"
+    ),
+  rollbackExecute: (scanRunId: number) =>
+    request<{ ok: boolean; scanRunId: number; restoredCount?: number; restored?: Array<Record<string, unknown>> }>(
+      "/api/v1/actions/rollback-execute",
+      {
+        method: "POST",
+        body: JSON.stringify({ scanRunId })
+      }
     ),
   foundryRootStatus: () => request<FoundryRootStatus>("/api/v1/config/foundry-root"),
   setFoundryRoot: (path: string) =>

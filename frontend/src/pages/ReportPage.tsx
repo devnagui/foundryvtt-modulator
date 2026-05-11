@@ -770,6 +770,24 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 >
                   Show Rollback Plan (Latest)
                 </button>
+                <button
+                  className="btn"
+                  style={{ background: "#ef4444", color: "#fff" }}
+                  disabled={applyHistoryRows.length === 0 || actionBusy || !foundryConfigured}
+                  onClick={async () => {
+                    const latest = applyHistoryRows[0];
+                    const scanRunId = Number(latest?.scanRunId || 0);
+                    if (!scanRunId) return;
+                    try {
+                      const result = await api.rollbackExecute(scanRunId);
+                      setSuggestResult(`Rollback executed for #${scanRunId}: restored=${Number(result.restoredCount || 0)}`);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Could not execute rollback.");
+                    }
+                  }}
+                >
+                  Execute Rollback (Latest)
+                </button>
               </div>
               <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th></tr></thead><tbody>
                 {applyHistoryRows.length === 0 ? <tr><td colSpan={5}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td><td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td></tr>)}

@@ -5,7 +5,7 @@
 Este repositorio implementa um resolvedor de versoes de modulos para Foundry VTT com dois pontos de entrada:
 
 - CLI: `python -m resolver.cli`
-- API HTTP: `python -m service.server`
+- API HTTP (padrao): `uvicorn backend.app.main:app --host 0.0.0.0 --port 8787`
 - Frontend UI: `frontend/` (React + TypeScript + Vite + TailwindCSS + daisyUI)
 
 O objetivo principal e recomendar versoes compativeis com o Foundry instalado, com foco em seguranca operacional para acoes destrutivas.
@@ -38,6 +38,7 @@ O objetivo principal e recomendar versoes compativeis com o Foundry instalado, c
 ## Mudancas esperadas por area
 
 - `resolver/`: regras de compatibilidade, resolucao, relatorios, persistencia.
-- `service/`: autenticacao, sessao, lock, endpoints, execucao de jobs.
+- `backend/app/`: autenticacao, sessao, lock, endpoints, execucao de jobs (FastAPI/Clean).
+- `service/`: legado em fase de descontinuidade.
 - `frontend/`: login, report por abas, modais (settings/add-module), i18n basico, dark/light.
 - `scripts/`: operacao diaria e manutencao.

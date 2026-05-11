@@ -17,13 +17,9 @@ Open:
 
 - `http://127.0.0.1:8787/`
 
-### Legacy backend (fallback)
+### Legacy backend (deprecated fallback)
 
-If you need the previous HTTP server temporarily:
-
-```bash
-python -m service.server
-```
+Legacy `service.server` remains only for transitional compatibility and should not be used for new deployments.
 
 ### React UI (current recommended UI)
 

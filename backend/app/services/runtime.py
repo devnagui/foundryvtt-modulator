@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import threading
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -295,6 +299,12 @@ def _build_cli_args_from_action(action: str, payload: dict[str, Any]) -> tuple[l
 
 
 def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if str(action or "").strip().lower() == "rollback-batch":
+        scan_run_id = int(payload.get("scanRunId") or 0)
+        if scan_run_id <= 0:
+            raise ValueError("scan_run_id_required")
+        return execute_rollback(runtime, scan_run_id)
+
     effective_data_root = runtime.config_store.get_data_root() or runtime.config.data_root
     modules = _normalize_modules(payload.get("modules"))
     extra_args, maintenance, action_name = _build_cli_args_from_action(action, payload)
@@ -465,7 +475,7 @@ def set_foundry_root(runtime: AppRuntime, path: str) -> dict[str, Any]:
 
 def queue_action(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> dict[str, Any]:
     clean_action = str(action or "").strip().lower()
-    if clean_action not in {"dry-run", "apply", "force-compat", "cleanup-backups"}:
+    if clean_action not in {"dry-run", "apply", "force-compat", "cleanup-backups", "rollback-batch"}:
         raise ValueError("unsupported_action")
     body = payload if isinstance(payload, dict) else {}
     if clean_action == "apply":
@@ -473,3 +483,62 @@ def queue_action(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> d
     job = runtime.action_engine.enqueue(action=clean_action, payload=body)
     _append_audit(runtime.config, "action_enqueued", {"jobId": job.job_id, "action": clean_action})
     return {"ok": True, "jobId": job.job_id, "status": job.status, "action": clean_action}
+
+
+def _ensure_foundry_offline(runtime: AppRuntime) -> None:
+    if not runtime.config.require_foundry_offline:
+        return
+    status = foundry_status(runtime)
+    if status.get("online"):
+        raise RuntimeError("maintenance_requires_foundry_offline")
+
+
+def _safe_extract_backup_zip(archive_path: Path, target_root: Path) -> None:
+    root = target_root.resolve()
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for member in archive.infolist():
+            name = str(member.filename or "")
+            if not name:
+                continue
+            candidate = Path(name)
+            if candidate.is_absolute() or ":" in name.split("/")[0]:
+                raise ValueError(f"unsafe_backup_entry:{name}")
+            resolved_target = (root / candidate).resolve()
+            if resolved_target != root and not str(resolved_target).startswith(str(root) + os.sep):
+                raise ValueError(f"unsafe_backup_entry:{name}")
+        archive.extractall(root)
+
+
+def execute_rollback(runtime: AppRuntime, scan_run_id: int) -> dict[str, Any]:
+    _ensure_foundry_offline(runtime)
+    plan = rollback_plan(runtime, scan_run_id)
+    backup_paths = [Path(str(p)) for p in (plan.get("backupPaths") or []) if str(p).strip()]
+    if not backup_paths:
+        raise ValueError("rollback_backups_not_found")
+
+    data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    ok, normalized_root, details = _validate_foundry_root_path(data_root)
+    if not ok:
+        raise ValueError(details.get("message") or "invalid_foundry_root")
+    modules_root = Path(normalized_root) / "Data" / "modules"
+    restored: list[dict[str, Any]] = []
+
+    for bak in backup_paths:
+        if not bak.exists() or not bak.is_file():
+            continue
+        module_id = bak.parent.name
+        target_dir = modules_root / module_id
+        with tempfile.TemporaryDirectory(prefix=f"rollback-{module_id}-") as temp_dir:
+            temp_root = Path(temp_dir)
+            _safe_extract_backup_zip(bak, temp_root)
+            if target_dir.exists():
+                if target_dir.is_dir():
+                    shutil.rmtree(target_dir)
+                else:
+                    target_dir.unlink()
+            shutil.move(str(temp_root), str(target_dir))
+        restored.append({"module": module_id, "backupPath": str(bak), "targetPath": str(target_dir)})
+
+    if not restored:
+        raise ValueError("rollback_backups_not_found")
+    return {"ok": True, "scanRunId": int(scan_run_id), "restoredCount": len(restored), "restored": restored, "generatedAt": _utc_now_iso()}

@@ -15,7 +15,7 @@ if (-not (Test-Path $WorkingDirectory)) {
   throw "Working directory not found: $WorkingDirectory"
 }
 
-$binPath = "`"$env:ComSpec`" /c cd /d `"$WorkingDirectory`" && set RESOLVER_DATA_ROOT=$DataRoot && set RESOLVER_BIND_HOST=0.0.0.0 && set RESOLVER_BIND_PORT=$Port && `"$PythonExe`" -m service.server"
+$binPath = "`"$env:ComSpec`" /c cd /d `"$WorkingDirectory`" && set RESOLVER_DATA_ROOT=$DataRoot && set RESOLVER_BIND_HOST=0.0.0.0 && set RESOLVER_BIND_PORT=$Port && set USE_NEW_UI=true && `"$PythonExe`" -m uvicorn backend.app.main:app --host 0.0.0.0 --port $Port"
 
 sc.exe create $ServiceName binPath= "$binPath" start= auto | Out-Null
 sc.exe description $ServiceName "FoundryVTT Modulator API" | Out-Null

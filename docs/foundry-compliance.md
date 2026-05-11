@@ -46,3 +46,16 @@ This is an engineering compliance guide, not legal advice.
 - [ ] No proprietary module/system content committed to git
 - [ ] NOTICE/LICENSE files present and accurate
 - [ ] Compliance notes reviewed against current Foundry pages
+
+## Engineering Closeout (Current State)
+
+- FastAPI backend is the default runtime path for UI/API.
+- CLI remains available for local/offline scripted operations (`python -m resolver.cli`).
+- Rollback now supports automated restoration by batch (`scanRunId`) through API action.
+- Packaging scripts target FastAPI runtime (`uvicorn`) across Linux/Windows/macOS.
+- CI installs backend runtime dependencies and runs integration tests including FastAPI routes.
+
+Pending manual/legal sign-off:
+
+- Final legal review against latest Foundry license pages before public release.
+- Confirm no documentation screenshots include paid/proprietary assets.

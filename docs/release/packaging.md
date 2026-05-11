@@ -42,7 +42,7 @@ Output:
 ## Docker
 
 ```bash
-docker compose -f docker-compose.resolver.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Production-oriented compose (healthcheck + parametrized env):

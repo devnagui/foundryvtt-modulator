@@ -9,13 +9,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist/macos"
 
 python3 -m pip install --upgrade pip pyinstaller
+python3 -m pip install -r "${ROOT_DIR}/backend/requirements.txt"
 
 pushd "${ROOT_DIR}" >/dev/null
 python3 -m PyInstaller \
   --noconfirm \
   --windowed \
   --name "FoundryVTTModulator-${VERSION}" \
-  service/server.py
+  backend/run_fastapi.py
 popd >/dev/null
 
 mkdir -p "${DIST_DIR}"

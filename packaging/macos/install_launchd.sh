@@ -27,7 +27,12 @@ cat > "${PLIST_PATH}" <<EOF
   <array>
     <string>${PYTHON_BIN}</string>
     <string>-m</string>
-    <string>service.server</string>
+    <string>uvicorn</string>
+    <string>backend.app.main:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>${PORT}</string>
   </array>
   <key>WorkingDirectory</key><string>${ROOT_DIR}</string>
   <key>EnvironmentVariables</key>
@@ -35,6 +40,7 @@ cat > "${PLIST_PATH}" <<EOF
     <key>RESOLVER_DATA_ROOT</key><string>${DATA_ROOT}</string>
     <key>RESOLVER_BIND_HOST</key><string>0.0.0.0</string>
     <key>RESOLVER_BIND_PORT</key><string>${PORT}</string>
+    <key>USE_NEW_UI</key><string>true</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

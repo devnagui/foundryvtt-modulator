@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from ..deps import require_auth, require_csrf, require_rate_limit, runtime
-from ...services.runtime import module_health, queue_action, rollback_plan, suggest_module
+from ...services.runtime import execute_rollback, module_health, queue_action, rollback_plan, suggest_module
 
 router = APIRouter(prefix="/actions")
 
@@ -63,6 +63,32 @@ def get_module_health(req: Request) -> dict:
         return module_health(rt)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"error": "invalid_foundry_root", "message": str(exc)}) from exc
+
+
+@router.post("/rollback-execute")
+def rollback_execute(req: Request, body: dict) -> dict:
+    rt = runtime()
+    require_rate_limit(req, rt)
+    require_auth(req, rt)
+    require_csrf(req)
+    try:
+        scan_run_id = int(body.get("scanRunId") or 0)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail={"error": "scan_run_id_required"}) from exc
+    if scan_run_id <= 0:
+        raise HTTPException(status_code=400, detail={"error": "scan_run_id_required"})
+    try:
+        return execute_rollback(rt, scan_run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail={"error": "scan_run_not_found"}) from exc
+    except ValueError as exc:
+        message = str(exc)
+        code = message if message in {"rollback_backups_not_found"} else "rollback_failed"
+        raise HTTPException(status_code=400, detail={"error": code, "message": message}) from exc
+    except RuntimeError as exc:
+        if str(exc) == "maintenance_requires_foundry_offline":
+            raise HTTPException(status_code=412, detail={"error": "maintenance_requires_foundry_offline", "message": "Stop Foundry before rollback."}) from exc
+        raise HTTPException(status_code=400, detail={"error": "rollback_failed", "message": str(exc)}) from exc
 
 
 @router.post("/suggest-module")

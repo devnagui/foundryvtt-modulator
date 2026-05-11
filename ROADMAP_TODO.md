@@ -13,7 +13,7 @@
 
 - Parcial (fase atual):
   - Workflow oficial de upgrade (orientacao/UI pronta; automacao end-to-end ainda pendente)
-  - Backup/snapshot transacional (metadados e historico prontos; rollback automatico ainda pendente)
+  - Backup/snapshot transacional (metadados, historico e rollback automatico por lote entregues; UX guiada adicional ainda pendente)
   - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
   - Module Health Check (endpoint + acao na UI + gate inicial no apply entregues; validacoes profundas finais ainda pendentes)
   - Migracao FastAPI/Clean (API principal em `backend/app` entregue; desacoplamento direto de `service/server.py` no backend concluido; desligamento final do legado ainda pendente)
@@ -203,6 +203,7 @@
     - endpoint/modelo inclui `applyHistory` a partir de `scan_runs` (SQLite)
     - payload de apply inclui `batchSnapshot` com pre/post versions e changedModules
     - endpoint de `rollback plan` por `scanRunId` + botao na UI para o lote mais recente
+    - rollback automatico por lote via API (`POST /api/v1/actions/rollback-execute`)
 
 - [ ] Instalacao de modulos + higiene Foundry (novo)
   - Validar pacote baixado antes de aplicar:

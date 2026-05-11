@@ -18,7 +18,8 @@ mkdir -p "${PKG_DIR}/etc/systemd/system"
 mkdir -p "${PKG_DIR}/etc/${PKG_NAME}"
 
 cp -r "${ROOT_DIR}/resolver" "${PKG_DIR}/opt/${PKG_NAME}/resolver"
-cp -r "${ROOT_DIR}/service" "${PKG_DIR}/opt/${PKG_NAME}/service"
+cp -r "${ROOT_DIR}/backend" "${PKG_DIR}/opt/${PKG_NAME}/backend"
+cp -r "${ROOT_DIR}/frontend" "${PKG_DIR}/opt/${PKG_NAME}/frontend"
 cp "${ROOT_DIR}/README.md" "${PKG_DIR}/opt/${PKG_NAME}/README.md"
 
 cat > "${PKG_DIR}/etc/${PKG_NAME}/env.conf" <<EOF
@@ -51,7 +52,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/${PKG_NAME}
-ExecStart=/usr/bin/python3 -m service.server
+ExecStart=/usr/bin/python3 -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
 Restart=on-failure
 EnvironmentFile=-/etc/${PKG_NAME}/env.conf
 
@@ -64,6 +65,8 @@ cat > "${PKG_DIR}/DEBIAN/postinst" <<EOF
 set -e
 mkdir -p /var/lib/${PKG_NAME}/cache /var/lib/${PKG_NAME}/state /var/lib/${PKG_NAME}/reports
 chmod 755 /var/lib/${PKG_NAME} || true
+cd /opt/${PKG_NAME}
+/usr/bin/python3 -m pip install --break-system-packages -r backend/requirements.txt || true
 systemctl daemon-reload || true
 systemctl enable ${PKG_NAME}.service || true
 echo "Installed ${PKG_NAME}. Configure /etc/${PKG_NAME}/env.conf and start with: systemctl start ${PKG_NAME}"
