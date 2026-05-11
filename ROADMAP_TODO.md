@@ -203,3 +203,4 @@
     - `Find Source` + `Set URL` na tabela Current quando URL estiver ausente
     - endpoint backend para validar/salvar fonte em catalogo local (`/api/config/module-sources`)
     - reutilizacao de URL salva na renderizacao para habilitar acao na linha
+    - recomendacao imediata apos salvar URL validada (feedback no fluxo)
