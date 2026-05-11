@@ -50,6 +50,8 @@
   - Validar cada remocao com suite de testes
   - Revisar arquivo de licenca e tags/headers extras para normalizacao
   - Revisar compliance legal com licenca/termos do Foundry VTT para integracoes e distribuicao
+  - [x] Entregue (fase atual):
+    - remocao de componente UI legado nao utilizado (`DashboardPage.tsx`)
 
 ## Entregues no Item 1
 
