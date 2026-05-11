@@ -1,5 +1,27 @@
 # Roadmap TODO
 
+## Status geral (2026-05-11)
+
+- Concluido:
+  - Itens 1-5 iniciais (IA docs, auth/hardening, action engine, packaging, CI/CD)
+  - Migracao principal para UI React (`/app/report`) e remocao de V2
+  - Planning com score/semaforo, recomendacao automatica e impacto por target
+  - Historico de apply/snapshots na UI + `batchSnapshot` pre/post versions
+  - Rollback plan por `scanRunId` (backend + acao na UI)
+  - Fluxo de dependencias sem URL com `Find Source` + `Set URL` + catalogo local
+  - Confiabilidade inicial de `Used in world` com fallback `binary-id-scan`
+
+- Parcial (fase atual):
+  - Workflow oficial de upgrade (orientacao/UI pronta; automacao end-to-end ainda pendente)
+  - Backup/snapshot transacional (metadados e historico prontos; rollback automatico ainda pendente)
+  - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
+
+- Pendente principal:
+  - Automacao completa de rollback por lote
+  - Module Health Check completo + validacoes profundas de pacote
+  - Revisao final de licenca/compliance Foundry + limpeza final de legado
+  - Migracao arquitetural completa para estrutura FastAPI/Clean sugerida
+
 - [x] 1. Criar instrucoes para IA (`copilot-instructions`) e arquivos de colaboracao
 - [x] 2. Adicionar autenticacao e hardening da API
 - [x] 3. Implementar motor de execucao de acoes (catalogo, fila, status, auditoria, concorrencia, progresso)
