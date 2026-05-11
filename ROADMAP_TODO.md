@@ -169,6 +169,9 @@
   - Registrar manifest/versionamento pre e pos por modulo
   - Expor restauracao por lote (rollback do batch inteiro)
   - Exibir historico de snapshots na UI (data, alvo, resultado)
+  - [x] Entregue (fase atual):
+    - historico de applies/snapshots exibido na aba Backups (quando, alvo, modulos alterados, backups criados)
+    - endpoint/modelo inclui `applyHistory` a partir de `scan_runs` (SQLite)
 
 - [ ] Instalacao de modulos + higiene Foundry (novo)
   - Validar pacote baixado antes de aplicar:

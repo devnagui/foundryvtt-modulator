@@ -190,6 +190,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningTargets = asArray(view.systemUpgradePlanner?.targets);
   const planningSummary = (view.systemUpgradePlanner?.summary as Record<string, unknown> | undefined) || {};
   const backupRows = asArray(view.backupManagement?.rows);
+  const applyHistoryRows = asArray(view.backupManagement?.applyHistory);
   const unusedRows = asArray(view.unusedModules?.rows);
   const worldUsage = asArray(model?.worldUsage);
 
@@ -722,6 +723,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <h3>Backups</h3>
               <input type="search" placeholder="Search backups..." value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><button className="btn" disabled={backupModules.length === 0 || actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("cleanup-backups", { modules: backupModules })}>Cleanup Listed Backups</button></div>
+              <div className="metrics-row" style={{ marginBottom: 8 }}>
+                <div className="metric-card static"><span>Apply History</span><strong>{applyHistoryRows.length}</strong></div>
+              </div>
+              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th></tr></thead><tbody>
+                {applyHistoryRows.length === 0 ? <tr><td colSpan={4}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td></tr>)}
+              </tbody></table>
               <table className="report-table"><thead><tr><th>Module</th><th>Backups</th><th>Size Bytes</th><th>Newest</th></tr></thead><tbody>
                 {filteredBackups.map((row) => <tr key={asString(row.module)}><td>{asString(row.title) || asString(row.module)}</td><td>{String(row.backupCount || 0)}</td><td>{String(row.backupSizeBytes || 0)}</td><td>{asString(row.newestBackupAt) || "-"}</td></tr>)}
               </tbody></table>

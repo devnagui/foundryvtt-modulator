@@ -106,6 +106,42 @@ def load_scan_run_payload(database_path: str, scan_run_id: int) -> dict | None:
         return _decode_json(row[0])
 
 
+def load_apply_history(database_path: str, limit: int = 20) -> list[dict]:
+    path = Path(database_path)
+    if not path.exists():
+        return []
+    rows_out: list[dict] = []
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, generated_at, target_version, payload_json
+            FROM scan_runs
+            WHERE apply_mode = 1
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+        for row in rows:
+            payload = _decode_json(row["payload_json"])
+            actions = payload.get("dependencyApplyActions") or []
+            backups = [str(item.get("backupPath") or "").strip() for item in actions if isinstance(item, dict)]
+            modules = [str(item.get("module") or "").strip() for item in actions if isinstance(item, dict)]
+            rows_out.append(
+                {
+                    "scanRunId": int(row["id"]),
+                    "generatedAt": str(row["generated_at"] or ""),
+                    "targetVersion": str(row["target_version"] or ""),
+                    "modulesChanged": sorted({m for m in modules if m}),
+                    "modulesChangedCount": len({m for m in modules if m}),
+                    "backupsCreatedCount": len([b for b in backups if b]),
+                    "backupPaths": [b for b in backups if b],
+                }
+            )
+    return rows_out
+
+
 def _extract_system_compatibility(raw_manifest: dict) -> dict[str, dict]:
     relationships = (raw_manifest or {}).get("relationships") or {}
     systems = relationships.get("systems") or []

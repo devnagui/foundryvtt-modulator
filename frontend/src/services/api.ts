@@ -24,7 +24,7 @@ export type ReportModel = {
     summary?: { usedModuleCount?: number };
     currentSystemUpgrades?: { rows?: Array<Record<string, unknown>> };
     systemUpgradePlanner?: { targets?: Array<Record<string, unknown>>; summary?: Record<string, unknown> };
-    backupManagement?: { rows?: Array<Record<string, unknown>>; totalBackupCount?: number };
+    backupManagement?: { rows?: Array<Record<string, unknown>>; totalBackupCount?: number; applyHistory?: Array<Record<string, unknown>> };
     unusedModules?: { rows?: Array<Record<string, unknown>>; count?: number };
   };
 };

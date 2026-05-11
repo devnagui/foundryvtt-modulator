@@ -27,6 +27,7 @@ from resolver.foundry import detect_foundry_version
 from resolver.local import load_system_versions
 from resolver.models import ModuleRecord
 from resolver.report_v3 import render_html_report_v3
+from resolver.db_queries import load_apply_history
 from resolver.scoring import candidate_sort_key, satisfies_release_constraints
 from resolver.sources import fetch_release_history
 
@@ -644,6 +645,12 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 return
             report_views = payload.get("reportViews") if isinstance(payload.get("reportViews"), dict) else {}
             view = report_views.get("v3") if isinstance(report_views.get("v3"), dict) else {}
+            backup_management = view.get("backupManagement") if isinstance(view.get("backupManagement"), dict) else {}
+            try:
+                backup_management["applyHistory"] = load_apply_history(str(self.config.state_dir / "resolver.db"), limit=30)
+            except Exception:
+                backup_management["applyHistory"] = []
+            view["backupManagement"] = backup_management
             self._send_json(
                 HTTPStatus.OK,
                 {
