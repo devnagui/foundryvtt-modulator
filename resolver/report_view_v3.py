@@ -456,11 +456,26 @@ def _build_planner_summary(targets: list[dict]) -> dict:
         f"{quick.get('modulesReady', 0)} ready, {quick.get('modulesNeedUpdate', 0)} updates, "
         f"{quick.get('modulesBlocked', 0)} blocked, {quick.get('modulesNeedsVerification', 0)} verification."
     )
+    blocked_by_version = []
+    for row in sorted(targets, key=lambda item: _version_sort_key(str(item.get("foundryVersion") or ""))):
+        blockers = [
+            str(item.get("module") or "")
+            for item in (row.get("blockedModules") or [])
+            if str(item.get("module") or "")
+        ]
+        blocked_by_version.append(
+            {
+                "foundryVersion": str(row.get("foundryVersion") or ""),
+                "blockedCount": int((row.get("quickStatus") or {}).get("modulesBlocked") or 0),
+                "topBlockers": sorted(blockers)[:8],
+            }
+        )
     return {
         "bestTargetVersion": str(best.get("foundryVersion") or ""),
         "bestTargetScore": float(score.get("value") or 0.0),
         "bestTargetTone": str(score.get("tone") or "yellow"),
         "bestTargetReason": reason,
+        "blockedByVersion": blocked_by_version,
     }
 
 

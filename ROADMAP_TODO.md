@@ -163,6 +163,9 @@
   - Passo 4: atualizar Foundry para versao alvo escolhida
   - Passo 5: rodar novo scan e validar regressao pos-upgrade
   - Passo 6: opcao de rollback guiado usando backups gerados
+  - [x] Entregue (fase atual):
+    - workflow recomendado exibido na UI de Planning
+    - painel de impacto por target (bloqueios e principais modulos bloqueadores)
 
 - [ ] Backup/snapshot para mudancas em lote
   - Criar snapshot transacional antes de `Update All`

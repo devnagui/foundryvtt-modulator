@@ -678,6 +678,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                   Recommended target: <strong>v{asString(planningSummary.bestTargetVersion)}</strong> ({String(planningSummary.bestTargetScore || 0)} score). {asString(planningSummary.bestTargetReason)}
                 </p>
               ) : null}
+              {asArray(planningSummary.blockedByVersion).length > 0 ? (
+                <div className="panel" style={{ marginBottom: 8 }}>
+                  <strong>Upgrade Impact</strong>
+                  <p style={{ margin: "6px 0", color: "var(--muted)" }}>Modules blocking higher targets:</p>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {asArray(planningSummary.blockedByVersion).map((row, idx) => <div key={`impact-${idx}`} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><span><strong>v{asString(row.foundryVersion) || "-"}</strong>:</span><span>{String(row.blockedCount || 0)} blocked</span><span>{asArray(row.topBlockers).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "none"}</span></div>)}
+                  </div>
+                </div>
+              ) : null}
+              <div className="panel" style={{ marginBottom: 8 }}>
+                <strong>Recommended Workflow</strong>
+                <p style={{ margin: "6px 0", color: "var(--muted)" }}>1) Start Scan  2) Update modules/systems on current Foundry  3) Backup snapshot  4) Upgrade Foundry  5) Scan again  6) Rollback if needed.</p>
+              </div>
               <div className="metrics-row">
                 {planningTargets.map((row) => {
                   const version = asString(row.foundryVersion) || "-";
