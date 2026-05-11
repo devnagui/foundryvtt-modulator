@@ -39,6 +39,5 @@ O objetivo principal e recomendar versoes compativeis com o Foundry instalado, c
 
 - `resolver/`: regras de compatibilidade, resolucao, relatorios, persistencia.
 - `backend/app/`: autenticacao, sessao, lock, endpoints, execucao de jobs (FastAPI/Clean).
-- `service/`: legado em fase de descontinuidade.
 - `frontend/`: login, report por abas, modais (settings/add-module), i18n basico, dark/light.
 - `scripts/`: operacao diaria e manutencao.

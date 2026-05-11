@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from service.server import (
+from backend.app.services.core import (
     _count_posix_process_name_occurrences,
     _count_windows_process_name_occurrences,
     _foundry_process_probe,
@@ -18,8 +18,8 @@ class TestFoundryOnlineDetection(unittest.TestCase):
         count = _count_windows_process_name_occurrences(csv_text, "Foundry Virtual Tabletop.exe")
         self.assertEqual(count, 2)
 
-    @patch("service.server.os.name", "nt")
-    @patch("service.server.subprocess.run")
+    @patch("backend.app.services.core.os.name", "nt")
+    @patch("backend.app.services.core.subprocess.run")
     def test_foundry_process_probe_online(self, run_mock) -> None:
         run_mock.return_value.returncode = 0
         run_mock.return_value.stdout = "\"Foundry Virtual Tabletop.exe\",\"1234\",\"Console\",\"1\",\"120,000 K\"\n"
@@ -33,8 +33,8 @@ class TestFoundryOnlineDetection(unittest.TestCase):
         count = _count_posix_process_name_occurrences(ps_output, "node")
         self.assertEqual(count, 2)
 
-    @patch("service.server.os.name", "posix")
-    @patch("service.server.subprocess.run")
+    @patch("backend.app.services.core.os.name", "posix")
+    @patch("backend.app.services.core.subprocess.run")
     def test_foundry_process_probe_posix_online(self, run_mock) -> None:
         run_mock.return_value.returncode = 0
         run_mock.return_value.stdout = "node\nFoundryVTT\npython3\n"

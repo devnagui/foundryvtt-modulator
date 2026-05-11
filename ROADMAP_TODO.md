@@ -16,7 +16,7 @@
   - Backup/snapshot transacional (metadados, historico e rollback automatico por lote entregues; UX guiada adicional ainda pendente)
   - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
   - Module Health Check (endpoint + acao na UI + gate inicial no apply entregues; validacoes profundas finais ainda pendentes)
-  - Migracao FastAPI/Clean (API principal em `backend/app` entregue; desacoplamento direto de `service/server.py` no backend concluido; desligamento final do legado ainda pendente)
+  - Migracao FastAPI/Clean concluida (API principal em `backend/app` + servidor legado removido)
 
 - Pendente principal:
   - Automacao completa de rollback por lote
@@ -145,7 +145,7 @@
 
 ## Seguranca operacional extra
 
-- deteccao de Foundry online aprimorada no `service/server.py`:
+- deteccao de Foundry online aprimorada no backend FastAPI (`backend/app/services/core.py`):
   - tcp probe + process probe no Windows
   - bloqueio de manutencao quando qualquer sinal indica Foundry em execucao
 - testes adicionados em `tests/test_foundry_online_detection.py`

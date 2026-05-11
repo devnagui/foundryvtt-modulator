@@ -17,9 +17,9 @@ Open:
 
 - `http://127.0.0.1:8787/`
 
-### Legacy backend (deprecated fallback)
+### Runtime
 
-Legacy `service.server` remains only for transitional compatibility and should not be used for new deployments.
+FastAPI backend is the standard runtime path.
 
 ### React UI (current recommended UI)
 
