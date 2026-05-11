@@ -1580,6 +1580,53 @@ def _run_module_health_check(data_root: str) -> dict[str, Any]:
     }
 
 
+def _evaluate_apply_health_gate(data_root: str, selected_modules: list[str]) -> dict[str, Any]:
+    health = _run_module_health_check(data_root)
+    if not bool(health.get("ok")):
+        return {
+            "ok": False,
+            "blocked": True,
+            "reason": str(health.get("error") or "module_health_unavailable"),
+            "count": 0,
+            "rows": [],
+        }
+    rows = health.get("rows") or []
+    if not isinstance(rows, list):
+        rows = []
+    selected_set = {str(item).strip().lower() for item in (selected_modules or []) if str(item).strip()}
+    if selected_set:
+        scoped = []
+        for row in rows:
+            module_id = str((row or {}).get("module") or "").strip().lower()
+            if module_id in selected_set:
+                scoped.append(row)
+    else:
+        scoped = list(rows)
+    blocking_rows: list[dict[str, Any]] = []
+    for row in scoped:
+        if not isinstance(row, dict):
+            continue
+        issues = row.get("issues") or []
+        warnings = row.get("warnings") or []
+        has_missing_dependency = any(str(item).startswith("missing_dependency:") for item in warnings)
+        if issues or has_missing_dependency:
+            blocking_rows.append(
+                {
+                    "module": row.get("module"),
+                    "title": row.get("title"),
+                    "issues": issues if isinstance(issues, list) else [],
+                    "warnings": warnings if isinstance(warnings, list) else [],
+                }
+            )
+    return {
+        "ok": True,
+        "blocked": len(blocking_rows) > 0,
+        "reason": "module_health_gate_failed" if blocking_rows else "module_health_gate_ok",
+        "count": len(scoped),
+        "rows": blocking_rows,
+    }
+
+
 def _pick_folder_native() -> str:
     try:
         import tkinter as tk
@@ -1759,11 +1806,22 @@ def _execute_action_job(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     effective_data_root = config_store.get_data_root() or config.data_root
+    modules = _normalize_modules(payload.get("modules"))
     extra_args, maintenance, action_name = _build_cli_args_from_action(action, payload)
     lock_payload: dict[str, Any] | None = None
     if maintenance:
         lock_payload = lock_store.acquire(action=action_name)
     try:
+        preflight_gate: dict[str, Any] | None = None
+        if action_name == "apply":
+            preflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+            if preflight_gate.get("blocked"):
+                blocked_rows = preflight_gate.get("rows") or []
+                sample = blocked_rows[:5] if isinstance(blocked_rows, list) else []
+                details = ", ".join(str((item or {}).get("module") or "?") for item in sample)
+                raise RuntimeError(
+                    f"Apply blocked by module health gate. Fix invalid/missing dependencies first. Affected: {details or 'unknown'}"
+                )
         cmd = [
             config.python_bin,
             "-m",
@@ -1799,9 +1857,16 @@ def _execute_action_job(
             "lock": lock_payload,
             "generatedAt": _utc_now_iso(),
             "dataRoot": effective_data_root,
+            "preflight": preflight_gate,
         }
         if result.returncode != 0:
             raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={result.returncode}")
+        if action_name == "apply":
+            postflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+            output["postflight"] = postflight_gate
+            if postflight_gate.get("blocked"):
+                output["ok"] = False
+                raise RuntimeError("Apply finished but post-check found invalid modules or missing dependencies.")
         return output
     finally:
         if maintenance:

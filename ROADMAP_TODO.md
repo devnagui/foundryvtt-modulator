@@ -15,7 +15,7 @@
   - Workflow oficial de upgrade (orientacao/UI pronta; automacao end-to-end ainda pendente)
   - Backup/snapshot transacional (metadados e historico prontos; rollback automatico ainda pendente)
   - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
-  - Module Health Check (endpoint + acao na UI entregues; validacoes profundas e gates de apply ainda pendentes)
+  - Module Health Check (endpoint + acao na UI + gate inicial no apply entregues; validacoes profundas finais ainda pendentes)
 
 - Pendente principal:
   - Automacao completa de rollback por lote
@@ -218,6 +218,7 @@
   - [x] Entregue (fase atual):
     - endpoint `GET /api/v1/actions/module-health`
     - botao de execucao na aba Backups com resumo imediato (`total/invalid/warnings`)
+    - gate inicial no `apply`: preflight/postflight bloqueando quando houver `missing_file` e `missing_dependency`
 
 - [ ] Confiabilidade de "Used in world" (world moduleConfiguration)
   - Expandir parser de `core.moduleConfiguration` para variantes adicionais do LevelDB
