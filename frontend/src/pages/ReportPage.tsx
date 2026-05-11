@@ -739,8 +739,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <div className="metrics-row" style={{ marginBottom: 8 }}>
                 <div className="metric-card static"><span>Apply History</span><strong>{applyHistoryRows.length}</strong></div>
               </div>
-              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th></tr></thead><tbody>
-                {applyHistoryRows.length === 0 ? <tr><td colSpan={4}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td></tr>)}
+              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th></tr></thead><tbody>
+                {applyHistoryRows.length === 0 ? <tr><td colSpan={5}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td><td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td></tr>)}
               </tbody></table>
               <table className="report-table"><thead><tr><th>Module</th><th>Backups</th><th>Size Bytes</th><th>Newest</th></tr></thead><tbody>
                 {filteredBackups.map((row) => <tr key={asString(row.module)}><td>{asString(row.title) || asString(row.module)}</td><td>{String(row.backupCount || 0)}</td><td>{String(row.backupSizeBytes || 0)}</td><td>{asString(row.newestBackupAt) || "-"}</td></tr>)}

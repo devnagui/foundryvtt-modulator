@@ -753,6 +753,7 @@ def main() -> int:
     results = []
     warnings: dict[str, list[str]] = {}
     apply_actions = []
+    pre_apply_versions = {module.module_id: module.version for module in all_modules}
     applied_any = False
     batch_count = ceil(len(modules) / args.batch_size)
     with _foundry_maintenance_window(args, required=bool(args.apply)):
@@ -796,6 +797,15 @@ def main() -> int:
                     if _is_upgrade(recommendation.installed_version, recommendation.recommended_version) or args.allow_downgrade:
                         applied_backup = apply_recommendation(module, recommendation, str(modules_dir), args.cache_dir)
                         applied_any = True
+                        apply_actions.append(
+                            {
+                                "module": recommendation.module,
+                                "fromVersion": recommendation.installed_version,
+                                "toVersion": recommendation.recommended_version,
+                                "backupPath": applied_backup,
+                                "reason": recommendation.reason,
+                            }
+                        )
                     else:
                         logging.info(
                             "Skipping apply for %s because recommended version %s is not an upgrade over %s and --allow-downgrade was not used",
@@ -845,7 +855,15 @@ def main() -> int:
                                 args.cache_dir,
                             )
                             applied_any = True
-                            apply_actions.append({"module": dependency.module, "backupPath": backup_path})
+                            apply_actions.append(
+                                {
+                                    "module": dependency.module,
+                                    "fromVersion": dependency.installed_version,
+                                    "toVersion": dependency.recommended_version,
+                                    "backupPath": backup_path,
+                                    "reason": dependency.reason,
+                                }
+                            )
                 results.append(
                 {
                     "module": recommendation.module,
@@ -937,6 +955,10 @@ def main() -> int:
                 backup_maintenance.get("removedBytes"),
             )
 
+    post_apply_versions = {}
+    if args.apply:
+        current_after_apply = load_modules(str(modules_dir))
+        post_apply_versions = {module.module_id: module.version for module in current_after_apply}
     module_disk_inventory = collect_module_disk_inventory(all_modules, args.cache_dir)
     backup_inventory = collect_backup_inventory(str(modules_dir), all_modules, args.cache_dir)
     cache_status = describe_cache_status(args.cache_dir, stale_after_days=args.cache_max_age_days)
@@ -1012,6 +1034,18 @@ def main() -> int:
         "foundryServiceStatus": foundry_service_status,
         "apply": args.apply,
         "dependencyApplyActions": apply_actions,
+        "batchSnapshot": {
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "preVersions": pre_apply_versions if args.apply else {},
+            "postVersions": post_apply_versions if args.apply else {},
+            "changedModules": sorted(
+                [
+                    module_id
+                    for module_id, before in pre_apply_versions.items()
+                    if (post_apply_versions.get(module_id) or "") != (before or "")
+                ]
+            ) if args.apply else [],
+        },
         "backupPolicy": {
             "maxBytes": max(int(args.backup_max_mb), 0) * 1024 * 1024,
             "maxPerModule": max(int(args.backup_max_per_module), 0),

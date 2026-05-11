@@ -128,15 +128,22 @@ def load_apply_history(database_path: str, limit: int = 20) -> list[dict]:
             actions = payload.get("dependencyApplyActions") or []
             backups = [str(item.get("backupPath") or "").strip() for item in actions if isinstance(item, dict)]
             modules = [str(item.get("module") or "").strip() for item in actions if isinstance(item, dict)]
+            batch_snapshot = payload.get("batchSnapshot") if isinstance(payload.get("batchSnapshot"), dict) else {}
+            changed_modules = [
+                str(item).strip()
+                for item in (batch_snapshot.get("changedModules") or [])
+                if str(item).strip()
+            ]
             rows_out.append(
                 {
                     "scanRunId": int(row["id"]),
                     "generatedAt": str(row["generated_at"] or ""),
                     "targetVersion": str(row["target_version"] or ""),
-                    "modulesChanged": sorted({m for m in modules if m}),
-                    "modulesChangedCount": len({m for m in modules if m}),
+                    "modulesChanged": sorted({m for m in (modules + changed_modules) if m}),
+                    "modulesChangedCount": len({m for m in (modules + changed_modules) if m}),
                     "backupsCreatedCount": len([b for b in backups if b]),
                     "backupPaths": [b for b in backups if b],
+                    "batchSnapshot": batch_snapshot,
                 }
             )
     return rows_out
