@@ -9,12 +9,21 @@ Use the web UI for daily operations.
 ### 1) Start the app
 
 ```bash
-python -m service.server
+pip install -r backend/requirements.txt
+USE_NEW_UI=true uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
 ```
 
 Open:
 
 - `http://127.0.0.1:8787/`
+
+### Legacy backend (fallback)
+
+If you need the previous HTTP server temporarily:
+
+```bash
+python -m service.server
+```
 
 ### React UI (current recommended UI)
 
@@ -26,17 +35,10 @@ npm install
 npm run build
 ```
 
-Start backend with feature flag:
+Build and run FastAPI backend:
 
 ```bash
-USE_NEW_UI=true python -m service.server
-```
-
-When enabled, `/` serves `frontend/dist` (if present).
-To force only React report route, also set:
-
-```bash
-RESOLVER_DISABLE_LEGACY_REPORT_UI=true
+USE_NEW_UI=true uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
 ```
 
 Current UI flow:
