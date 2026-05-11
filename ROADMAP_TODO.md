@@ -179,6 +179,12 @@
     - detectar modulos invalidos para o Foundry atual
     - sugerir corrigir, reinstalar, remover ou restaurar backup
 
+- [ ] Confiabilidade de "Used in world" (world moduleConfiguration)
+  - Expandir parser de `core.moduleConfiguration` para variantes adicionais do LevelDB
+  - Validar leitura com worlds reais onde `enabledModules` vinha vazio
+  - Adicionar fallback por arquivos/indices auxiliares quando payload estiver binario/compactado
+  - Cobrir com testes de regressao para `midi-qol`, Monk family e sistemas ativos
+
 - [ ] Fluxo para dependencias faltantes sem URL conhecida
   - Na tabela Current, trocar acao `Get` por `Find Source` quando faltar `release/manifest URL`
   - `Find Source` abre nova aba com busca pronta (Google/GitHub) usando nome + id do modulo

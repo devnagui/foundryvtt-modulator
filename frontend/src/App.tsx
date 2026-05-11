@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ReportPage } from "./pages/ReportPage";
 import { api } from "./services/api";
@@ -25,7 +24,7 @@ export function App() {
     () => ({
       onAuthenticated: () => {
         setSessionReady(true);
-        navigate("/app", { replace: true });
+        navigate("/app/report", { replace: true });
       },
       onLoggedOut: () => {
         setSessionReady(false);
@@ -45,11 +44,7 @@ export function App() {
       <Route
         path="/app"
         element={
-          sessionReady ? (
-            <DashboardPage onLoggedOut={handlers.onLoggedOut} />
-          ) : (
-            <Navigate to="/" replace />
-          )
+          sessionReady ? <Navigate to="/app/report" replace /> : <Navigate to="/" replace />
         }
       />
       <Route

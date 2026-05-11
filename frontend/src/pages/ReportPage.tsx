@@ -6,7 +6,6 @@ type ReportPageProps = { onLoggedOut: () => void };
 type TabId = "current" | "planning" | "backups";
 type ActionKind = "dry-run" | "apply" | "force-compat" | "cleanup-backups";
 type CurrentFilter = "blocked" | "update" | "ready" | "unused";
-type UnusedFilter = "all" | "updates" | "compatible" | "incompatible" | "missing";
 
 type ModuleRow = {
   module: string;
@@ -24,7 +23,9 @@ type ModuleRow = {
 };
 type CurrentTableRow =
   | { kind: "module"; key: string; row: ModuleRow }
-  | { kind: "system"; key: string; systemId: string; installedVersion: string; targetVersion: string; targetUrl: string; status: "update" | "ready"; compatibility: Record<string, unknown> };
+  | { kind: "system"; key: string; systemId: string; usedInWorlds: string[]; installedVersion: string; targetVersion: string; targetUrl: string; status: "update" | "ready"; compatibility: Record<string, unknown> };
+type PlanningFilter = "blocked" | "update" | "ready" | "unused";
+type PlanningRow = ModuleRow & { targetVersion: string };
 
 function asArray(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : []; }
 function asString(value: unknown): string { return typeof value === "string" ? value : ""; }
@@ -92,8 +93,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [actionBusy, setActionBusy] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<CurrentFilter[]>([]);
   const [currentSystemFilter, setCurrentSystemFilter] = useState("all");
-  const [unusedFilter, setUnusedFilter] = useState<UnusedFilter>("all");
-  const [planningView, setPlanningView] = useState<"systems" | "unused">("systems");
+  const [planningFilters, setPlanningFilters] = useState<PlanningFilter[]>([]);
+  const [planningVersionFilters, setPlanningVersionFilters] = useState<string[]>([]);
+  const [planningSystemFilter, setPlanningSystemFilter] = useState("all");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addModuleOpen, setAddModuleOpen] = useState(false);
   const [foundryRoot, setFoundryRoot] = useState<FoundryRootStatus | null>(null);
@@ -377,35 +379,79 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason}`.toLowerCase().includes(q) : true));
   }, [currentRows, search, currentFilters, currentSystemFilter]);
 
-  const filteredUnused = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return unusedRows
-      .filter((row) => {
-        if (unusedFilter === "updates") return asBool(row.updateViable);
-        if (unusedFilter === "missing") return hasMissingDependenciesSignal(asString(row.reason), asArray(row.missingDependencies).length);
-        const status = asString(row.compatibilityStatus).toLowerCase();
-        if (unusedFilter === "compatible") return status === "compatible";
-        if (unusedFilter === "incompatible") return status === "incompatible";
-        return true;
-      })
-      .filter((row) => (q ? `${asString(row.title)} ${asString(row.module)} ${asString(row.reason)}`.toLowerCase().includes(q) : true));
-  }, [unusedRows, search, unusedFilter]);
+  const planningRows = useMemo<PlanningRow[]>(() => {
+    const rows: PlanningRow[] = [];
+    for (const target of planningTargets) {
+      const targetVersion = asString(target.foundryVersion);
+      const systemRows = asArray(target.systemRows).length > 0 ? asArray(target.systemRows) : asArray(target.systems);
+      for (const system of systemRows) {
+        const systemName = asString(system.title) || asString(system.systemId) || "-";
+        const pushRows = (bucket: Array<Record<string, unknown>>, state: ModuleRow["state"], unknown = false) => {
+          for (const row of bucket) {
+            const moduleId = cleanModuleId(asString(row.module));
+            if (!moduleId) continue;
+            const reason = asString(row.reason) || (unknown ? "Needs verification" : "");
+            rows.push({
+              module: moduleId,
+              title: cleanTitle(asString(row.title), moduleId),
+              state,
+              system: systemName,
+              relatedSystems: [systemName],
+              usedInWorlds: [],
+              reason,
+              installedVersion: asString(row.installedVersion),
+              recommendedVersion: bestRecommendedVersion(row),
+              releaseUrl: bestReleaseUrl(row),
+              compatibility: (row.compatibility as Record<string, unknown> | undefined) || {},
+              hasMissingDependencies: unknown || hasMissingDependenciesSignal(reason, asArray(row.missingDependencies).length),
+              targetVersion
+            });
+          }
+        };
+        pushRows(asArray(system.blockedModuleRows), "blocked");
+        pushRows(asArray(system.upgradableModuleRows), "update");
+        pushRows(asArray(system.compatibleModuleRows), "ready");
+        pushRows(asArray(system.unknownModuleRows), "blocked", true);
+      }
+      for (const row of asArray(target.localManifestManualModules)) {
+        const moduleId = cleanModuleId(asString(row.module));
+        if (!moduleId) continue;
+        const reason = asString(row.reason) || "Unused/manual module for this target";
+        rows.push({
+          module: moduleId,
+          title: cleanTitle(asString(row.title), moduleId),
+          state: "blocked",
+          system: "unused",
+          relatedSystems: ["unused"],
+          usedInWorlds: [],
+          reason,
+          installedVersion: asString(row.installedVersion),
+          recommendedVersion: bestRecommendedVersion(row),
+          releaseUrl: bestReleaseUrl(row),
+          compatibility: (row.compatibility as Record<string, unknown> | undefined) || {},
+          hasMissingDependencies: hasMissingDependenciesSignal(reason, asArray(row.missingDependencies).length),
+          targetVersion
+        });
+      }
+    }
+    return rows;
+  }, [planningTargets]);
 
   const filteredPlanning = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return planningTargets;
-    return planningTargets.filter((row) => {
-      const quick = (row.quickStatus as Record<string, unknown> | undefined) || {};
-      const blob = [
-        asString(row.foundryVersion),
-        String(quick.systemsTotal || ""),
-        String(quick.modulesReady || ""),
-        String(quick.modulesNeedUpdate || ""),
-        String(quick.modulesBlocked || "")
-      ].join(" ").toLowerCase();
-      return blob.includes(q);
-    });
-  }, [planningTargets, search]);
+    return planningRows
+      .filter((row) => planningVersionFilters.length === 0 || planningVersionFilters.includes(row.targetVersion))
+      .filter((row) => {
+        if (planningFilters.length === 0) return true;
+        return planningFilters.some((filter) => {
+          if (filter === "unused") return row.system === "unused";
+          if (filter === "blocked") return row.state === "blocked" || row.hasMissingDependencies;
+          return row.state === filter;
+        });
+      })
+      .filter((row) => (planningSystemFilter === "all" ? true : row.relatedSystems.includes(planningSystemFilter)))
+      .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason} ${row.targetVersion}`.toLowerCase().includes(q) : true));
+  }, [planningRows, planningVersionFilters, planningFilters, planningSystemFilter, search]);
 
   const filteredBackups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -419,6 +465,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const systemVersionMap = model?.installedSystemVersions || {};
     const systemTargetMap = new Map<string, string>();
     const worldSystemVersionMap = new Map<string, string>();
+    const systemWorldsMap = new Map<string, string[]>();
     for (const sys of currentSystems) {
       const id = asString(sys.systemId).trim();
       if (!id) continue;
@@ -430,6 +477,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const id = asString(world.system).trim();
       const ver = asString(world.systemVersion).trim();
       if (id && ver && !worldSystemVersionMap.has(id)) worldSystemVersionMap.set(id, ver);
+      if (id) {
+        const worldName = asString(world.alias) || asString(world.title) || asString(world.name) || asString(world.id) || "World";
+        const arr = systemWorldsMap.get(id) || [];
+        if (!arr.includes(worldName)) arr.push(worldName);
+        systemWorldsMap.set(id, arr);
+      }
     }
     const toSystemRow = (systemId: string): CurrentTableRow => {
       const installed = asString(systemVersionMap[systemId] ?? "") || asString(worldSystemVersionMap.get(systemId) || "");
@@ -438,7 +491,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const summary = currentSystems.find((s) => asString(s.systemId).trim() === systemId) || {};
       const targetUrl = asString((summary as Record<string, unknown>).manifestUrl) || asString((summary as Record<string, unknown>).downloadUrl);
       const compatibility = ((summary as Record<string, unknown>).compatibility as Record<string, unknown> | undefined) || {};
-      return { kind: "system", key: `system-${systemId}`, systemId, installedVersion: installed, targetVersion: target, targetUrl, status, compatibility };
+      return { kind: "system", key: `system-${systemId}`, systemId, usedInWorlds: (systemWorldsMap.get(systemId) || []).sort(), installedVersion: installed, targetVersion: target, targetUrl, status, compatibility };
     };
 
     if (currentSystemFilter === "__systems__") {
@@ -459,22 +512,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   }, [filteredCurrent, currentSystemFilter, installedSystemIds, search, model?.installedSystemVersions, currentSystems, currentFilters, worldUsage]);
 
   const currentPage = paginate(currentTableRows, page, 12);
-  const unusedModules = filteredUnused.map((row) => asString(row.module)).filter(Boolean);
   const backupModules = backupRows.map((row) => asString(row.module)).filter(Boolean);
-  const planningTotals = useMemo(() => {
-    let systems = 0;
-    let ready = 0;
-    let upgrades = 0;
-    let blocked = 0;
-    for (const target of planningTargets) {
-      const quick = (target.quickStatus as Record<string, unknown> | undefined) || {};
-      systems += Number(quick.systemsTotal || 0);
-      ready += Number(quick.modulesReady || 0);
-      upgrades += Number(quick.modulesNeedUpdate || 0);
-      blocked += Number(quick.modulesBlocked || 0);
-    }
-    return { systems, ready, upgrades, blocked };
-  }, [planningTargets]);
+  const planningSystemIds = useMemo(() => uniqueSorted(planningRows.flatMap((row) => row.relatedSystems)), [planningRows]);
+  const planningPage = paginate(filteredPlanning, page, 12);
 
   const applyFoundryPath = async () => {
     try {
@@ -579,7 +619,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 <button className={`metric-card metric-unused ${currentFilters.includes("unused") ? "active" : ""}`} onClick={() => { setCurrentSystemFilter("all"); setCurrentFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{currentRows.filter((x) => x.system === "unused").length}</strong></button>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <button className="btn secondary" disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("dry-run", { batchSize: 10 })}>Dry Run</button>
                 <button className="btn secondary" onClick={() => setAddModuleOpen(true)}>
                   <span className="icon-wrap" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -592,8 +631,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               </div>
               <table className="report-table"><thead><tr><th><input type="search" placeholder="Name Search" value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></th><th>Used in</th><th>Update Path</th><th>Reason</th><th>Actions {updateModules.length > 0 ? <button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: updateModules, batchSize: 10 })}>Update All ({updateModules.length})</button> : null}</th></tr></thead><tbody>
                 {currentPage.rows.map((item) => item.kind === "system"
-                  ? <tr key={item.key}><td>{item.systemId} <small>(system)</small></td><td>-</td><td>{(item.installedVersion || "-")} {" → "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</td><td>{item.status === "update" ? `Update suggested for this system. ${compatibilitySummary(item.compatibility)}` : `No system update required. ${compatibilitySummary(item.compatibility)}`}</td><td>{item.status === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</td></tr>
-                  : <tr key={item.key}><td>{item.row.hasMissingDependencies ? <span title="Missing dependencies" style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}{(item.row.title || "Unknown module")} <small>({item.row.module || "unknown"})</small></td><td>{item.row.usedInWorlds.length > 0 ? item.row.usedInWorlds.join(", ") : "-"}</td><td>{(item.row.installedVersion || "-")} {" → "} {item.row.releaseUrl ? <a href={item.row.releaseUrl} target="_blank" rel="noreferrer">{(item.row.recommendedVersion || "-")}</a> : (item.row.recommendedVersion || "-")}</td><td>{`${item.row.reason || "-"} | ${compatibilitySummary(item.row.compatibility)}`}</td><td><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{item.row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Get</button> : item.row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</div></td></tr>)}
+                  ? <tr key={item.key}><td>{item.systemId} <small>(system)</small></td><td>{item.usedInWorlds.length > 0 ? item.usedInWorlds.join(", ") : "Unused"}</td><td>{(item.installedVersion || "-")} {" → "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</td><td>{item.status === "update" ? `Update suggested for this system. ${compatibilitySummary(item.compatibility)}` : `No system update required. ${compatibilitySummary(item.compatibility)}`}</td><td>{item.status === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</td></tr>
+                  : <tr key={item.key}><td>{item.row.hasMissingDependencies ? <span title="Missing dependencies" style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}{(item.row.title || "Unknown module")} <small>({item.row.module || "unknown"})</small></td><td>{item.row.usedInWorlds.length > 0 ? item.row.usedInWorlds.join(", ") : "Unused"}</td><td>{(item.row.installedVersion || "-")} {" → "} {item.row.releaseUrl ? <a href={item.row.releaseUrl} target="_blank" rel="noreferrer">{(item.row.recommendedVersion || "-")}</a> : (item.row.recommendedVersion || "-")}</td><td>{`${item.row.reason || "-"} | ${compatibilitySummary(item.row.compatibility)}`}</td><td><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{item.row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Get</button> : item.row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</div></td></tr>)}
               </tbody></table>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="btn secondary" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button><span style={{ alignSelf: "center" }}>{currentPage.page} / {currentPage.totalPages}</span><button className="btn secondary" onClick={() => setPage((p) => Math.min(currentPage.totalPages, p + 1))}>Next</button></div>
             </article>
@@ -602,43 +641,35 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           {tab === "planning" ? (
             <article className="panel">
               <h3>Planning</h3>
-              <input type="search" placeholder="Search planning rows..." value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <button className={`btn secondary ${planningView === "systems" ? "active" : ""}`} onClick={() => setPlanningView("systems")}>Systems</button>
-                <button className={`btn secondary ${planningView === "unused" ? "active" : ""}`} onClick={() => setPlanningView("unused")}>Unused</button>
+              <div className="metrics-row">
+                {planningTargets.map((row) => {
+                  const version = asString(row.foundryVersion) || "-";
+                  const quick = (row.quickStatus as Record<string, unknown> | undefined) || {};
+                  const total = Number(quick.modulesTotal || 0);
+                  const ready = Number(quick.modulesReady || 0);
+                  const pct = total > 0 ? Math.round((ready / total) * 100) : 0;
+                  const active = planningVersionFilters.includes(version);
+                  return (
+                    <button key={version} className={`metric-card ${active ? "active" : ""}`} onClick={() => { setPage(1); setPlanningVersionFilters((arr) => arr.includes(version) ? arr.filter((v) => v !== version) : [...arr, version]); }}>
+                      <span>v{version}</span>
+                      <strong>{pct}% ready</strong>
+                    </button>
+                  );
+                })}
               </div>
               <div className="metrics-row">
-                <div className="metric-card metric-upgrade static"><span>Systems</span><strong>{planningTotals.systems}</strong></div>
-                <div className="metric-card metric-ready static"><span>Ready</span><strong>{planningTotals.ready}</strong></div>
-                <div className="metric-card metric-upgrade static"><span>Need Update</span><strong>{planningTotals.upgrades}</strong></div>
-                <div className="metric-card metric-blocked static"><span>Blocked</span><strong>{planningTotals.blocked}</strong></div>
+                <button className={`metric-card ${planningSystemFilter === "__systems__" ? "active" : ""}`} style={{ background: "#1f2937", color: "#e5e7eb", borderColor: planningSystemFilter === "__systems__" ? "#fbbf24" : "#334155", boxShadow: planningSystemFilter === "__systems__" ? "0 0 0 2px rgba(251,191,36,0.28) inset" : undefined }} onClick={() => { setPlanningSystemFilter((v) => v === "__systems__" ? "all" : "__systems__"); setPage(1); }}><span style={{ color: "#94a3b8" }}>Systems</span><strong>{planningSystemIds.length}</strong></button>
+                <button className={`metric-card metric-blocked ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningSystemFilter("all"); setPage(1); setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((v) => v !== "blocked") : [...arr, "blocked"]); }}><span>Blocked & Missing</span><strong>{planningRows.filter((x) => x.state === "blocked" || x.hasMissingDependencies).length}</strong></button>
+                <button className={`metric-card metric-upgrade ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningSystemFilter("all"); setPage(1); setPlanningFilters((arr) => arr.includes("update") ? arr.filter((v) => v !== "update") : [...arr, "update"]); }}><span>Updated</span><strong>{planningRows.filter((x) => x.state === "update").length}</strong></button>
+                <button className={`metric-card metric-ready ${planningFilters.includes("ready") ? "active" : ""}`} onClick={() => { setPlanningSystemFilter("all"); setPage(1); setPlanningFilters((arr) => arr.includes("ready") ? arr.filter((v) => v !== "ready") : [...arr, "ready"]); }}><span>Ready</span><strong>{planningRows.filter((x) => x.state === "ready").length}</strong></button>
+                <button className={`metric-card metric-unused ${planningFilters.includes("unused") ? "active" : ""}`} onClick={() => { setPlanningSystemFilter("all"); setPage(1); setPlanningFilters((arr) => arr.includes("unused") ? arr.filter((v) => v !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{planningRows.filter((x) => x.system === "unused").length}</strong></button>
               </div>
-              {planningView === "systems" ? (
-                <table className="report-table"><thead><tr><th>Foundry Target</th><th>Systems</th><th>Ready</th><th>Need Update</th><th>Blocked</th></tr></thead><tbody>
-                  {filteredPlanning.map((row, index) => { const quick = (row.quickStatus as Record<string, unknown> | undefined) || {}; return <tr key={`${asString(row.foundryVersion)}-${index}`}><td>{asString(row.foundryVersion) || "-"}</td><td>{String(quick.systemsTotal || 0)}</td><td>{String(quick.modulesReady || 0)}</td><td>{String(quick.modulesNeedUpdate || 0)}</td><td>{String(quick.modulesBlocked || 0)}</td></tr>; })}
-                </tbody></table>
-              ) : (
-                <>
-                  <div className="metrics-row">
-                    <button className={`metric-card ${unusedFilter === "all" ? "active" : ""}`} onClick={() => setUnusedFilter("all")}><span>All</span><strong>{unusedRows.length}</strong></button>
-                    <button className={`metric-card metric-upgrade ${unusedFilter === "updates" ? "active" : ""}`} onClick={() => setUnusedFilter("updates")}><span>Updates</span><strong>{unusedRows.filter((x) => asBool(x.updateViable)).length}</strong></button>
-                    <button className={`metric-card metric-ready ${unusedFilter === "compatible" ? "active" : ""}`} onClick={() => setUnusedFilter("compatible")}><span>Compatible</span><strong>{unusedRows.filter((x) => asString(x.compatibilityStatus).toLowerCase() === "compatible").length}</strong></button>
-                    <button className={`metric-card metric-blocked ${unusedFilter === "incompatible" ? "active" : ""}`} onClick={() => setUnusedFilter("incompatible")}><span>Incompatible</span><strong>{unusedRows.filter((x) => asString(x.compatibilityStatus).toLowerCase() === "incompatible").length}</strong></button>
-                    <button className={`metric-card metric-blocked ${unusedFilter === "missing" ? "active" : ""}`} onClick={() => setUnusedFilter("missing")}><span>Missing</span><strong>{unusedRows.filter((x) => hasMissingDependenciesSignal(asString(x.reason), asArray(x.missingDependencies).length)).length}</strong></button>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <button className="btn" disabled={unusedModules.length === 0 || actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("force-compat", { modules: unusedModules, targetVersion: model?.targetVersion || "" })}>Force Compat (Visible)</button>
-                  </div>
-                  <table className="report-table"><thead><tr><th>Name</th><th>Installed</th><th>Recommended</th><th>Reason</th><th>Actions</th></tr></thead><tbody>
-                    {filteredUnused.map((row) => {
-                      const moduleId = asString(row.module);
-                      const canUpdate = asBool(row.updateViable);
-                      const missing = hasMissingDependenciesSignal(asString(row.reason), asArray(row.missingDependencies).length);
-                      return <tr key={moduleId}><td>{asString(row.title) || "Unknown module"} <small>({moduleId || "unknown"})</small></td><td>{asString(row.installedVersion) || "-"}</td><td>{asString(row.recommendedVersion) || "-"}</td><td>{asString(row.reason) || "-"}</td><td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{missing ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Missing</button> : canUpdate ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [moduleId], batchSize: 10 })}>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}<button className="btn secondary" disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("force-compat", { modules: [moduleId], targetVersion: model?.targetVersion || "" })}>Force</button></div></td></tr>;
-                    })}
-                  </tbody></table>
-                </>
-              )}
+              <table className="report-table"><thead><tr><th><input type="search" placeholder="Name Search" value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></th><th>Used in</th><th>Update Path</th><th>Reason</th><th>Actions</th></tr></thead><tbody>
+                {planningSystemFilter === "__systems__"
+                  ? planningSystemIds.filter((id) => search.trim() ? id.toLowerCase().includes(search.trim().toLowerCase()) : true).map((id) => <tr key={`planning-system-${id}`}><td>{id} <small>(system)</small></td><td>-</td><td>-</td><td>Installed system in planning dataset.</td><td><button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button></td></tr>)
+                  : planningPage.rows.map((row) => <tr key={`${row.targetVersion}-${row.module}-${row.system}`}><td>{row.hasMissingDependencies ? <span title="Missing dependencies" style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}{row.title} <small>({row.module})</small></td><td>{row.system}</td><td>{(row.installedVersion || "-")} {" -> "} {row.releaseUrl ? <a href={row.releaseUrl} target="_blank" rel="noreferrer">{(row.recommendedVersion || "-")}</a> : (row.recommendedVersion || "-")} <small>(v{row.targetVersion})</small></td><td>{`${row.reason || "-"} | ${compatibilitySummary(row.compatibility)}`}</td><td>{row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button> : row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <button className="btn" style={{ background: "#22c55e", color: "#052e16" }} disabled>Ready</button>}</td></tr>)}
+              </tbody></table>
+              {planningSystemFilter !== "__systems__" ? <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="btn secondary" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button><span style={{ alignSelf: "center" }}>{planningPage.page} / {planningPage.totalPages}</span><button className="btn secondary" onClick={() => setPage((p) => Math.min(planningPage.totalPages, p + 1))}>Next</button></div> : null}
             </article>
           ) : null}
 

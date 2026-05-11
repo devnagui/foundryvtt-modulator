@@ -215,36 +215,64 @@ def _extract_enabled_modules_from_leveldb_value(value: str) -> set[str]:
 
 
 def _extract_enabled_modules_from_text(text: str) -> set[str]:
+    # Fast path for compact LevelDB dump style.
     marker = '"key":"core.moduleConfiguration","value":"'
     start = text.find(marker)
-    if start == -1:
-        return set()
-    start += len(marker)
-    value_parts: list[str] = []
-    escaped = False
-    for char in text[start:]:
-        if escaped:
+    if start != -1:
+        start += len(marker)
+        value_parts: list[str] = []
+        escaped = False
+        for char in text[start:]:
+            if escaped:
+                value_parts.append(char)
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+                continue
+            if char == '"':
+                break
             value_parts.append(char)
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            continue
-        if char == '"':
-            break
-        value_parts.append(char)
-    if not value_parts:
-        return set()
-    raw_value = "".join(value_parts)
-    cleaned_value = raw_value.replace('\\"', '"')
-    if cleaned_value.startswith("{") and cleaned_value.endswith("}"):
-        try:
-            payload = json.loads(cleaned_value)
-            return {str(module_id) for module_id, enabled in payload.items() if enabled is True}
-        except json.JSONDecodeError:
-            pass
+        if value_parts:
+            raw_value = "".join(value_parts)
+            try:
+                cleaned_value = json.loads(f'"{raw_value}"')
+            except Exception:
+                cleaned_value = raw_value.replace('\\"', '"')
+            extracted = _extract_enabled_modules_from_config_blob(cleaned_value)
+            if extracted:
+                return extracted
 
+    # Tolerant path for variants with whitespace/new keys.
+    pattern = re.compile(
+        r'"key"\s*:\s*"core\.moduleConfiguration"\s*,\s*"value"\s*:\s*"((?:\\.|[^"\\])*)"',
+        flags=re.DOTALL,
+    )
+    for match in pattern.finditer(text):
+        encoded_value = match.group(1)
+        try:
+            decoded_value = json.loads(f'"{encoded_value}"')
+        except Exception:
+            decoded_value = encoded_value.replace('\\"', '"')
+        extracted = _extract_enabled_modules_from_config_blob(decoded_value)
+        if extracted:
+            return extracted
+
+    return set()
+
+
+def _extract_enabled_modules_from_config_blob(blob: str) -> set[str]:
+    cleaned = str(blob or "").strip()
+    if not cleaned:
+        return set()
+    if cleaned.startswith("{") and cleaned.endswith("}"):
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            return {str(module_id) for module_id, enabled in payload.items() if enabled is True}
     enabled_modules: set[str] = set()
-    for match in re.finditer(r'"([^"]+)":true', cleaned_value):
+    for match in re.finditer(r'"([^"]+)"\s*:\s*true', cleaned):
         enabled_modules.add(match.group(1))
     return enabled_modules

@@ -5,7 +5,12 @@ from pathlib import Path
 
 from resolver.foundry import detect_foundry_version
 from resolver.cli import _normalize_data_root
-from resolver.local import build_local_dependency_map, load_modules, load_system_versions
+from resolver.local import (
+    _extract_enabled_modules_from_text,
+    build_local_dependency_map,
+    load_modules,
+    load_system_versions,
+)
 
 
 class TestLocalAndFoundry(unittest.TestCase):
@@ -137,6 +142,14 @@ class TestLocalAndFoundry(unittest.TestCase):
             modules = load_modules(str(modules_root))
             module_ids = sorted([m.module_id for m in modules])
             self.assertEqual(module_ids, ["valid-module"])
+
+    def test_extract_enabled_modules_from_text_tolerates_spaces(self) -> None:
+        blob = (
+            '{"key": "core.moduleConfiguration", '
+            '"value": "{\\"midi-qol\\":true,\\"monks-tokenbar\\":true,\\"dae\\":false}"}'
+        )
+        enabled = _extract_enabled_modules_from_text(blob)
+        self.assertEqual(enabled, {"midi-qol", "monks-tokenbar"})
 
 
 if __name__ == "__main__":

@@ -1871,7 +1871,7 @@ async function refreshStatus() {
       `Password configured: <b>${auth.passwordConfigured}</b> | Authenticated: <b>${auth.authenticated}</b>`;
     setAuthUi(auth);
     if (auth.authenticated) {
-      window.location.replace('/api/report/v3');
+      window.location.replace('/app/report');
     } else {
     }
   } catch (err) {
@@ -1886,7 +1886,7 @@ async function setupPassword() {
   try {
     button.disabled = true;
     await api('/api/auth/setup','POST',{username,password,confirmPassword});
-    window.location.replace('/api/report/v3');
+    window.location.replace('/app/report');
     return;
   } catch (err) {
     setError(String(err?.body?.message || 'Unable to create password.'));
@@ -1902,7 +1902,7 @@ async function login() {
   try {
     button.disabled = true;
     await api('/api/auth/login','POST',{username,password});
-    window.location.replace('/api/report/v3');
+    window.location.replace('/app/report');
     return;
   } catch (err) {
     setError(String(err?.body?.message || 'Login failed.'));
@@ -1991,7 +1991,7 @@ def _html_report_v3_first_run() -> str:
       if (job.status === "success") {
         setProgress(100);
         setStatus("Done. Redirecting...");
-        window.location.replace("/api/report/v3?t=" + Date.now());
+        window.location.replace("/app/report?t=" + Date.now());
         return;
       }
       if (job.status === "failed") {
@@ -2082,5 +2082,6 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
 
 
