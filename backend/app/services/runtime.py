@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
-import os
-import socket
+import subprocess
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.request import Request, urlopen
 
-from service.server import (
+from resolver.db_queries import load_apply_history
+from resolver.foundry import detect_foundry_version
+from resolver.local import load_system_versions
+from resolver.models import ModuleRecord
+from resolver.scoring import candidate_sort_key, satisfies_release_constraints
+from resolver.sources import fetch_release_history
+
+from .core import (
     ActionEngine,
     AuthStore,
     MaintenanceLock,
@@ -17,18 +23,11 @@ from service.server import (
     RequestRateLimiter,
     RuntimeConfigStore,
     _append_audit,
-    _build_candidate_module,
-    _execute_action_job,
     _foundry_process_probe,
     _normalize_modules,
-    _run_module_health_check,
-    _suggest_best_release_for_module,
     _utc_now_iso,
     _validate_foundry_root_path,
-    detect_foundry_version,
-    load_apply_history,
     load_config,
-    load_system_versions,
 )
 
 
@@ -83,13 +82,7 @@ def _ensure_worker(runtime: AppRuntime) -> None:
                 _append_audit(runtime.config, "action_worker_started", {"jobId": job.job_id, "action": job.action})
                 try:
                     runtime.action_engine.set_progress(job.job_id, 60)
-                    result = _execute_action_job(
-                        runtime.config,
-                        runtime.config_store,
-                        runtime.lock_store,
-                        job.action,
-                        job.payload,
-                    )
+                    result = _execute_action_job(runtime, job.action, job.payload)
                     runtime.action_engine.set_progress(job.job_id, 95)
                     runtime.action_engine.complete(job.job_id, ok=True, result=result)
                     _append_audit(runtime.config, "action_worker_success", {"jobId": job.job_id, "action": job.action})
@@ -112,6 +105,8 @@ def request_principal(client_host: str | None) -> str:
 
 
 def foundry_status(runtime: AppRuntime) -> dict[str, Any]:
+    import socket
+
     online_tcp = False
     try:
         with socket.create_connection((runtime.config.foundry_host, runtime.config.foundry_port), timeout=1.5):
@@ -187,12 +182,232 @@ def rollback_plan(runtime: AppRuntime, scan_run_id: int) -> dict[str, Any]:
     }
 
 
+def _run_module_health_check(data_root: str) -> dict[str, Any]:
+    modules_root = Path(data_root) / "Data" / "modules"
+    rows: list[dict[str, Any]] = []
+    if not modules_root.exists():
+        return {"ok": False, "error": "modules_root_not_found", "path": str(modules_root), "rows": []}
+    for module_json in sorted(modules_root.glob("*/module.json")):
+        module_dir = module_json.parent
+        module_id = module_dir.name
+        normalized = module_id.lower()
+        if normalized.startswith("_backup_") or ".bak." in normalized:
+            continue
+        issues: list[str] = []
+        warnings: list[str] = []
+        try:
+            manifest = json.loads(module_json.read_text(encoding="utf-8"))
+        except Exception as exc:
+            rows.append({"module": module_id, "title": module_id, "status": "invalid", "issues": [f"manifest_read_error:{exc}"], "warnings": []})
+            continue
+        title = str(manifest.get("title") or module_id)
+        if manifest.get("minimumCoreVersion") is not None or manifest.get("compatibleCoreVersion") is not None:
+            warnings.append("legacy_core_compat_fields_detected")
+        if not isinstance(manifest.get("compatibility"), dict):
+            warnings.append("compatibility_object_missing")
+        for key in ("styles", "scripts", "esmodules"):
+            values = manifest.get(key) or []
+            if not isinstance(values, list):
+                warnings.append(f"{key}_is_not_array")
+                continue
+            for rel in values:
+                rel_path = str(rel or "").strip()
+                if rel_path and not (module_dir / rel_path).exists():
+                    issues.append(f"missing_file:{rel_path}")
+        relationships = manifest.get("relationships") or {}
+        requires = relationships.get("requires") or []
+        if isinstance(requires, list):
+            for dep in requires:
+                if isinstance(dep, dict) and str(dep.get("type") or "") == "module":
+                    dep_id = str(dep.get("id") or "")
+                    if dep_id and not (modules_root / dep_id).exists():
+                        warnings.append(f"missing_dependency:{dep_id}")
+        rows.append({"module": str(manifest.get("id") or module_id), "title": title, "status": "ok" if not issues else "invalid", "issues": sorted(set(issues)), "warnings": sorted(set(warnings)), "manifestPath": str(module_json)})
+    return {"ok": True, "path": str(modules_root), "count": len(rows), "invalidCount": len([r for r in rows if r.get("status") != "ok"]), "warningCount": sum(len(r.get("warnings") or []) for r in rows), "rows": rows}
+
+
 def module_health(runtime: AppRuntime) -> dict[str, Any]:
     data_root = runtime.config_store.get_data_root() or runtime.config.data_root
     ok, normalized_root, details = _validate_foundry_root_path(data_root)
     if not ok:
         raise ValueError(details.get("message") or "Invalid Foundry root.")
     return _run_module_health_check(normalized_root)
+
+
+def _evaluate_apply_health_gate(data_root: str, selected_modules: list[str]) -> dict[str, Any]:
+    health = _run_module_health_check(data_root)
+    if not bool(health.get("ok")):
+        return {"ok": False, "blocked": True, "reason": str(health.get("error") or "module_health_unavailable"), "count": 0, "rows": []}
+    rows = health.get("rows") or []
+    selected_set = {str(item).strip().lower() for item in (selected_modules or []) if str(item).strip()}
+    scoped = [row for row in rows if not selected_set or str((row or {}).get("module") or "").strip().lower() in selected_set]
+    blocking_rows: list[dict[str, Any]] = []
+    for row in scoped:
+        issues = row.get("issues") or []
+        warnings = row.get("warnings") or []
+        has_missing_dependency = any(str(item).startswith("missing_dependency:") for item in warnings)
+        if issues or has_missing_dependency:
+            blocking_rows.append({"module": row.get("module"), "title": row.get("title"), "issues": issues if isinstance(issues, list) else [], "warnings": warnings if isinstance(warnings, list) else []})
+    return {"ok": True, "blocked": len(blocking_rows) > 0, "reason": "module_health_gate_failed" if blocking_rows else "module_health_gate_ok", "count": len(scoped), "rows": blocking_rows}
+
+
+def _build_cli_args_from_action(action: str, payload: dict[str, Any]) -> tuple[list[str], bool, str]:
+    normalized_action = str(action or "").strip().lower()
+    modules = _normalize_modules(payload.get("modules"))
+    batch_size = max(10, int(payload.get("batchSize") or 10))
+    if normalized_action == "dry-run":
+        args = ["--dry-run"]
+        for module_id in modules:
+            args.extend(["--module", module_id])
+        args.extend(["--batch-size", str(batch_size)])
+        return args, False, "dry-run"
+    if normalized_action == "apply":
+        args = ["--apply"]
+        for module_id in modules:
+            args.extend(["--module", module_id])
+        if bool(payload.get("allowDowngrade")):
+            args.append("--allow-downgrade")
+        args.extend(["--batch-size", str(batch_size)])
+        return args, True, "apply"
+    if normalized_action == "force-compat":
+        target_version = str(payload.get("targetVersion") or "").strip()
+        if not target_version:
+            raise ValueError("invalid_target_version")
+        if not modules:
+            raise ValueError("modules_required")
+        args: list[str] = []
+        for module_id in modules:
+            args.extend(["--force-compat-module", module_id])
+        args.extend(["--force-compat-version", target_version])
+        return args, True, "force-compat"
+    if normalized_action == "cleanup-backups":
+        args = ["--cleanup-backups"]
+        all_modules = bool(payload.get("all"))
+        if all_modules:
+            args.append("--cleanup-backup-all")
+        else:
+            if not modules:
+                raise ValueError("cleanup_scope_required")
+            for module_id in modules:
+                args.extend(["--cleanup-backup-module", module_id])
+        return args, True, "cleanup-backups"
+    raise ValueError("unsupported_action")
+
+
+def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    effective_data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    modules = _normalize_modules(payload.get("modules"))
+    extra_args, maintenance, action_name = _build_cli_args_from_action(action, payload)
+    lock_payload: dict[str, Any] | None = None
+    if maintenance:
+        lock_payload = runtime.lock_store.acquire(action=action_name)
+    try:
+        preflight_gate: dict[str, Any] | None = None
+        if action_name == "apply":
+            preflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+            if preflight_gate.get("blocked"):
+                sample = (preflight_gate.get("rows") or [])[:5]
+                details = ", ".join(str((item or {}).get("module") or "?") for item in sample)
+                raise RuntimeError(f"Apply blocked by module health gate. Fix invalid/missing dependencies first. Affected: {details or 'unknown'}")
+        cmd = [
+            runtime.config.python_bin,
+            "-m",
+            "resolver.cli",
+            "--data-root",
+            effective_data_root,
+            "--cache-dir",
+            runtime.config.cache_dir,
+            "--database-path",
+            str(runtime.config.state_dir / "resolver.db"),
+            "--skip-foundry-service-control",
+            "--json-output",
+            str(runtime.config.reports_dir / "module-resolver-latest.json"),
+            "--html-report",
+            str(runtime.config.reports_dir / "module-resolver-latest.html"),
+            "--log-file",
+            str(runtime.config.reports_dir / "module-resolver-latest.log"),
+            *extra_args,
+        ]
+        result = subprocess.run(cmd, cwd=str(runtime.config.tool_root), capture_output=True, text=True, check=False)
+        output = {
+            "ok": result.returncode == 0,
+            "returnCode": result.returncode,
+            "command": cmd,
+            "stdout": (result.stdout or "")[-20000:],
+            "stderr": (result.stderr or "")[-20000:],
+            "lock": lock_payload,
+            "generatedAt": _utc_now_iso(),
+            "dataRoot": effective_data_root,
+            "preflight": preflight_gate,
+        }
+        if result.returncode != 0:
+            raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={result.returncode}")
+        if action_name == "apply":
+            postflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+            output["postflight"] = postflight_gate
+            if postflight_gate.get("blocked"):
+                output["ok"] = False
+                raise RuntimeError("Apply finished but post-check found invalid modules or missing dependencies.")
+        return output
+    finally:
+        if maintenance:
+            runtime.lock_store.release()
+
+
+def _build_candidate_module(module_id: str, manifest_url: str, project_url: str) -> ModuleRecord:
+    clean_id = str(module_id or "").strip()
+    if manifest_url:
+        request = Request(manifest_url, headers={"User-Agent": "foundry-module-version-resolver/0.1"})
+        with urlopen(request, timeout=20) as response:
+            manifest = json.load(response)
+        resolved_id = str(manifest.get("id") or clean_id)
+        return ModuleRecord(
+            module_id=resolved_id,
+            title=str(manifest.get("title") or resolved_id),
+            version=str(manifest.get("version") or "0.0.0"),
+            manifest_url=str(manifest.get("manifest") or manifest_url),
+            project_url=str(manifest.get("url") or project_url or ""),
+            path="",
+            raw_manifest=manifest,
+        )
+    return ModuleRecord(
+        module_id=clean_id,
+        title=clean_id,
+        version="0.0.0",
+        manifest_url=None,
+        project_url=project_url or None,
+        path="",
+        raw_manifest={"id": clean_id, "version": "0.0.0", "compatibility": {}},
+    )
+
+
+def _suggest_best_release_for_module(
+    module: ModuleRecord,
+    target_foundry_version: str,
+    installed_system_versions: dict[str, str],
+    cache_dir: str,
+) -> dict[str, Any]:
+    releases, warnings = fetch_release_history(module, cache_dir=cache_dir)
+    best = None
+    valid = [item for item in releases if satisfies_release_constraints(item, target_foundry_version, installed_system_versions)]
+    if valid:
+        best = sorted(valid, key=lambda item: candidate_sort_key(item, target_foundry_version, installed_system_versions), reverse=True)[0]
+    elif releases:
+        best = releases[0]
+    if not best:
+        return {"module": module.module_id, "reason": "No release available.", "checkedReleases": 0, "warnings": warnings}
+    return {
+        "module": module.module_id,
+        "title": module.title,
+        "installedVersion": module.version,
+        "recommendedVersion": best.version,
+        "manifestUrl": best.manifest_url,
+        "downloadUrl": best.download_url,
+        "compatibility": best.compatibility,
+        "source": best.source,
+        "checkedReleases": len(releases),
+        "warnings": warnings,
+    }
 
 
 def suggest_module(runtime: AppRuntime, module_id: str, manifest_url: str, project_url: str) -> dict[str, Any]:
@@ -216,14 +431,7 @@ def suggest_module(runtime: AppRuntime, module_id: str, manifest_url: str, proje
         installed_system_versions=load_system_versions(normalized_root),
         cache_dir=runtime.config.cache_dir,
     )
-    return {
-        "ok": True,
-        "moduleId": clean_module_id,
-        "foundryVersion": foundry_version,
-        "foundryVersionSource": source,
-        "dataRoot": normalized_root,
-        "suggestion": suggestion,
-    }
+    return {"ok": True, "moduleId": clean_module_id, "foundryVersion": foundry_version, "foundryVersionSource": source, "dataRoot": normalized_root, "suggestion": suggestion}
 
 
 def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, project_url: str) -> dict[str, Any]:
@@ -240,11 +448,7 @@ def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, p
         installed_system_versions=load_system_versions(runtime.config_store.get_data_root() or runtime.config.data_root),
         cache_dir=runtime.config.cache_dir,
     )
-    saved = runtime.module_source_store.upsert_source(
-        module_id=clean_module_id,
-        manifest_url=clean_manifest,
-        project_url=clean_project,
-    )
+    saved = runtime.module_source_store.upsert_source(module_id=clean_module_id, manifest_url=clean_manifest, project_url=clean_project)
     return {"ok": True, "saved": saved, "suggestion": suggestion}
 
 

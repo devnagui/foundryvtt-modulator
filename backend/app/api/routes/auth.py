@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..deps import clear_session_cookies, require_rate_limit, runtime, set_session_cookies
+from ...services.core import _normalize_username
 from ...services.runtime import request_principal
 
 router = APIRouter(prefix="/auth")
@@ -47,8 +48,6 @@ def login(req: Request, body: dict, response: Response) -> dict:
         raise HTTPException(status_code=412, detail={"error": "password_not_configured"})
     username = str(body.get("username") or "").strip()
     if rt.auth_store.get_username():
-        from service.server import _normalize_username
-
         try:
             username = _normalize_username(username)
         except ValueError as exc:

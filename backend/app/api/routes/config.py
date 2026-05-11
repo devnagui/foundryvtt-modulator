@@ -3,8 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from ..deps import require_auth, require_csrf, require_rate_limit, runtime
+from ...services.core import _pick_folder_native, _validate_foundry_root_path
 from ...services.runtime import save_module_source, set_foundry_root
-from service.server import _pick_folder_native, _validate_foundry_root_path
 
 router = APIRouter(prefix="/config")
 

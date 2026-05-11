@@ -16,7 +16,7 @@
   - Backup/snapshot transacional (metadados e historico prontos; rollback automatico ainda pendente)
   - Limpeza de legado/stale (varios itens removidos; auditoria final ainda pendente)
   - Module Health Check (endpoint + acao na UI + gate inicial no apply entregues; validacoes profundas finais ainda pendentes)
-  - Migracao FastAPI/Clean (API principal em `backend/app` entregue; remocao total do servidor legado ainda pendente)
+  - Migracao FastAPI/Clean (API principal em `backend/app` entregue; desacoplamento direto de `service/server.py` no backend concluido; desligamento final do legado ainda pendente)
 
 - Pendente principal:
   - Automacao completa de rollback por lote
