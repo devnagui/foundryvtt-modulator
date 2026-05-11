@@ -6,6 +6,51 @@
 - [x] 4. Adicionar empacotamento e self-hosting multiplataforma (`.deb`, Windows, Docker, `.app`)
 - [x] 5. Configurar pipeline CI/CD (testes, build, release)
 
+## Novo plano: Migracao de UI (API-first)
+
+- [ ] Arquitetura alvo
+  - Backend (Python): FastAPI
+  - Frontend (UI): React + TypeScript (Vite)
+  - Contrato entre camadas: JSON versionado (`/api/v1/...`)
+  - Auth: cookie HttpOnly + CSRF
+  - Decisao: nao usar JSF (stack Java fora do foco atual)
+
+- [ ] Modelo de camadas (MVC + Clean/Hexagonal na borda)
+  - Model: entidades e regras de dominio (Foundry, modulos, versoes, dependencias)
+  - Controller: rotas HTTP (FastAPI routers)
+  - View: React (componentes, paginas, estado de UI)
+  - Services/Use Cases: regras de negocio entre controller e model
+
+- [ ] Estrutura de diretorios sugerida
+  - `backend/app/api/`
+  - `backend/app/services/`
+  - `backend/app/domain/`
+  - `backend/app/repositories/`
+  - `frontend/src/pages/`
+  - `frontend/src/components/`
+  - `frontend/src/features/report-v3/`
+  - `frontend/src/services/api.ts`
+
+- [ ] Estrategia de migracao sem quebra
+  - [x] Congelar novo HTML no Python (somente manutencao corretiva)
+  - [x] Extrair endpoints JSON para tudo que o `report_v3` usa
+  - [x] Subir React com login + report_v3 primeiro
+  - [x] Feature flag `USE_NEW_UI=true` para alternar UI antiga/nova
+  - [x] Migrar telas restantes por fatias (config, actions, add module, status)
+  - Remover renderizacao HTML legacy no backend ao atingir paridade
+
+- [ ] Ferramentas recomendadas
+  - Backend: FastAPI, Pydantic, Uvicorn
+  - Frontend: React, TypeScript, TanStack Query, React Router
+  - Qualidade: pytest, Playwright (E2E), Ruff, mypy
+  - Contrato API: OpenAPI + geracao de client TypeScript
+
+- [ ] Antes da migracao: limpeza de legado/stale
+  - Mapear e remover pontes antigas e codigo morto sem uso em runtime/testes
+  - Validar cada remocao com suite de testes
+  - Revisar arquivo de licenca e tags/headers extras para normalizacao
+  - Revisar compliance legal com licenca/termos do Foundry VTT para integracoes e distribuicao
+
 ## Entregues no Item 1
 
 - `.github/copilot-instructions.md`
@@ -84,3 +129,60 @@
   - protecao CSRF para endpoints autenticados `POST` (`X-CSRF-Token`)
   - rate limit global por IP (`RESOLVER_REQUEST_RATE_LIMIT_PER_MINUTE`)
   - auditoria inclui `userAgent` e `origin`
+
+## Planning UI e Workflow (novo)
+
+- [ ] Melhorar a tela de Planning (acoes por fases)
+  - Exibir "stability score" por target Foundry com semaforo:
+    - verde: alta cobertura / poucos bloqueios
+    - amarelo: cobertura media / dependencias faltantes
+    - vermelho: muitos bloqueios / risco alto
+  - Unificar visual com Current:
+    - cores iguais para `blocked`, `update`, `ready`, `missing`
+    - coluna de acao orientada por botao (sem labels duplicadas)
+  - Adicionar comparativo por versao alvo:
+    - total de modulos atualizaveis
+    - total bloqueado
+    - total com missing dependency
+    - percentual de cobertura esperado
+  - Adicionar recomendacao automatica de "best target version":
+    - criterio ponderado por cobertura, bloqueios, missing, e confianca
+  - Adicionar explicacao de impacto:
+    - "por que essa versao e recomendada"
+    - "quais modulos/sistemas impedem targets superiores"
+
+- [ ] Definir workflow oficial de upgrade (produto)
+  - Fluxo recomendado: atualizar modulos/sistemas primeiro, atualizar Foundry depois
+  - Passo 1: dry-run e classificacao (current/planning)
+  - Passo 2: aplicar updates de modulos/sistemas no target atual
+  - Passo 3: criar snapshot/backup completo antes da troca de Foundry
+  - Passo 4: atualizar Foundry para versao alvo escolhida
+  - Passo 5: rodar novo scan e validar regressao pos-upgrade
+  - Passo 6: opcao de rollback guiado usando backups gerados
+
+- [ ] Backup/snapshot para mudancas em lote
+  - Criar snapshot transacional antes de `Update All`
+  - Registrar manifest/versionamento pre e pos por modulo
+  - Expor restauracao por lote (rollback do batch inteiro)
+  - Exibir historico de snapshots na UI (data, alvo, resultado)
+
+- [ ] Instalacao de modulos + higiene Foundry (novo)
+  - Validar pacote baixado antes de aplicar:
+    - verificar arquivos declarados no manifest (`styles`, `esmodules`, `scripts`)
+    - abortar apply se arquivos obrigatorios nao existirem
+  - Bloquear instalacao de manifests legados/incompativeis:
+    - sinalizar `minimumCoreVersion`/`compatibleCoreVersion` como legado
+    - preferir releases com `compatibility` valido para a versao alvo
+  - Higiene automatica de diretorios em `Data/modules`:
+    - ignorar e opcionalmente limpar `_backup_*` e placeholders `{{...}}`
+  - Criar tela/acao de "Module Health Check":
+    - detectar modulos invalidos para o Foundry atual
+    - sugerir corrigir, reinstalar, remover ou restaurar backup
+
+- [ ] Fluxo para dependencias faltantes sem URL conhecida
+  - Na tabela Current, trocar acao `Get` por `Find Source` quando faltar `release/manifest URL`
+  - `Find Source` abre nova aba com busca pronta (Google/GitHub) usando nome + id do modulo
+  - Adicionar modal `Paste URL` para usuario colar `manifest/module.json/release URL`
+  - Backend valida URL informada (manifest valido + compatibilidade + dependencias)
+  - Salvar URL validada em catalogo local para reuso
+  - Atualizar linha automaticamente: de `Blocked` para `Get/Update` quando houver metadata valida

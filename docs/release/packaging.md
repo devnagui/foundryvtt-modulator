@@ -92,7 +92,9 @@ chmod +x packaging/macos/uninstall_launchd.sh
 ## CI/CD release
 
 - `CI` workflow runs tests on push/PR.
+- `CI` also builds frontend (`frontend/`) with Node 20.
 - `Release` workflow runs on tags `v*`, builds platform artifacts, generates `SHA256SUMS.txt`, and publishes GitHub Release assets.
+- `Release` also builds frontend before packaging backend artifacts.
 
 ## Notes
 

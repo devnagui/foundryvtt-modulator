@@ -3,7 +3,7 @@ from __future__ import annotations
 from .versioning import compare_versions
 
 
-def build_report_view_v2(payload: dict) -> dict:
+def build_report_view_v3(payload: dict) -> dict:
     current_foundry = str(payload.get("targetVersion") or "")
     dependency_reference_counts = _build_dependency_reference_counts(payload)
     stable_future_releases = [
@@ -32,7 +32,7 @@ def build_report_view_v2(payload: dict) -> dict:
     default_version = foundry_options[0]["version"] if foundry_options else current_foundry
 
     return {
-        "key": "v2",
+        "key": "v3",
         "generatedAt": payload.get("generatedAt"),
         "currentFoundryVersion": current_foundry,
         "cacheStatus": payload.get("cacheStatus") or {},

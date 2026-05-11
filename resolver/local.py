@@ -21,7 +21,7 @@ def load_modules(modules_dir: str, module_filter: str | None = None) -> list[Mod
     modules: list[ModuleRecord] = []
     for module_json in sorted(root.glob("*/module.json")):
         parent_name = module_json.parent.name
-        if ".bak." in parent_name:
+        if _is_ignored_module_dir_name(parent_name):
             continue
         with module_json.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
@@ -40,6 +40,17 @@ def load_modules(modules_dir: str, module_filter: str | None = None) -> list[Mod
             )
         )
     return modules
+
+
+def _is_ignored_module_dir_name(name: str) -> bool:
+    normalized = str(name or "").strip().lower()
+    if not normalized:
+        return False
+    if ".bak." in normalized:
+        return True
+    if normalized.startswith("_backup_"):
+        return True
+    return False
 
 
 def load_system_versions(data_root: str) -> dict[str, str]:

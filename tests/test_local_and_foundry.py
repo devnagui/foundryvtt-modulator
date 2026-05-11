@@ -109,6 +109,35 @@ class TestLocalAndFoundry(unittest.TestCase):
             self.assertEqual(dep_map["mod-a"]["transitive"], ["mod-b", "mod-c"])
             self.assertEqual(systems["dnd5e"], "3.2.1")
 
+    def test_load_modules_ignores_backup_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            modules_root = Path(tmp) / "Data" / "modules"
+            modules_root.mkdir(parents=True)
+
+            valid = modules_root / "valid-module"
+            backup = modules_root / "_backup_20260510_midisrc_201337"
+            bak_style = modules_root / "some.bak.module"
+            valid.mkdir()
+            backup.mkdir()
+            bak_style.mkdir()
+
+            (valid / "module.json").write_text(
+                json.dumps({"id": "valid-module", "title": "Valid", "version": "1.0.0"}),
+                encoding="utf-8",
+            )
+            (backup / "module.json").write_text(
+                json.dumps({"id": "{{name}}", "title": "{{title}}", "version": "{{version}}"}),
+                encoding="utf-8",
+            )
+            (bak_style / "module.json").write_text(
+                json.dumps({"id": "old", "title": "Old", "version": "0.1.0"}),
+                encoding="utf-8",
+            )
+
+            modules = load_modules(str(modules_root))
+            module_ids = sorted([m.module_id for m in modules])
+            self.assertEqual(module_ids, ["valid-module"])
+
 
 if __name__ == "__main__":
     unittest.main()

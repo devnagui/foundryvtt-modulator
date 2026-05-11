@@ -15,7 +15,7 @@ from pathlib import Path
 from .apply import apply_recommendation, force_module_compatibility
 from .db import DEFAULT_MAX_SCAN_RUNS, default_database_path, maintain_database, persist_scan_snapshot
 from .db_queries import load_database_summary, load_package_hints
-from .controllers.report_controller import attach_report_views, render_report_html, render_report_html_v3
+from .controllers.report_controller import attach_report_views, render_report_html
 from .foundry import detect_foundry_version
 from .future_upgrade import build_current_system_upgrade_view, build_future_upgrade_decision
 from .local import (
@@ -187,14 +187,7 @@ def _parse_expected_versions(raw_values: list[str] | None) -> dict[str, str]:
     return expected_versions
 
 
-def _v3_html_path_for(html_report: str) -> Path:
-    path = Path(html_report)
-    if path.suffix.lower() == ".html":
-        return path.with_name(f"{path.stem}-v3{path.suffix}")
-    return Path(str(path) + "-v3.html")
-
-
-def _sync_public_reports(html_report: str | None, json_output: str | None, html_report_v3: str | None = None) -> None:
+def _sync_public_reports(html_report: str | None, json_output: str | None) -> None:
     PUBLIC_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     if html_report:
         html_path = Path(html_report)
@@ -202,13 +195,6 @@ def _sync_public_reports(html_report: str | None, json_output: str | None, html_
         if html_path.resolve() == latest_html.resolve():
             shutil.copyfile(html_path, PUBLIC_REPORTS_DIR / "index.html")
             logging.info("Published HTML report to %s", PUBLIC_REPORTS_DIR / "index.html")
-            v3_path = Path(html_report_v3) if html_report_v3 else _v3_html_path_for(html_report)
-            latest_v3 = DEFAULT_REPORTS_DIR / "module-resolver-latest-v3.html"
-            if v3_path.exists() and v3_path.resolve() == latest_v3.resolve():
-                public_v3_dir = PUBLIC_REPORTS_DIR / "v3"
-                public_v3_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(v3_path, public_v3_dir / "index.html")
-                logging.info("Published HTML report v3 to %s", public_v3_dir / "index.html")
     if json_output:
         json_path = Path(json_output)
         latest_json = DEFAULT_REPORTS_DIR / "module-resolver-latest.json"
@@ -415,12 +401,12 @@ def _load_blocked_modules_for_refresh(report_path: str, limit: int) -> set[str]:
             return
         counts[clean] = counts.get(clean, 0) + 1
 
-    v2 = ((payload.get("reportViews") or {}).get("v2")) or {}
-    current = v2.get("currentSystemUpgrades") or {}
+    v3 = ((payload.get("reportViews") or {}).get("v3")) or {}
+    current = v3.get("currentSystemUpgrades") or {}
     for row in current.get("rows") or []:
         for item in row.get("blockedModuleRows") or []:
             _add(item.get("module"))
-    planner = v2.get("systemUpgradePlanner") or {}
+    planner = v3.get("systemUpgradePlanner") or {}
     for target in planner.get("targets") or []:
         for item in target.get("blockedModules") or []:
             _add(item.get("module"))
@@ -1095,19 +1081,12 @@ def main() -> int:
         _collect_payload_package_ids(payload),
     )
     attach_report_views(payload)
-    resolved_html_report_v3: str | None = None
     if resolved_html_report:
         html = render_report_html(payload)
         with open(resolved_html_report, "w", encoding="utf-8") as handle:
             handle.write(html)
         payload["htmlReport"] = resolved_html_report
         logging.info("HTML report written to %s", resolved_html_report)
-        html_v3 = render_report_html_v3(payload)
-        resolved_html_report_v3 = str(_v3_html_path_for(resolved_html_report))
-        with open(resolved_html_report_v3, "w", encoding="utf-8") as handle:
-            handle.write(html_v3)
-        payload["htmlReportV3"] = resolved_html_report_v3
-        logging.info("HTML report v3 written to %s", resolved_html_report_v3)
     payload["jsonOutput"] = resolved_json_output
     with open(resolved_json_output, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
@@ -1119,16 +1098,16 @@ def main() -> int:
                 payload["postApplyRefresh"] = {"status": "ok", "mode": "full-dry-run"}
             else:
                 payload["postApplyRefresh"] = {"status": "failed", "mode": "full-dry-run-fallback-applied-report"}
-                _sync_public_reports(resolved_html_report, resolved_json_output, resolved_html_report_v3)
+                _sync_public_reports(resolved_html_report, resolved_json_output)
         else:
             # Nothing was changed on disk; refresh latest/public from current state to keep the page in sync.
             if _run_post_apply_refresh(args):
                 payload["postApplyRefresh"] = {"status": "ok", "mode": "full-dry-run-no-changes"}
             else:
                 payload["postApplyRefresh"] = {"status": "failed", "mode": "full-dry-run-no-changes-fallback-applied-report"}
-                _sync_public_reports(resolved_html_report, resolved_json_output, resolved_html_report_v3)
+                _sync_public_reports(resolved_html_report, resolved_json_output)
     else:
-        _sync_public_reports(resolved_html_report, resolved_json_output, resolved_html_report_v3)
+        _sync_public_reports(resolved_html_report, resolved_json_output)
     _print_human_summary(
         payload,
         dry_run=args.dry_run,

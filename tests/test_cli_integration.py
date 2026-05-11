@@ -68,8 +68,7 @@ class TestCliIntegration(unittest.TestCase):
                 patch("resolver.cli.fetch_release_history", return_value=([], [])), \
                 patch("resolver.cli.fetch_system_release_history", return_value=([], [])), \
                 patch("resolver.cli.list_future_foundry_releases", return_value=[]), \
-                patch("resolver.cli.render_report_html", return_value="<html>v2</html>"), \
-                patch("resolver.cli.render_report_html_v3", return_value="<html>v3</html>"), \
+                patch("resolver.cli.render_report_html", return_value="<html>v3</html>"), \
                 patch("resolver.cli._is_foundry_running", return_value=(False, "ok")):
                 exit_code = cli.main()
             logging.shutdown()
@@ -77,7 +76,6 @@ class TestCliIntegration(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(report_json.exists())
             self.assertTrue(report_html.exists())
-            self.assertTrue((root / "report-v3.html").exists())
 
             payload = json.loads(report_json.read_text(encoding="utf-8"))
             golden = json.loads((Path(__file__).resolve().parent / "golden" / "cli_expected_minimal.json").read_text(encoding="utf-8"))

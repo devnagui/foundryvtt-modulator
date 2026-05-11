@@ -1,0 +1,118 @@
+export type AuthStatus = {
+  passwordConfigured: boolean;
+  authenticated: boolean;
+};
+
+export type HealthStatus = {
+  ok: boolean;
+  foundry: {
+    status: string;
+    host: string;
+    port: number;
+    online?: boolean;
+  };
+};
+
+export type ReportModel = {
+  generatedAt?: string;
+  targetVersion?: string;
+  dataRoot?: string;
+  installedSystemVersions?: Record<string, string>;
+  worldUsage?: Array<Record<string, unknown>>;
+  results?: Array<Record<string, unknown>>;
+  view: {
+    summary?: { usedModuleCount?: number };
+    currentSystemUpgrades?: { rows?: Array<Record<string, unknown>> };
+    systemUpgradePlanner?: { targets?: Array<Record<string, unknown>> };
+    backupManagement?: { rows?: Array<Record<string, unknown>>; totalBackupCount?: number };
+    unusedModules?: { rows?: Array<Record<string, unknown>>; count?: number };
+  };
+};
+
+export type ActionSubmitResponse = {
+  ok: boolean;
+  jobId: string;
+  status: string;
+  action: string;
+};
+
+export type JobStatus = {
+  jobId: string;
+  status: "pending" | "running" | "success" | "failed";
+  progress: number;
+  error?: string;
+};
+
+export type FoundryRootStatus = {
+  selected: string;
+  normalized?: string;
+  valid: boolean;
+  message?: string;
+};
+
+function csrfToken(): string {
+  const token = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("mm_csrf="))
+    ?.split("=", 2)[1];
+  return decodeURIComponent(token || "");
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken(),
+      ...(init?.headers || {})
+    },
+    ...init
+  });
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+    const err = new Error(String(message)) as Error & { status?: number; payload?: unknown };
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload as T;
+}
+
+export const api = {
+  health: () => request<HealthStatus>("/api/v1/health"),
+  authStatus: () => request<AuthStatus>("/api/v1/auth/status"),
+  setup: (username: string, password: string, confirmPassword: string) =>
+    request<{ ok: boolean }>("/api/v1/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password, confirmPassword })
+    }),
+  login: (username: string, password: string) =>
+    request<{ ok: boolean }>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    }),
+  logout: () => request<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }),
+  reportV3Model: () => request<ReportModel>("/api/v1/report/v3/model"),
+  submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups", payload: Record<string, unknown>) =>
+    request<ActionSubmitResponse>("/api/v1/actions/submit", {
+      method: "POST",
+      body: JSON.stringify({ action, payload })
+    }),
+  jobStatus: (jobId: string) => request<JobStatus>(`/api/v1/actions/jobs/${encodeURIComponent(jobId)}`),
+  foundryRootStatus: () => request<FoundryRootStatus>("/api/v1/config/foundry-root"),
+  setFoundryRoot: (path: string) =>
+    request<FoundryRootStatus>("/api/v1/config/foundry-root", {
+      method: "POST",
+      body: JSON.stringify({ path })
+    }),
+  resetFoundryRoot: () => request<FoundryRootStatus>("/api/v1/config/foundry-root/reset", { method: "POST" }),
+  pickFoundryRoot: () => request<FoundryRootStatus>("/api/v1/config/foundry-root/pick", { method: "POST", body: "{}" }),
+  suggestModule: (manifestUrl: string) =>
+    request<{ suggestion?: Record<string, unknown> }>("/api/v1/actions/suggest-module", {
+      method: "POST",
+      body: JSON.stringify({ manifestUrl })
+    })
+};

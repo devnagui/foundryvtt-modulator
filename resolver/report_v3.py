@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 
 def render_html_report_v3(payload: dict) -> str:
-    view = ((payload.get("reportViews") or {}).get("v2")) or {}
+    view = ((payload.get("reportViews") or {}).get("v3")) or {}
     summary = view.get("summary") or {}
     controls = view.get("controls") or {}
     current = view.get("currentSystemUpgrades") or {}

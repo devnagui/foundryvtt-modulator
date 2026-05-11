@@ -12,7 +12,7 @@ import socket
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+import mimetypes
 
 from resolver.foundry import detect_foundry_version
 from resolver.local import load_system_versions
@@ -33,35 +34,6 @@ from resolver.sources import fetch_release_history
 MODULE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
-
-
-def _load_translations(locale: str) -> dict[str, str]:
-    fallback = {
-        "bootstrap.title": "Preparing your report",
-        "bootstrap.heading": "Your first report is not ready yet",
-        "bootstrap.body": "Start the initial scan below. You will be redirected automatically when it finishes.",
-        "bootstrap.button.start": "Start Initial Scan",
-        "bootstrap.status.idle": "Waiting to start.",
-        "bootstrap.status.queue": "Preparing your request...",
-        "bootstrap.status.running": "Processing... {progress}%",
-        "bootstrap.status.done": "Done. Redirecting...",
-        "bootstrap.status.failed": "Could not generate the report. Please try again.",
-        "bootstrap.status.error_start": "Could not start the process. Please try again.",
-    }
-    clean_locale = str(locale or "en").strip() or "en"
-    tool_root = Path(__file__).resolve().parent.parent
-    path = tool_root / "translations" / f"{clean_locale}.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return fallback
-    if not isinstance(payload, dict):
-        return fallback
-    merged = dict(fallback)
-    for key, value in payload.items():
-        if isinstance(key, str) and isinstance(value, str):
-            merged[key] = value
-    return merged
 
 
 @dataclass
@@ -87,6 +59,9 @@ class ServiceConfig:
     request_rate_limit_per_minute: int
     max_sessions: int
     audit_file: Path
+    use_new_ui: bool = False
+    ui_dist_dir: Path = field(default_factory=lambda: Path("frontend/dist"))
+    disable_legacy_report_ui: bool = False
 
 
 class RequestRateLimiter:
@@ -290,19 +265,6 @@ class AuthStore:
         payload = self._read_auth_payload()
         raw = payload.get("username")
         return str(raw or "").strip()
-
-    def setup_password(self, password: str) -> None:
-        if len(password) < 8:
-            raise ValueError("Password must contain at least 8 characters.")
-        with self._lock:
-            payload = self._read_auth_payload()
-            if isinstance(payload.get("password"), dict):
-                raise RuntimeError("Password already configured.")
-            now = _utc_now_iso()
-            payload["password"] = self._hash_password(password)
-            payload["password"]["createdAt"] = now
-            payload["password"]["updatedAt"] = now
-            self._write_auth_payload(payload)
 
     def setup_credentials(self, username: str, password: str) -> None:
         clean_username = _normalize_username(username)
@@ -532,10 +494,25 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/":
+        path = parsed.path
+        if path.startswith("/api/v1/"):
+            path = "/api/" + path[len("/api/v1/") :]
+        if path == "/":
+            if self.config.use_new_ui and self._serve_ui_index():
+                return
             self._send_html(_html_home())
             return
-        if parsed.path == "/api/health":
+        if path == "/app" or path.startswith("/app/"):
+            if self.config.use_new_ui and self._serve_ui_index():
+                return
+            self._redirect("/")
+            return
+        if path.startswith("/assets/") and self.config.use_new_ui:
+            if self._serve_static_file(self.config.ui_dist_dir / path.lstrip("/")):
+                return
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "asset_not_found"})
+            return
+        if path == "/api/health":
             self._send_json(HTTPStatus.OK, {
                 "ok": True,
                 "passwordConfigured": self.auth_store.has_password(),
@@ -543,14 +520,14 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 "generatedAt": _utc_now_iso(),
             })
             return
-        if parsed.path == "/api/auth/status":
+        if path == "/api/auth/status":
             token = self._session_token()
             self._send_json(HTTPStatus.OK, {
                 "passwordConfigured": self.auth_store.has_password(),
                 "authenticated": self.auth_store.is_session_valid(token),
             })
             return
-        if parsed.path == "/api/report/latest":
+        if path == "/api/report/latest":
             if not self._require_auth():
                 return
             report_path = self.config.reports_dir / "module-resolver-latest.json"
@@ -564,7 +541,10 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(HTTPStatus.OK, payload)
             return
-        if parsed.path == "/api/report/v3":
+        if path == "/api/report/v3":
+            if self.config.use_new_ui and self.config.disable_legacy_report_ui:
+                self._redirect("/app/report")
+                return
             if not self.auth_store.has_password():
                 self._redirect("/")
                 return
@@ -574,7 +554,7 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 return
             if not self._require_auth():
                 return
-            report_path = self.config.reports_dir / "module-resolver-latest-v3.html"
+            report_path = self.config.reports_dir / "module-resolver-latest.html"
             if not report_path.exists():
                 self._send_html(_html_report_v3_first_run())
                 return
@@ -585,7 +565,34 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 return
             self._send_html(html)
             return
-        if parsed.path == "/api/jobs":
+        if path == "/api/report/v3/model":
+            if not self._require_auth():
+                return
+            report_path = self.config.reports_dir / "module-resolver-latest.json"
+            if not report_path.exists():
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "latest_report_not_found", "firstRunRequired": True})
+                return
+            try:
+                payload = json.loads(report_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "failed_to_read_report"})
+                return
+            report_views = payload.get("reportViews") if isinstance(payload.get("reportViews"), dict) else {}
+            view = report_views.get("v3") if isinstance(report_views.get("v3"), dict) else {}
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "generatedAt": payload.get("generatedAt"),
+                    "targetVersion": payload.get("targetVersion"),
+                    "dataRoot": payload.get("dataRoot"),
+                    "installedSystemVersions": payload.get("installedSystemVersions") or {},
+                    "worldUsage": payload.get("worldUsage") or [],
+                    "view": view,
+                    "results": payload.get("results") or [],
+                },
+            )
+            return
+        if path == "/api/jobs":
             if not self._require_auth():
                 return
             log_path = self.config.reports_dir / "module-resolver-latest.log"
@@ -594,17 +601,17 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
                 output = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
             self._send_json(HTTPStatus.OK, {"tail": output})
             return
-        if parsed.path == "/api/config/foundry-root":
+        if path == "/api/config/foundry-root":
             if not self._require_auth():
                 return
             self._send_json(HTTPStatus.OK, self.config_store.status())
             return
-        if parsed.path == "/api/actions/jobs":
+        if path == "/api/actions/jobs":
             if not self._require_auth():
                 return
             self._send_json(HTTPStatus.OK, self.action_engine.list_jobs())
             return
-        if parsed.path.startswith("/api/actions/jobs/"):
+        if path.startswith("/api/actions/jobs/"):
             if not self._require_auth():
                 return
             job_id = parsed.path.rsplit("/", 1)[-1].strip()
@@ -621,6 +628,9 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/v1/"):
+            path = "/api/" + path[len("/api/v1/") :]
         allowed, retry_after = self.rate_limiter.allow(self._request_principal())
         if not allowed:
             self._send_json(
@@ -630,72 +640,72 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
             return
         body = self._read_json_body()
         try:
-            if parsed.path == "/api/auth/setup":
+            if path == "/api/auth/setup":
                 self._handle_setup(body)
                 return
-            if parsed.path == "/api/auth/login":
+            if path == "/api/auth/login":
                 self._handle_login(body)
                 return
-            if parsed.path == "/api/auth/logout":
+            if path == "/api/auth/logout":
                 self._handle_logout()
                 return
-            if parsed.path == "/api/actions/dry-run":
+            if path == "/api/actions/dry-run":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_dry_run(body)
                 return
-            if parsed.path == "/api/actions/apply":
+            if path == "/api/actions/apply":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_apply(body)
                 return
-            if parsed.path == "/api/actions/force-compat":
+            if path == "/api/actions/force-compat":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_force_compat(body)
                 return
-            if parsed.path == "/api/actions/cleanup-backups":
+            if path == "/api/actions/cleanup-backups":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_cleanup_backups(body)
                 return
-            if parsed.path == "/api/actions/submit":
+            if path == "/api/actions/submit":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_submit_action(body)
                 return
-            if parsed.path == "/api/actions/suggest-module":
+            if path == "/api/actions/suggest-module":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_suggest_module(body)
                 return
-            if parsed.path == "/api/config/foundry-root":
+            if path == "/api/config/foundry-root":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_set_foundry_root(body)
                 return
-            if parsed.path == "/api/config/foundry-root/pick":
+            if path == "/api/config/foundry-root/pick":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
                     return
                 self._handle_pick_foundry_root()
                 return
-            if parsed.path == "/api/config/foundry-root/reset":
+            if path == "/api/config/foundry-root/reset":
                 if not self._require_auth():
                     return
                 if not self._require_csrf():
@@ -1164,6 +1174,40 @@ class ResolverAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def _serve_ui_index(self) -> bool:
+        index_path = self.config.ui_dist_dir / "index.html"
+        if not index_path.exists():
+            return False
+        try:
+            html = index_path.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        self._send_html(html)
+        return True
+
+    def _serve_static_file(self, file_path: Path) -> bool:
+        try:
+            resolved = file_path.resolve()
+            root = self.config.ui_dist_dir.resolve()
+        except OSError:
+            return False
+        if root not in resolved.parents and resolved != root:
+            return False
+        if not resolved.exists() or not resolved.is_file():
+            return False
+        try:
+            data = resolved.read_bytes()
+        except OSError:
+            return False
+        content_type, _ = mimetypes.guess_type(str(resolved))
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", (content_type or "application/octet-stream"))
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+        return True
 
     def _redirect(self, location: str) -> None:
         self.send_response(HTTPStatus.FOUND)
@@ -1801,9 +1845,6 @@ async function api(path, method='GET', body=null) {
   if (!res.ok) throw { status: res.status, body: parsed };
   return parsed;
 }
-function modulesFromInput() {
-  return [];
-}
 function setError(message) {
   const errorEl = document.getElementById('error');
   errorEl.textContent = message || '';
@@ -1888,164 +1929,11 @@ document.getElementById('localeSelect').addEventListener('change', function () {
 """
 
 
-def _html_report_bootstrap() -> str:
-    tr = _load_translations(os.environ.get("RESOLVER_LOCALE") or "en")
-    return f"""<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>{tr["bootstrap.title"]}</title>
-  <style>
-    :root {{
-      --bg: #f4f6fb;
-      --panel: #ffffff;
-      --ink: #0f172a;
-      --muted: #475569;
-      --line: #dbe3ef;
-      --brand: #0f766e;
-      --brand-strong: #115e59;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(900px 400px at 90% -80px, #99f6e4 0%, rgba(153,246,228,0) 65%),
-        radial-gradient(700px 360px at -120px -120px, #bfdbfe 0%, rgba(191,219,254,0) 60%),
-        var(--bg);
-      font-family: \"Segoe UI Variable\", \"Segoe UI\", \"Aptos\", Tahoma, sans-serif;
-      color: var(--ink);
-      padding: 16px;
-    }}
-    .card {{
-      width: min(660px, 100%);
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 16px 40px rgba(2, 6, 23, .08);
-    }}
-    h1 {{ margin: 0 0 10px; font-size: 1.35rem; }}
-    p {{ margin: 0 0 12px; color: var(--muted); line-height: 1.45; }}
-    button {{
-      border: 0;
-      border-radius: 10px;
-      padding: 10px 14px;
-      background: var(--brand);
-      color: #fff;
-      cursor: pointer;
-      font-weight: 600;
-    }}
-    button:hover {{ background: var(--brand-strong); }}
-    button[disabled] {{ opacity: .65; cursor: not-allowed; }}
-    .progress-wrap {{
-      margin-top: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: #e2e8f0;
-      overflow: hidden;
-    }}
-    .progress-bar {{
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--brand), var(--brand-strong));
-      transition: width .25s ease;
-    }}
-    .status {{
-      margin-top: 12px;
-      border: 1px solid var(--line);
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: 10px;
-      font-size: .9rem;
-      color: var(--muted);
-      min-height: 44px;
-    }}
-  </style>
-</head>
-<body>
-  <main class=\"card\">
-    <h1>{tr["bootstrap.heading"]}</h1>
-    <p>{tr["bootstrap.body"]}</p>
-    <button id=\"runBtn\" type=\"button\" onclick=\"runFirstDryRun()\">{tr["bootstrap.button.start"]}</button>
-    <div class=\"progress-wrap\" aria-hidden=\"true\"><div id=\"progressBar\" class=\"progress-bar\"></div></div>
-    <div id=\"status\" class=\"status\">{tr["bootstrap.status.idle"]}</div>
-  </main>
-<script>
-const I18N = {json.dumps(tr, ensure_ascii=True)};
-async function api(path, method='GET', body=null) {{
-  const res = await fetch(path, {{
-    method,
-    credentials: 'include',
-    headers: {{ 'Content-Type': 'application/json', 'X-CSRF-Token': ((document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('mm_csrf=')) || '').split('=',2)[1] || '') }},
-    body: body ? JSON.stringify(body) : null,
-  }});
-  const text = await res.text();
-  let payload = {{ raw: text }};
-  try {{ payload = JSON.parse(text); }} catch {{}}
-  if (!res.ok) throw payload;
-  return payload;
-}}
-function setStatus(text) {{
-  document.getElementById('status').textContent = text;
-}}
-function setProgress(value) {{
-  const pct = Math.max(0, Math.min(100, Number(value || 0)));
-  document.getElementById('progressBar').style.width = pct + '%';
-}}
-async function waitForJob(jobId) {{
-  while (true) {{
-    const job = await api('/api/actions/jobs/' + encodeURIComponent(jobId));
-    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
-    setProgress(progress);
-    setStatus((I18N['bootstrap.status.running'] || 'Processing... {{progress}}%').replace('{{progress}}', String(progress)));
-    if (job.status === 'success') {{
-      setProgress(100);
-      setStatus(I18N['bootstrap.status.done'] || 'Done. Redirecting...');
-      window.location.replace('/api/report/v3?t=' + Date.now());
-      return;
-    }}
-    if (job.status === 'failed') {{
-      setStatus(I18N['bootstrap.status.failed'] || 'Could not generate the report. Please try again.');
-      document.getElementById('runBtn').disabled = false;
-      return;
-    }}
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-  }}
-}}
-async function runFirstDryRun() {{
-  const btn = document.getElementById('runBtn');
-  btn.disabled = true;
-  try {{
-    setProgress(5);
-    setStatus(I18N['bootstrap.status.queue'] || 'Preparing your request...');
-    const submitted = await api('/api/actions/submit', 'POST', {{
-      action: 'dry-run',
-      payload: {{ batchSize: 10 }}
-    }});
-    if (!submitted.jobId) {{
-      throw new Error('missing job id');
-    }}
-    await waitForJob(submitted.jobId);
-  }} catch (err) {{
-    setStatus(I18N['bootstrap.status.error_start'] || 'Could not start the process. Please try again.');
-    console.error(err);
-    btn.disabled = false;
-  }}
-}}
-</script>
-</body></html>
-"""
-
-
 def _html_report_v3_first_run() -> str:
     payload = {
         "dataRoot": "",
         "reportViews": {
-            "v2": {
+            "v3": {
                 "currentFoundryVersion": "-",
                 "generatedAt": _utc_now_iso(),
                 "summary": {"usedModuleCount": 0},
@@ -2161,6 +2049,9 @@ def load_config() -> ServiceConfig:
         request_rate_limit_per_minute=_parse_int(os.environ.get("RESOLVER_REQUEST_RATE_LIMIT_PER_MINUTE"), default=120, min_value=10),
         max_sessions=_parse_int(os.environ.get("RESOLVER_MAX_SESSIONS"), default=200, min_value=1),
         audit_file=audit_file,
+        use_new_ui=(os.environ.get("USE_NEW_UI", "false").strip().lower() == "true"),
+        ui_dist_dir=Path(os.environ.get("RESOLVER_UI_DIST_DIR") or (tool_root / "frontend" / "dist")),
+        disable_legacy_report_ui=(os.environ.get("RESOLVER_DISABLE_LEGACY_REPORT_UI", "false").strip().lower() == "true"),
     )
     config.reports_dir.mkdir(parents=True, exist_ok=True)
     config.state_dir.mkdir(parents=True, exist_ok=True)
@@ -2191,4 +2082,5 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
 

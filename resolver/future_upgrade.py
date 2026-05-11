@@ -27,7 +27,7 @@ def build_future_upgrade_decision(
         for world in worlds
         if not world.get("moduleConfigurationResolved") and world.get("moduleConfigurationSource") is None
     ]
-    used_worlds = [world for world in worlds if world.get("enabledModules")]
+    used_worlds = [world for world in worlds if world.get("system")]
     used_world_aliases = sorted({_world_alias(world) for world in used_worlds})
     used_module_ids = sorted({module_id for world in used_worlds for module_id in world.get("enabledModules", []) if module_id in installed_modules_by_id})
     used_modules = [installed_modules_by_id[module_id] for module_id in used_module_ids]
@@ -111,7 +111,7 @@ def build_current_system_upgrade_view(
     fetch_system_history: HistoryFetcherWithLimit,
     load_module_for_relationship: ModuleLoader,
 ) -> dict:
-    used_worlds = [world for world in worlds if world.get("enabledModules")]
+    used_worlds = [world for world in worlds if world.get("system")]
     module_world_map = {
         module_id: [
             {
@@ -134,15 +134,15 @@ def build_current_system_upgrade_view(
     summary_rows: list[dict] = []
     module_rows: list[dict] = []
 
-    for system_id in sorted({str(world.get("system")) for world in used_worlds if world.get("system")}):
+    world_system_ids = {str(world.get("system")) for world in used_worlds if world.get("system")}
+    installed_system_ids = {str(system_id) for system_id in installed_systems_by_id.keys() if str(system_id)}
+    for system_id in sorted(world_system_ids | installed_system_ids):
         system_record = installed_systems_by_id.get(system_id)
         if system_record is None:
             continue
         system_plan = _recommend_future_system_version(system_record, target_foundry, fetch_system_history)
         target_system_version = system_plan.get("recommendedVersion")
         if not target_system_version:
-            continue
-        if compare_versions(str(target_system_version), str(system_record.version)) <= 0:
             continue
 
         world_aliases = sorted({_world_alias(world) for world in used_worlds if world.get("system") == system_id})
