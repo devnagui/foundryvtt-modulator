@@ -154,7 +154,7 @@ def _is_upgrade(installed_version: str | None, recommended_version: str | None) 
     return compare_versions(recommended_version, installed_version) > 0
 
 
-def _default_output_paths(apply_mode: bool) -> tuple[str, str, str]:
+def _default_output_paths(apply_mode: bool) -> tuple[str, str]:
     DEFAULT_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     if apply_mode:
         apply_dir = DEFAULT_REPORTS_DIR / "applied"
@@ -164,12 +164,10 @@ def _default_output_paths(apply_mode: bool) -> tuple[str, str, str]:
         return (
             str(apply_dir / f"{base_name}.log"),
             str(apply_dir / f"{base_name}.json"),
-            str(apply_dir / f"{base_name}.html"),
         )
     return (
         str(DEFAULT_REPORTS_DIR / "module-resolver-latest.log"),
         str(DEFAULT_REPORTS_DIR / "module-resolver-latest.json"),
-        str(DEFAULT_REPORTS_DIR / "module-resolver-latest.html"),
     )
 
 
@@ -206,7 +204,6 @@ def _sync_public_reports(html_report: str | None, json_output: str | None) -> No
 def _run_post_apply_refresh(args: argparse.Namespace) -> bool:
     latest_log = str(DEFAULT_REPORTS_DIR / "module-resolver-latest.log")
     latest_json = str(DEFAULT_REPORTS_DIR / "module-resolver-latest.json")
-    latest_html = str(DEFAULT_REPORTS_DIR / "module-resolver-latest.html")
     cmd = [
         sys.executable,
         "-m",
@@ -232,8 +229,6 @@ def _run_post_apply_refresh(args: argparse.Namespace) -> bool:
         latest_log,
         "--json-output",
         latest_json,
-        "--html-report",
-        latest_html,
     ]
     env = os.environ.copy()
     env["RESOLVER_SKIP_POST_APPLY_REFRESH"] = "1"
@@ -441,10 +436,10 @@ def main() -> int:
         max_age_days=args.cache_max_age_days,
     )
     pruned = enforce_cache_limits(args.cache_dir)
-    default_log_file, default_json_output, default_html_report = _default_output_paths(args.apply)
+    default_log_file, default_json_output = _default_output_paths(args.apply)
     resolved_log_file = args.log_file or default_log_file
     resolved_json_output = args.json_output or default_json_output
-    resolved_html_report = args.html_report or default_html_report
+    resolved_html_report = args.html_report
     resolved_database_path = args.database_path or default_database_path(str(TOOL_ROOT))
     configure_logging(resolved_log_file)
 

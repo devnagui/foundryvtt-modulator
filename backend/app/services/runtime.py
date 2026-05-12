@@ -493,20 +493,38 @@ def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None
     payload["reportViews"] = report_views
 
 
-def _enrich_latest_report_file(runtime: AppRuntime) -> None:
+def _enrich_latest_report_file(runtime: AppRuntime, write_html: bool = False) -> None:
     report_path = runtime.config.reports_dir / "module-resolver-latest.json"
     if not report_path.exists():
         return
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     _enrich_report_payload(runtime, payload)
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    try:
-        html = render_html_report_v3(payload)
-        html_path = runtime.config.reports_dir / "module-resolver-latest.html"
-        html_path.write_text(html, encoding="utf-8")
-    except Exception:
-        # Keep enrichment resilient even if HTML regeneration fails.
-        pass
+    if write_html:
+        try:
+            html = render_html_report_v3(payload)
+            html_path = runtime.config.reports_dir / "module-resolver-latest.html"
+            html_path.write_text(html, encoding="utf-8")
+        except Exception:
+            # Keep enrichment resilient even if HTML regeneration fails.
+            pass
+
+
+def export_latest_report_html(runtime: AppRuntime, output_path: str = "") -> dict[str, Any]:
+    report_path = runtime.config.reports_dir / "module-resolver-latest.json"
+    if not report_path.exists():
+        raise FileNotFoundError("latest_report_not_found")
+    _enrich_latest_report_file(runtime, write_html=False)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    html = render_html_report_v3(payload)
+    target = Path(output_path).expanduser().resolve() if str(output_path or "").strip() else (runtime.config.reports_dir / "module-resolver-latest.html")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(html, encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target),
+        "generatedAt": _utc_now_iso(),
+    }
 
 
 def rollback_plan(runtime: AppRuntime, scan_run_id: int) -> dict[str, Any]:
@@ -673,8 +691,6 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
             "--skip-foundry-service-control",
             "--json-output",
             str(runtime.config.reports_dir / "module-resolver-latest.json"),
-            "--html-report",
-            str(runtime.config.reports_dir / "module-resolver-latest.html"),
             "--log-file",
             str(runtime.config.reports_dir / "module-resolver-latest.log"),
             *extra_args,

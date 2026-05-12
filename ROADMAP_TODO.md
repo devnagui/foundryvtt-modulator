@@ -1,9 +1,7 @@
 # Roadmap TODO (Reset)
 
-## Sprint atual (foco compatibilidade/classificacao)
+## Sprint atual (migracao de UI)
 
-- [x] Definir regra canonica de classificacao (`missing > blocked > update > ready`)
-- [x] Mover classificacao canonica para camada de negocio (backend payload `presentationStatus`)
-- [x] Cobrir camada de apresentacao com testes de compatibilidade/versao/classificacao esperada
-- [ ] Garantir tooltips de incompatibilidade vs incerteza sem falso-positivo
-- [x] Validar que dependencias faltantes listam IDs reais por modulo
+- [x] React-first: servir somente frontend React no backend (`/`, `/app/*`)
+- [x] Remover acoplamento do fluxo normal com HTML legado (`module-resolver-latest.html`)
+- [x] Manter exportacao HTML como acao opcional/explícita (fora do fluxo padrao)

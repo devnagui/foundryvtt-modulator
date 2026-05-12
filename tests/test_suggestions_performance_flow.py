@@ -206,6 +206,31 @@ class SuggestionsPerformanceFlowTests(unittest.TestCase):
         self.assertEqual("13.0.10", rows[0].get("recommendedVersion"))
         self.assertEqual("https://gitlab.com/tposney/dae/-/releases/13.0.10", rows[0].get("releaseUrl"))
         html_path = self.root / "reports" / "module-resolver-latest.html"
+        self.assertFalse(html_path.exists())
+
+    def test_export_latest_report_html_writes_html_only_on_explicit_export(self) -> None:
+        from backend.app.services.runtime import export_latest_report_html, get_runtime
+
+        self._write_report_with_current_row("dae")
+        runtime = get_runtime()
+        runtime.module_source_store.upsert_source(
+            module_id="dae",
+            manifest_url="",
+            project_url="https://gitlab.com/tposney/dae",
+        )
+        suggestion = {
+            "module": "dae",
+            "recommendedVersion": "13.0.10",
+            "releaseUrl": "https://gitlab.com/tposney/dae/-/releases/13.0.10",
+        }
+        with patch(
+            "backend.app.services.runtime._suggest_best_release_for_module_with_caches",
+            return_value=suggestion,
+        ):
+            result = export_latest_report_html(runtime)
+
+        html_path = Path(result.get("path") or "")
+        self.assertTrue(bool(result.get("ok")))
         self.assertTrue(html_path.exists())
 
     def test_enrich_latest_report_file_enriches_missing_dependency_action_with_source(self) -> None:
@@ -288,6 +313,7 @@ class SuggestionsPerformanceFlowTests(unittest.TestCase):
         payload = json.loads((self.root / "reports" / "module-resolver-latest.json").read_text(encoding="utf-8"))
         dep = (((payload.get("results") or [])[0].get("dependencyActions") or [])[0])
         self.assertEqual("13.0.10", dep.get("recommendedVersion"))
+        self.assertFalse((self.root / "reports" / "module-resolver-latest.html").exists())
 
     def test_suggest_modules_batch_route(self) -> None:
         from backend.app.main import create_app

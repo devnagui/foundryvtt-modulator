@@ -134,7 +134,11 @@ Generated files (latest):
 
 - `reports/module-resolver-latest.log`
 - `reports/module-resolver-latest.json`
-- `reports/module-resolver-latest.html`
+- `reports/module-resolver-latest.html` (optional, generated only by explicit export)
+
+HTML export endpoint:
+
+- `POST /api/v1/report/v3/export-html`
 
 ## Docker (optional)
 

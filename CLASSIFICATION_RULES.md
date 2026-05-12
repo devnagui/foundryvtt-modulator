@@ -1,4 +1,4 @@
-# Classification And Compatibility Rules
+﻿# Classification And Compatibility Rules
 
 This file is the canonical reference for module/system classification and UI behavior.
 
@@ -79,7 +79,7 @@ For rows marked as `(system)`:
 
 ### 5.1 Foundry badge (`F`)
 
-- `F☑`: compatible
+- `Fv`: compatible
 - `FX`: incompatible
 - `F?`: uncertain (insufficient metadata)
 
@@ -89,7 +89,7 @@ Tooltip must include:
 
 ### 5.2 System badge (`S`) for modules only
 
-- `S☑`: compatible
+- `Sv`: compatible
 - `SX`: incompatible
 - `S?`: uncertain
 
@@ -99,14 +99,9 @@ Tooltip must include:
 
 ### 5.3 Missing dependency badge
 
-- Icon: `🧩`
+- Icon: `!`
 - Show only when `hasMissingDependencies = true`.
 - Tooltip format: `missing dependency: <id1>, <id2>, ...`
-
-### 5.4 Missing marker (`!`)
-
-- Must point to the dependent module row.
-- Tooltip must list real missing dependency ids from that row.
 
 ## 6) Action/update path behavior
 
@@ -123,7 +118,7 @@ On `Start Scan` (`dry-run`):
 - Enrich current rows with source-based recommendations.
 - Enrich unresolved dependency actions with source-based recommendations (for not-installed dependencies such as `dae`).
 - Persist enriched report to `module-resolver-latest.json`.
-- Regenerate `module-resolver-latest.html` from the enriched payload.
+- Do not generate legacy HTML by default in this flow.
 
 This guarantees:
 
@@ -136,6 +131,6 @@ When user sets module source (`Set URL` / `Add Module`):
 
 - Persist source (`manifestUrl` / `projectUrl`) in module source store.
 - Resolve recommendation immediately.
-- Re-enrich latest report (`JSON`) and regenerate latest legacy report (`HTML`).
+- Re-enrich latest report (`JSON`) only.
 
-This keeps both UI modes consistent (React app and legacy HTML report).
+If needed, HTML is exported explicitly through `POST /api/v1/report/v3/export-html`.

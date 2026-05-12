@@ -14,7 +14,6 @@ This document explains what the app does when the user clicks `Start Scan`.
 - Runtime executes resolver CLI with `--dry-run`.
 - Resolver writes:
   - JSON report (`module-resolver-latest.json`)
-  - HTML report
   - log file
 
 ## 3) Post-scan enrichment
@@ -27,14 +26,14 @@ After `dry-run` succeeds, backend runs report enrichment before returning final 
 4. Resolve and inject recommendations for unresolved `results[].dependencyActions` (missing/not-installed dependencies) when source URL exists.
 5. Annotate presentation fields (`presentationStatus`, `hasMissingDependencies`).
 6. Persist the enriched JSON report back to disk.
-7. Regenerate `module-resolver-latest.html` from the enriched payload.
+7. Keep HTML generation out of the default scan path.
 
 ## 4) Current tab rendering impact
 
 - Frontend reads `/api/v1/report/v3/model`.
 - Rows with enriched recommendation show concrete update path (`- -> <version>`).
 - Rows with no source remain unresolved and may show `?`.
-- Legacy HTML report (`/reports/module-resolver-latest.html`) also reflects enriched recommendations.
+- Optional HTML export is available through `POST /api/v1/report/v3/export-html`.
 
 ## 5) DAE and socketlib examples
 
@@ -61,4 +60,4 @@ After `dry-run` succeeds, backend runs report enrichment before returning final 
 When user saves a module source URL:
 
 - Backend resolves recommendation for that module.
-- Latest report is enriched again (JSON + HTML) so both UI modes stay aligned.
+- Latest report is enriched again (JSON). HTML is generated only if export is requested explicitly.

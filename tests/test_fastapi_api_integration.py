@@ -100,6 +100,39 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertEqual("missing", rows[0].get("presentationStatus"))
         self.assertTrue(bool(rows[0].get("hasMissingDependencies")))
 
+    def test_root_serves_react_shell(self) -> None:
+        response = self.client.get("/")
+        self.assertEqual(200, response.status_code)
+        self.assertIn("text/html", response.headers.get("content-type", ""))
+        self.assertIn("id=\"root\"", response.text)
+
+    def test_report_html_export_endpoint_generates_html_explicitly(self) -> None:
+        self.client.post(
+            "/api/v1/auth/setup",
+            json={"username": "tester.user", "password": "Strong!Pass123", "confirmPassword": "Strong!Pass123"},
+        )
+        report_path = Path(os.environ["RESOLVER_REPORTS_DIR"]) / "module-resolver-latest.json"
+        report_path.write_text(
+            json.dumps(
+                {
+                    "generatedAt": "2026-05-12T00:00:00Z",
+                    "targetVersion": "13.350",
+                    "dataRoot": os.environ["RESOLVER_DATA_ROOT"],
+                    "installedSystemVersions": {"dnd5e": "5.3.0"},
+                    "reportViews": {"v3": {"currentSystemUpgrades": {"rows": []}}},
+                    "results": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        csrf = self.client.cookies.get("mm_csrf") or ""
+        response = self.client.post("/api/v1/report/v3/export-html", json={}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(bool(payload.get("ok")))
+        html_path = Path(payload.get("path") or "")
+        self.assertTrue(html_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
