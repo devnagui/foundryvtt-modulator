@@ -1,7 +1,20 @@
-# Roadmap TODO (Reset)
+﻿# Roadmap TODO (Reset)
 
-## Sprint atual (migracao de UI)
+## Sprint atual (rebuild da aba Planning)
 
-- [x] React-first: servir somente frontend React no backend (`/`, `/app/*`)
-- [x] Remover acoplamento do fluxo normal com HTML legado (`module-resolver-latest.html`)
-- [x] Manter exportacao HTML como acao opcional/explícita (fora do fluxo padrao)
+- [x] Remover implementacao atual da aba `Planning` (UI + estado + regras locais antigas)
+- [x] Reutilizar a estrutura da aba `Current` como base unica da nova `Planning`
+- [x] Posicionar filtro de versao do Foundry em uma linha acima do filtro de sistema
+- [x] Adicionar filtro unico de versao de Foundry no topo da `Planning` (selecao unica)
+- [x] Popular filtro com versoes disponiveis de Foundry em ordem crescente
+- [x] Ao trocar Foundry no filtro, recalcular sugestoes de update de sistemas
+- [x] Ao trocar Foundry no filtro, recalcular sugestoes de update de modulos
+- [x] Garantir que classificacao/status siga as mesmas regras canonicas da `Current`
+- [x] Garantir que `Update Path` reflita a versao alvo derivada do Foundry selecionado
+- [x] Reaproveitar badges/tooltips/acoes visuais da `Current` sem divergencia
+- [ ] Ajustar backend payload/modelo, se necessario, para suportar `Planning` por Foundry alvo
+- [ ] Cobrir cenarios com testes de apresentacao (planning com foundry atual/futuro)
+- [ ] Cobrir cenarios com testes de regra de negocio (compatibilidade foundry + sistema + modulo)
+- [x] Otimizar carregamento da `Planning` para tempo minimo de resposta (cache/memoizacao/preprocessamento)
+- [x] Validar performance ao trocar filtro (sem re-scan completo e sem travas perceptiveis)
+- [ ] Validacao manual final: comparativo `Current` vs `Planning` para garantir consistencia
