@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +64,41 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertEqual(404, response.status_code)
         self.assertEqual("latest_report_not_found", response.json().get("error"))
         self.assertTrue(bool(response.json().get("firstRunRequired")))
+
+    def test_report_model_includes_presentation_status_annotations(self) -> None:
+        self.client.post(
+            "/api/v1/auth/setup",
+            json={"username": "tester.user", "password": "Strong!Pass123", "confirmPassword": "Strong!Pass123"},
+        )
+        report_path = Path(os.environ["RESOLVER_REPORTS_DIR"]) / "module-resolver-latest.json"
+        payload = {
+            "generatedAt": "2026-05-12T00:00:00Z",
+            "targetVersion": "13.350",
+            "dataRoot": os.environ["RESOLVER_DATA_ROOT"],
+            "installedSystemVersions": {"dnd5e": "5.3.0"},
+            "reportViews": {
+                "v3": {
+                    "currentSystemUpgrades": {
+                        "rows": [
+                            {
+                                "module": "dae",
+                                "state": "update",
+                                "reason": "missing_dependency:socketlib",
+                                "missingDependencies": [{"module": "socketlib"}],
+                            }
+                        ]
+                    }
+                }
+            },
+            "results": [],
+        }
+        report_path.write_text(json.dumps(payload), encoding="utf-8")
+        response = self.client.get("/api/v1/report/v3/model")
+        self.assertEqual(200, response.status_code)
+        rows = (((response.json().get("view") or {}).get("currentSystemUpgrades") or {}).get("rows") or [])
+        self.assertEqual(1, len(rows))
+        self.assertEqual("missing", rows[0].get("presentationStatus"))
+        self.assertTrue(bool(rows[0].get("hasMissingDependencies")))
 
 
 if __name__ == "__main__":

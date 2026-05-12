@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from ..deps import require_auth, require_csrf, require_rate_limit, runtime
-from ...services.runtime import execute_rollback, module_health, queue_action, rollback_plan, suggest_module
+from ...services.runtime import execute_rollback, module_health, queue_action, rollback_plan, suggest_module, suggest_modules_batch
 
 router = APIRouter(prefix="/actions")
 
@@ -103,8 +103,30 @@ def post_suggest_module(req: Request, body: dict) -> dict:
             module_id=str(body.get("moduleId") or "").strip(),
             manifest_url=str(body.get("manifestUrl") or "").strip(),
             project_url=str(body.get("projectUrl") or "").strip(),
+            target_foundry_version=str(body.get("targetFoundryVersion") or "").strip(),
+            installed_system_versions_override=body.get("installedSystemVersions") if isinstance(body.get("installedSystemVersions"), dict) else None,
         )
     except ValueError as exc:
         msg = str(exc)
         code = msg if msg in {"manifest_or_project_required", "module_id_required"} else "suggestion_failed"
         raise HTTPException(status_code=400, detail={"error": code, "message": msg}) from exc
+
+
+@router.post("/suggest-modules-batch")
+def post_suggest_modules_batch(req: Request, body: dict) -> dict:
+    rt = runtime()
+    require_rate_limit(req, rt)
+    require_auth(req, rt)
+    require_csrf(req)
+    modules = body.get("modules")
+    if not isinstance(modules, list):
+        raise HTTPException(status_code=400, detail={"error": "modules_list_required"})
+    try:
+        return suggest_modules_batch(
+            rt,
+            modules=[item for item in modules if isinstance(item, dict)],
+            target_foundry_version=str(body.get("targetFoundryVersion") or "").strip(),
+            installed_system_versions_override=body.get("installedSystemVersions") if isinstance(body.get("installedSystemVersions"), dict) else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "suggestion_failed", "message": str(exc)}) from exc

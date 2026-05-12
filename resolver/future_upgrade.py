@@ -343,6 +343,7 @@ def build_current_system_upgrade_view(
                 "title": system_plan.get("title") or system_id,
                 "installedVersion": system_record.version,
                 "targetVersion": target_system_version,
+                "candidateVersions": system_plan.get("candidateVersions") or [],
                 "manifestUrl": system_plan.get("manifestUrl"),
                 "downloadUrl": system_plan.get("downloadUrl"),
                 "compatibility": system_plan.get("compatibility") or {},
@@ -433,12 +434,15 @@ def _recommend_future_system_version(
         ]
         if compatible or limit == 30:
             break
+    compatible_versions = [str(release.version or "").strip() for release in compatible if str(release.version or "").strip()]
+    compatible_versions = list(dict.fromkeys(compatible_versions))
     chosen = compatible[0] if compatible else (releases[0] if releases else None)
     if chosen is None:
         return {
             "systemId": system_record.module_id,
             "installedVersion": system_record.version,
             "recommendedVersion": None,
+            "candidateVersions": [],
             "status": "blocked",
             "source": None,
             "warnings": warnings,
@@ -451,6 +455,7 @@ def _recommend_future_system_version(
         "title": system_record.title,
         "installedVersion": system_record.version,
         "recommendedVersion": chosen.version,
+        "candidateVersions": compatible_versions,
         "source": chosen.source,
         "status": status,
         "manifestUrl": chosen.manifest_url,
@@ -687,6 +692,7 @@ def _evaluate_future_target(
                 "title": details.get("title") or system_id,
                 "installedVersion": details.get("installedVersion"),
                 "recommendedVersion": details.get("recommendedVersion"),
+                "candidateVersions": details.get("candidateVersions") or [],
                 "status": details.get("status"),
                 "compatibility": details.get("compatibility") or {},
                 "modulesImpacted": impacted_count,
@@ -707,6 +713,7 @@ def _evaluate_future_target(
                 "title": details.get("title") or system_id,
                 "installedVersion": details.get("installedVersion"),
                 "recommendedVersion": details.get("recommendedVersion"),
+                "candidateVersions": details.get("candidateVersions") or [],
                 "status": details.get("status"),
                 "compatibility": details.get("compatibility") or {},
             }

@@ -89,14 +89,9 @@ def resolve_module_recommendation(
         reason = "Module matches Foundry compatibility, but one or more required module dependencies could not be fully satisfied."
         confidence = "medium"
     else:
-        sorted_releases = sorted(
-            releases,
-            key=lambda release: candidate_sort_key(release, target_version, installed_system_versions),
-            reverse=True,
-        )
-        chosen_release = sorted_releases[0]
+        chosen_release = _build_installed_release_record(module)
         dependency_actions = []
-        reason = "No compatible release passed the hard compatibility rules; best available fallback was returned."
+        reason = "No compatible release passed the hard compatibility rules; keeping installed version."
         confidence = "low"
 
     # Global policy: never recommend a rollback of the module itself.

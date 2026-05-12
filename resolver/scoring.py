@@ -76,18 +76,28 @@ def explain_choice(
 
 
 def _systems_are_compatible(release: ReleaseRecord, installed_system_versions: dict[str, str]) -> bool:
-    if not release.system_compatibility:
+    if not installed_system_versions:
         return True
-    for system_id, compatibility in release.system_compatibility.items():
-        installed_version = installed_system_versions.get(system_id)
-        if not installed_version:
+    if not release.system_compatibility:
+        # Missing system metadata should be treated as "unknown", not a hard failure.
+        return True
+    for system_id, installed_version in installed_system_versions.items():
+        compatibility = (release.system_compatibility or {}).get(system_id) or {}
+        if not compatibility:
+            # No explicit compatibility for this system -> unknown, keep candidate.
             continue
         minimum = compatibility.get("minimum")
         maximum = compatibility.get("maximum")
+        verified = compatibility.get("verified")
         if minimum not in (None, "") and _minimum_excludes_target(minimum, installed_version):
             return False
         if maximum not in (None, "") and _maximum_excludes_target(maximum, installed_version):
             return False
+        if verified not in (None, ""):
+            verified_major = version_major(verified)
+            installed_major = version_major(installed_version)
+            if verified_major is not None and installed_major is not None and verified_major != installed_major:
+                return False
     return True
 
 

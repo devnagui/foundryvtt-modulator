@@ -57,6 +57,19 @@ export type ModuleSourceRow = {
   updatedAt?: string;
 };
 
+export type SuggestModuleContext = {
+  targetFoundryVersion?: string;
+  installedSystemVersions?: Record<string, string>;
+};
+export type SuggestModuleBatchInput = {
+  moduleId: string;
+  manifestUrl?: string;
+  projectUrl?: string;
+};
+export type SuggestModulesBatchResponse = {
+  rows?: Array<{ moduleId?: string; suggestion?: Record<string, unknown>; error?: string }>;
+};
+
 function csrfToken(): string {
   const token = document.cookie
     .split(";")
@@ -139,9 +152,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ moduleId, manifestUrl, projectUrl })
     }),
-  suggestModule: (manifestUrl: string) =>
+  suggestModule: (manifestUrl: string, context?: SuggestModuleContext, moduleId = "") =>
     request<{ suggestion?: Record<string, unknown> }>("/api/v1/actions/suggest-module", {
       method: "POST",
-      body: JSON.stringify({ manifestUrl })
-    })
+      body: JSON.stringify({
+        moduleId,
+        manifestUrl,
+        targetFoundryVersion: context?.targetFoundryVersion || "",
+        installedSystemVersions: context?.installedSystemVersions || {},
+      })
+    }),
+  suggestModulesBatch: async (modules: SuggestModuleBatchInput[], context?: SuggestModuleContext) => {
+    const payload = await request(
+      "/api/v1/actions/suggest-modules-batch",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          modules,
+          targetFoundryVersion: context?.targetFoundryVersion || "",
+          installedSystemVersions: context?.installedSystemVersions || {}
+        })
+      }
+    );
+    return payload as SuggestModulesBatchResponse;
+  }
 };

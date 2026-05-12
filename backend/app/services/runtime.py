@@ -10,12 +10,15 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from resolver.db_queries import load_apply_history
+from resolver.dependencies import resolve_module_recommendation
 from resolver.foundry import detect_foundry_version
-from resolver.local import load_system_versions
+from resolver.local import load_modules, load_system_versions, modules_dir_from_data_root
 from resolver.models import ModuleRecord
+from resolver.report_v3 import render_html_report_v3
 from resolver.scoring import candidate_sort_key, satisfies_release_constraints
 from resolver.sources import fetch_release_history
 
@@ -49,6 +52,8 @@ class AppRuntime:
 _RUNTIME: AppRuntime | None = None
 _WORKER_STARTED = False
 _WORKER_LOCK = threading.Lock()
+_REPORT_SUGGEST_CACHE: dict[str, dict[str, Any]] = {}
+_REPORT_SUGGEST_CACHE_LOCK = threading.Lock()
 
 
 def get_runtime() -> AppRuntime:
@@ -144,11 +149,304 @@ def foundry_status(runtime: AppRuntime) -> dict[str, Any]:
     }
 
 
+def _report_suggest_cache_key(
+    module_id: str,
+    manifest_url: str,
+    project_url: str,
+    target_foundry_version: str,
+    installed_system_versions: dict[str, str],
+) -> str:
+    systems_key = json.dumps(installed_system_versions, sort_keys=True, separators=(",", ":"))
+    return "|".join(
+        [
+            str(module_id or "").strip(),
+            str(manifest_url or "").strip(),
+            str(project_url or "").strip(),
+            str(target_foundry_version or "").strip(),
+            systems_key,
+        ]
+    )
+
+
+def _source_for_module_id(sources: dict[str, Any], module_id: str) -> dict[str, Any]:
+    clean_id = str(module_id or "").strip()
+    if not clean_id:
+        return {}
+    direct = sources.get(clean_id)
+    if isinstance(direct, dict):
+        return direct
+    lowered = clean_id.lower()
+    for key, value in sources.items():
+        if str(key or "").strip().lower() == lowered and isinstance(value, dict):
+            return value
+    return {}
+
+
+def _resolve_suggestion_from_sources_with_caches(
+    runtime: AppRuntime,
+    module_id: str,
+    sources: dict[str, Any],
+    target_foundry_version: str,
+    installed_system_versions: dict[str, str],
+    installed_modules_by_id: dict[str, ModuleRecord],
+    resolution_cache: dict[str, Any],
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+) -> dict[str, Any] | None:
+    clean_id = str(module_id or "").strip()
+    if not clean_id:
+        return None
+    source = _source_for_module_id(sources, clean_id)
+    manifest_url = str((source or {}).get("manifestUrl") or "").strip()
+    project_url = str((source or {}).get("projectUrl") or "").strip()
+    clean_manifest, clean_project = _normalize_source_urls(manifest_url=manifest_url, project_url=project_url)
+    if not clean_manifest and not clean_project:
+        return None
+    key = _report_suggest_cache_key(
+        module_id=clean_id,
+        manifest_url=clean_manifest,
+        project_url=clean_project,
+        target_foundry_version=target_foundry_version,
+        installed_system_versions=installed_system_versions,
+    )
+    with _REPORT_SUGGEST_CACHE_LOCK:
+        cached = _REPORT_SUGGEST_CACHE.get(key)
+    suggestion: dict[str, Any] | None = cached if isinstance(cached, dict) else None
+    if suggestion is None:
+        try:
+            suggestion = _suggest_best_release_for_module_with_caches(
+                module=_build_candidate_module(clean_id, manifest_url=clean_manifest, project_url=clean_project),
+                target_foundry_version=target_foundry_version,
+                installed_system_versions=installed_system_versions,
+                cache_dir=runtime.config.cache_dir,
+                installed_modules_by_id=installed_modules_by_id,
+                resolution_cache=resolution_cache,
+                history_cache=history_cache,
+            )
+        except Exception:
+            suggestion = None
+        if suggestion:
+            with _REPORT_SUGGEST_CACHE_LOCK:
+                _REPORT_SUGGEST_CACHE[key] = suggestion
+                if len(_REPORT_SUGGEST_CACHE) > 3000:
+                    stale_keys = list(_REPORT_SUGGEST_CACHE.keys())[:500]
+                    for stale in stale_keys:
+                        _REPORT_SUGGEST_CACHE.pop(stale, None)
+    return suggestion
+
+
+def _enrich_current_rows_with_precomputed_suggestions(
+    runtime: AppRuntime,
+    view: dict[str, Any],
+    target_foundry_version: str,
+    installed_system_versions: dict[str, str],
+    sources: dict[str, dict[str, Any]],
+    installed_modules_by_id: dict[str, ModuleRecord],
+    resolution_cache: dict[str, Any],
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+) -> None:
+    current = view.get("currentSystemUpgrades")
+    if not isinstance(current, dict):
+        return
+    rows = current.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return
+    if not isinstance(sources, dict) or not sources:
+        return
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        module_id = str(row.get("module") or "").strip()
+        if not module_id:
+            continue
+        recommended = str(row.get("recommendedVersion") or "").strip()
+        release_url = str(row.get("releaseUrl") or "").strip()
+        if (recommended and recommended != "-") or release_url:
+            continue
+        suggestion = _resolve_suggestion_from_sources_with_caches(
+            runtime=runtime,
+            module_id=module_id,
+            sources=sources,
+            target_foundry_version=target_foundry_version,
+            installed_system_versions=installed_system_versions,
+            installed_modules_by_id=installed_modules_by_id,
+            resolution_cache=resolution_cache,
+            history_cache=history_cache,
+        )
+        if not suggestion:
+            continue
+        suggested_version = str(suggestion.get("recommendedVersion") or "").strip()
+        suggested_url = str(
+            suggestion.get("releaseUrl")
+            or suggestion.get("manifestUrl")
+            or suggestion.get("downloadUrl")
+            or suggestion.get("projectUrl")
+            or ""
+        ).strip()
+        if suggested_version:
+            row["recommendedVersion"] = suggested_version
+        if suggested_url:
+            row["releaseUrl"] = suggested_url
+
+
+def _enrich_results_dependency_actions_with_precomputed_suggestions(
+    runtime: AppRuntime,
+    payload: dict[str, Any],
+    target_foundry_version: str,
+    installed_system_versions: dict[str, str],
+    sources: dict[str, dict[str, Any]],
+    installed_modules_by_id: dict[str, ModuleRecord],
+    resolution_cache: dict[str, Any],
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+) -> None:
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        return
+    if not isinstance(sources, dict) or not sources:
+        return
+
+    for result_row in results:
+        if not isinstance(result_row, dict):
+            continue
+        dependency_actions = result_row.get("dependencyActions")
+        if not isinstance(dependency_actions, list):
+            continue
+        for dep in dependency_actions:
+            if not isinstance(dep, dict):
+                continue
+            dep_id = str(dep.get("module") or "").strip()
+            if not dep_id:
+                continue
+            installed_version = str(dep.get("installedVersion") or "").strip()
+            recommended_version = str(dep.get("recommendedVersion") or "").strip()
+            manifest_url = str(dep.get("manifestUrl") or "").strip()
+            download_url = str(dep.get("downloadUrl") or "").strip()
+            # Enrich only unresolved/not-installed dependency actions.
+            if installed_version or recommended_version or manifest_url or download_url:
+                continue
+            suggestion = _resolve_suggestion_from_sources_with_caches(
+                runtime=runtime,
+                module_id=dep_id,
+                sources=sources,
+                target_foundry_version=target_foundry_version,
+                installed_system_versions=installed_system_versions,
+                installed_modules_by_id=installed_modules_by_id,
+                resolution_cache=resolution_cache,
+                history_cache=history_cache,
+            )
+            if not suggestion:
+                continue
+            suggested_version = str(suggestion.get("recommendedVersion") or "").strip()
+            suggested_manifest = str(suggestion.get("manifestUrl") or "").strip()
+            suggested_download = str(suggestion.get("downloadUrl") or "").strip()
+            suggested_compat = suggestion.get("compatibility")
+            suggested_sys_compat = suggestion.get("systemCompatibility")
+            if suggested_version:
+                dep["recommendedVersion"] = suggested_version
+            if suggested_manifest:
+                dep["manifestUrl"] = suggested_manifest
+            if suggested_download:
+                dep["downloadUrl"] = suggested_download
+            if isinstance(suggested_compat, dict):
+                dep["compatibility"] = suggested_compat
+            if isinstance(suggested_sys_compat, dict):
+                dep["systemCompatibility"] = suggested_sys_compat
+
+
+def _has_missing_dependency_signal(reason: str, missing_count: int) -> bool:
+    if int(missing_count or 0) > 0:
+        return True
+    text = str(reason or "").lower()
+    return ("could not be resolved" in text) or ("missing dependenc" in text) or ("missing_dependency:" in text)
+
+
+def _row_missing_count(row: dict[str, Any]) -> int:
+    count = 0
+    deps = row.get("missingDependencies")
+    if isinstance(deps, list):
+        count += len(deps)
+    actions = row.get("dependencyActions")
+    if isinstance(actions, list):
+        for dep in actions:
+            if not isinstance(dep, dict):
+                continue
+            if not str(dep.get("installedVersion") or "").strip() and not str(dep.get("recommendedVersion") or "").strip():
+                count += 1
+    return count
+
+
+def _annotate_presentation_statuses(view: dict[str, Any]) -> None:
+    current = view.get("currentSystemUpgrades")
+    if isinstance(current, dict):
+        rows = current.get("rows")
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                state = str(row.get("state") or "").strip().lower()
+                reason = str(row.get("reason") or "")
+                has_missing = _has_missing_dependency_signal(reason, _row_missing_count(row))
+                if has_missing:
+                    row["presentationStatus"] = "missing"
+                elif state in {"blocked", "update", "ready"}:
+                    row["presentationStatus"] = state
+                else:
+                    row["presentationStatus"] = "blocked"
+                row["hasMissingDependencies"] = has_missing
+
+    planner = view.get("systemUpgradePlanner")
+    if isinstance(planner, dict):
+        targets = planner.get("targets")
+        if isinstance(targets, list):
+            for target in targets:
+                if not isinstance(target, dict):
+                    continue
+                system_rows = target.get("systemRows")
+                if not isinstance(system_rows, list):
+                    continue
+                for system in system_rows:
+                    if not isinstance(system, dict):
+                        continue
+                    for key, status in (
+                        ("blockedModuleRows", "blocked"),
+                        ("upgradableModuleRows", "update"),
+                        ("compatibleModuleRows", "ready"),
+                        ("unknownModuleRows", "blocked"),
+                        ("localManifestManualModules", "blocked"),
+                    ):
+                        bucket = system.get(key)
+                        if not isinstance(bucket, list):
+                            continue
+                        for row in bucket:
+                            if not isinstance(row, dict):
+                                continue
+                            reason = str(row.get("reason") or "")
+                            has_missing = _has_missing_dependency_signal(reason, _row_missing_count(row))
+                            if has_missing:
+                                row["presentationStatus"] = "missing"
+                            else:
+                                row["presentationStatus"] = status
+                            row["hasMissingDependencies"] = has_missing
+
+
 def read_report_model(runtime: AppRuntime) -> dict[str, Any]:
     report_path = runtime.config.reports_dir / "module-resolver-latest.json"
     if not report_path.exists():
         raise FileNotFoundError("latest_report_not_found")
     payload = json.loads(report_path.read_text(encoding="utf-8"))
+    _enrich_report_payload(runtime, payload)
+    return {
+        "generatedAt": payload.get("generatedAt"),
+        "targetVersion": payload.get("targetVersion"),
+        "dataRoot": payload.get("dataRoot"),
+        "installedSystemVersions": payload.get("installedSystemVersions") or {},
+        "worldUsage": payload.get("worldUsage") or [],
+        "view": (payload.get("reportViews") or {}).get("v3") if isinstance((payload.get("reportViews") or {}).get("v3"), dict) else {},
+        "results": payload.get("results") or [],
+    }
+
+
+def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None:
     report_views = payload.get("reportViews") if isinstance(payload.get("reportViews"), dict) else {}
     view = report_views.get("v3") if isinstance(report_views.get("v3"), dict) else {}
     backup_management = view.get("backupManagement") if isinstance(view.get("backupManagement"), dict) else {}
@@ -157,15 +455,58 @@ def read_report_model(runtime: AppRuntime) -> dict[str, Any]:
     except Exception:
         backup_management["applyHistory"] = []
     view["backupManagement"] = backup_management
-    return {
-        "generatedAt": payload.get("generatedAt"),
-        "targetVersion": payload.get("targetVersion"),
-        "dataRoot": payload.get("dataRoot"),
-        "installedSystemVersions": payload.get("installedSystemVersions") or {},
-        "worldUsage": payload.get("worldUsage") or [],
-        "view": view,
-        "results": payload.get("results") or [],
-    }
+    try:
+        target_foundry_version = str(payload.get("targetVersion") or "")
+        installed_system_versions = (payload.get("installedSystemVersions") or {}) if isinstance(payload.get("installedSystemVersions"), dict) else {}
+        sources = runtime.module_source_store.list_sources()
+        modules_dir = str(modules_dir_from_data_root(runtime.config_store.get_data_root() or runtime.config.data_root))
+        installed_modules = load_modules(modules_dir)
+        installed_modules_by_id = {item.module_id: item for item in installed_modules}
+        resolution_cache: dict[str, Any] = {}
+        history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]] = {}
+        _enrich_current_rows_with_precomputed_suggestions(
+            runtime=runtime,
+            view=view,
+            target_foundry_version=target_foundry_version,
+            installed_system_versions=installed_system_versions,
+            sources=sources,
+            installed_modules_by_id=installed_modules_by_id,
+            resolution_cache=resolution_cache,
+            history_cache=history_cache,
+        )
+        _enrich_results_dependency_actions_with_precomputed_suggestions(
+            runtime=runtime,
+            payload=payload,
+            target_foundry_version=target_foundry_version,
+            installed_system_versions=installed_system_versions,
+            sources=sources,
+            installed_modules_by_id=installed_modules_by_id,
+            resolution_cache=resolution_cache,
+            history_cache=history_cache,
+        )
+    except Exception:
+        pass
+    try:
+        _annotate_presentation_statuses(view)
+    except Exception:
+        pass
+    payload["reportViews"] = report_views
+
+
+def _enrich_latest_report_file(runtime: AppRuntime) -> None:
+    report_path = runtime.config.reports_dir / "module-resolver-latest.json"
+    if not report_path.exists():
+        return
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    _enrich_report_payload(runtime, payload)
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        html = render_html_report_v3(payload)
+        html_path = runtime.config.reports_dir / "module-resolver-latest.html"
+        html_path.write_text(html, encoding="utf-8")
+    except Exception:
+        # Keep enrichment resilient even if HTML regeneration fails.
+        pass
 
 
 def rollback_plan(runtime: AppRuntime, scan_run_id: int) -> dict[str, Any]:
@@ -352,6 +693,12 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
         }
         if result.returncode != 0:
             raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={result.returncode}")
+        if action_name in {"dry-run", "apply", "force-compat"}:
+            try:
+                _enrich_latest_report_file(runtime)
+            except Exception:
+                # Keep action successful even if post-enrichment fails.
+                pass
         if action_name == "apply":
             postflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
             output["postflight"] = postflight_gate
@@ -367,7 +714,8 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
 def _build_candidate_module(module_id: str, manifest_url: str, project_url: str) -> ModuleRecord:
     clean_id = str(module_id or "").strip()
     if manifest_url:
-        request = Request(manifest_url, headers={"User-Agent": "foundry-module-version-resolver/0.1"})
+        fetch_url = _normalize_manifest_fetch_url(manifest_url)
+        request = Request(fetch_url, headers={"User-Agent": "foundry-module-version-resolver/0.1"})
         with urlopen(request, timeout=20) as response:
             manifest = json.load(response)
         resolved_id = str(manifest.get("id") or clean_id)
@@ -391,39 +739,163 @@ def _build_candidate_module(module_id: str, manifest_url: str, project_url: str)
     )
 
 
+def _looks_like_manifest_url(url: str) -> bool:
+    value = str(url or "").strip().lower()
+    if not value:
+        return False
+    path = str(urlparse(value).path or "")
+    return path.endswith("/module.json") or path.endswith("/system.json") or path.endswith("/manifest.json")
+
+
+def _normalize_manifest_fetch_url(url: str) -> str:
+    clean = str(url or "").strip()
+    if not clean:
+        return ""
+    parsed = urlparse(clean)
+    host = str(parsed.netloc or "").lower()
+    path = str(parsed.path or "")
+
+    if "github.com" in host and "/blob/" in path:
+        parts = path.strip("/").split("/")
+        if len(parts) >= 5 and parts[2] == "blob":
+            owner = parts[0]
+            repo = parts[1]
+            ref = parts[3]
+            rest = "/".join(parts[4:])
+            return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{rest}"
+
+    if "gitlab.com" in host and "/-/blob/" in path:
+        return clean.replace("/-/blob/", "/-/raw/", 1)
+
+    return clean
+
+
+def _normalize_source_urls(manifest_url: str, project_url: str) -> tuple[str, str]:
+    clean_manifest = str(manifest_url or "").strip()
+    clean_project = str(project_url or "").strip()
+    if not clean_manifest:
+        return "", clean_project
+    if clean_project:
+        return clean_manifest, clean_project
+    if _looks_like_manifest_url(clean_manifest):
+        return clean_manifest, ""
+    parsed = urlparse(clean_manifest)
+    host = str(parsed.netloc or "").lower()
+    if "github.com" in host or "gitlab.com" in host:
+        return "", clean_manifest
+    return clean_manifest, ""
+
+
 def _suggest_best_release_for_module(
+    module: ModuleRecord,
+    target_foundry_version: str,
+    data_root: str,
+    installed_system_versions: dict[str, str],
+    cache_dir: str,
+) -> dict[str, Any]:
+    modules_dir = str(modules_dir_from_data_root(data_root))
+    installed_modules = load_modules(modules_dir)
+    installed_modules_by_id = {item.module_id: item for item in installed_modules}
+    resolution_cache: dict[str, Any] = {}
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]] = {}
+    return _suggest_best_release_for_module_with_caches(
+        module=module,
+        target_foundry_version=target_foundry_version,
+        installed_system_versions=installed_system_versions,
+        cache_dir=cache_dir,
+        installed_modules_by_id=installed_modules_by_id,
+        resolution_cache=resolution_cache,
+        history_cache=history_cache,
+    )
+
+
+def _suggest_best_release_for_module_with_caches(
     module: ModuleRecord,
     target_foundry_version: str,
     installed_system_versions: dict[str, str],
     cache_dir: str,
+    installed_modules_by_id: dict[str, ModuleRecord],
+    resolution_cache: dict[str, Any],
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
 ) -> dict[str, Any]:
-    releases, warnings = fetch_release_history(module, cache_dir=cache_dir)
-    best = None
-    valid = [item for item in releases if satisfies_release_constraints(item, target_foundry_version, installed_system_versions)]
-    if valid:
-        best = sorted(valid, key=lambda item: candidate_sort_key(item, target_foundry_version, installed_system_versions), reverse=True)[0]
-    elif releases:
-        best = releases[0]
-    if not best:
-        return {"module": module.module_id, "reason": "No release available.", "checkedReleases": 0, "warnings": warnings}
+
+    def _fetch_history_cached(candidate: ModuleRecord, release_limit: int):
+        key = (str(candidate.module_id or ""), int(release_limit))
+        cached = history_cache.get(key)
+        if cached is not None:
+            return cached
+        result = fetch_release_history(candidate, per_page=release_limit, cache_dir=cache_dir)
+        history_cache[key] = result
+        return result
+
+    def _load_module_for_relationship(relationship):
+        installed = installed_modules_by_id.get(str(relationship.module_id or ""))
+        if installed is not None:
+            return installed
+        return None
+
+    recommendation, warning_map = resolve_module_recommendation(
+        module=module,
+        target_version=target_foundry_version,
+        installed_system_versions=installed_system_versions,
+        fetch_history=_fetch_history_cached,
+        load_module_for_relationship=_load_module_for_relationship,
+        resolution_cache=resolution_cache,
+    )
+    releases, warnings = _fetch_history_cached(module, 50)
+    module_warnings = warning_map.get(module.module_id) or []
+    combined_warnings = list(dict.fromkeys([*warnings, *module_warnings]))
+
+    if not releases:
+        return {"module": module.module_id, "reason": "No release available.", "checkedReleases": 0, "warnings": combined_warnings}
+
+    compatible = any(
+        satisfies_release_constraints(item, target_foundry_version, installed_system_versions)
+        for item in releases
+    )
     return {
-        "module": module.module_id,
+        "module": recommendation.module,
         "title": module.title,
-        "installedVersion": module.version,
-        "recommendedVersion": best.version,
-        "manifestUrl": best.manifest_url,
-        "downloadUrl": best.download_url,
-        "compatibility": best.compatibility,
-        "source": best.source,
-        "checkedReleases": len(releases),
-        "warnings": warnings,
+        "installedVersion": recommendation.installed_version,
+        "recommendedVersion": recommendation.recommended_version,
+        "manifestUrl": recommendation.manifest_url,
+        "downloadUrl": recommendation.download_url,
+        "compatibility": recommendation.compatibility,
+        "source": recommendation.source,
+        "reason": recommendation.reason,
+        "confidence": recommendation.confidence,
+        "checkedReleases": recommendation.checked_releases,
+        "isCompatible": compatible,
+        "dependencyActions": [
+            {
+                "module": action.module,
+                "installedVersion": action.installed_version,
+                "recommendedVersion": action.recommended_version,
+                "reason": action.reason,
+                "manifestUrl": action.manifest_url,
+                "compatibility": action.compatibility,
+                "systemCompatibility": action.system_compatibility,
+                "downloadUrl": action.download_url,
+            }
+            for action in recommendation.dependency_actions
+        ],
+        "warnings": combined_warnings,
     }
 
 
-def suggest_module(runtime: AppRuntime, module_id: str, manifest_url: str, project_url: str) -> dict[str, Any]:
+def suggest_module(
+    runtime: AppRuntime,
+    module_id: str,
+    manifest_url: str,
+    project_url: str,
+    target_foundry_version: str = "",
+    installed_system_versions_override: dict[str, str] | None = None,
+) -> dict[str, Any]:
     clean_module_id = str(module_id or "").strip()
-    clean_manifest = str(manifest_url or "").strip()
-    clean_project = str(project_url or "").strip()
+    clean_manifest, clean_project = _normalize_source_urls(
+        manifest_url=str(manifest_url or "").strip(),
+        project_url=str(project_url or "").strip(),
+    )
     if not clean_manifest and not clean_project:
         raise ValueError("manifest_or_project_required")
     if not clean_module_id and clean_manifest:
@@ -434,20 +906,118 @@ def suggest_module(runtime: AppRuntime, module_id: str, manifest_url: str, proje
     ok, normalized_root, details = _validate_foundry_root_path(data_root)
     if not ok:
         raise ValueError(details.get("message") or "Invalid Foundry root.")
-    foundry_version, source = detect_foundry_version(normalized_root)
+    detected_foundry_version, source = detect_foundry_version(normalized_root)
+    requested_foundry_version = str(target_foundry_version or "").strip()
+    foundry_version = requested_foundry_version or detected_foundry_version
+    base_system_versions = load_system_versions(normalized_root)
+    clean_override: dict[str, str] = {}
+    if isinstance(installed_system_versions_override, dict):
+        for key, value in installed_system_versions_override.items():
+            system_id = str(key or "").strip()
+            version = str(value or "").strip()
+            if system_id and version:
+                clean_override[system_id] = version
+    installed_system_versions = {**base_system_versions, **clean_override}
     suggestion = _suggest_best_release_for_module(
         module=_build_candidate_module(clean_module_id, manifest_url=clean_manifest, project_url=clean_project),
         target_foundry_version=foundry_version,
-        installed_system_versions=load_system_versions(normalized_root),
+        data_root=normalized_root,
+        installed_system_versions=installed_system_versions,
         cache_dir=runtime.config.cache_dir,
     )
-    return {"ok": True, "moduleId": clean_module_id, "foundryVersion": foundry_version, "foundryVersionSource": source, "dataRoot": normalized_root, "suggestion": suggestion}
+    return {
+        "ok": True,
+        "moduleId": clean_module_id,
+        "foundryVersion": foundry_version,
+        "foundryVersionSource": source,
+        "dataRoot": normalized_root,
+        "suggestion": suggestion,
+        "context": {
+            "requestedFoundryVersion": requested_foundry_version or None,
+            "detectedFoundryVersion": detected_foundry_version,
+            "installedSystemVersions": installed_system_versions,
+        },
+    }
+
+
+def suggest_modules_batch(
+    runtime: AppRuntime,
+    modules: list[dict[str, Any]],
+    target_foundry_version: str = "",
+    installed_system_versions_override: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    ok, normalized_root, details = _validate_foundry_root_path(data_root)
+    if not ok:
+        raise ValueError(details.get("message") or "Invalid Foundry root.")
+    detected_foundry_version, source = detect_foundry_version(normalized_root)
+    requested_foundry_version = str(target_foundry_version or "").strip()
+    foundry_version = requested_foundry_version or detected_foundry_version
+    base_system_versions = load_system_versions(normalized_root)
+    clean_override: dict[str, str] = {}
+    if isinstance(installed_system_versions_override, dict):
+        for key, value in installed_system_versions_override.items():
+            system_id = str(key or "").strip()
+            version = str(value or "").strip()
+            if system_id and version:
+                clean_override[system_id] = version
+    installed_system_versions = {**base_system_versions, **clean_override}
+
+    modules_dir = str(modules_dir_from_data_root(normalized_root))
+    installed_modules = load_modules(modules_dir)
+    installed_modules_by_id = {item.module_id: item for item in installed_modules}
+    resolution_cache: dict[str, Any] = {}
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]] = {}
+
+    rows: list[dict[str, Any]] = []
+    for item in modules:
+        module_id = str((item or {}).get("moduleId") or "").strip()
+        manifest_url = str((item or {}).get("manifestUrl") or "").strip()
+        project_url = str((item or {}).get("projectUrl") or "").strip()
+        clean_manifest, clean_project = _normalize_source_urls(manifest_url=manifest_url, project_url=project_url)
+        if not clean_manifest and not clean_project:
+            rows.append({"moduleId": module_id, "error": "manifest_or_project_required"})
+            continue
+        if not module_id and clean_manifest:
+            module_id = "manifest-derived"
+        if not module_id:
+            rows.append({"moduleId": "", "error": "module_id_required"})
+            continue
+        try:
+            suggestion = _suggest_best_release_for_module_with_caches(
+                module=_build_candidate_module(module_id, manifest_url=clean_manifest, project_url=clean_project),
+                target_foundry_version=foundry_version,
+                installed_system_versions=installed_system_versions,
+                cache_dir=runtime.config.cache_dir,
+                installed_modules_by_id=installed_modules_by_id,
+                resolution_cache=resolution_cache,
+                history_cache=history_cache,
+            )
+            rows.append({"moduleId": module_id, "suggestion": suggestion})
+        except Exception as exc:
+            rows.append({"moduleId": module_id, "error": str(exc)})
+
+    return {
+        "ok": True,
+        "count": len(rows),
+        "rows": rows,
+        "foundryVersion": foundry_version,
+        "foundryVersionSource": source,
+        "dataRoot": normalized_root,
+        "context": {
+            "requestedFoundryVersion": requested_foundry_version or None,
+            "detectedFoundryVersion": detected_foundry_version,
+            "installedSystemVersions": installed_system_versions,
+        },
+    }
 
 
 def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, project_url: str) -> dict[str, Any]:
     clean_module_id = str(module_id or "").strip()
-    clean_manifest = str(manifest_url or "").strip()
-    clean_project = str(project_url or "").strip()
+    clean_manifest, clean_project = _normalize_source_urls(
+        manifest_url=str(manifest_url or "").strip(),
+        project_url=str(project_url or "").strip(),
+    )
     if not clean_module_id:
         raise ValueError("module_id_required")
     if not clean_manifest and not clean_project:
@@ -455,10 +1025,15 @@ def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, p
     suggestion = _suggest_best_release_for_module(
         module=_build_candidate_module(clean_module_id, manifest_url=clean_manifest, project_url=clean_project),
         target_foundry_version=detect_foundry_version(runtime.config_store.get_data_root() or runtime.config.data_root)[0],
+        data_root=(runtime.config_store.get_data_root() or runtime.config.data_root),
         installed_system_versions=load_system_versions(runtime.config_store.get_data_root() or runtime.config.data_root),
         cache_dir=runtime.config.cache_dir,
     )
     saved = runtime.module_source_store.upsert_source(module_id=clean_module_id, manifest_url=clean_manifest, project_url=clean_project)
+    try:
+        _enrich_latest_report_file(runtime)
+    except Exception:
+        pass
     return {"ok": True, "saved": saved, "suggestion": suggestion}
 
 

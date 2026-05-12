@@ -432,7 +432,7 @@ def _fetch_gitlab_tags(
     project_url: str,
     per_page: int,
     cache_dir: str,
-    manifest_names: tuple[str, ...] = ("package/module.json",),
+    manifest_names: tuple[str, ...] = ("module.json", "package/module.json"),
     force_refresh: bool = False,
     cached_version_keys: set[tuple[str, Any]] | None = None,
 ) -> tuple[list[ReleaseRecord], list[str], bool]:
