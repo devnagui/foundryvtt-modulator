@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Header } from "../components/Header";
+import { UpgradePanel } from "../components/UpgradePanel";
 import { api, type FoundryRootStatus, type ModuleSourceRow, type ReportModel } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
 import { buildRelatedSystems } from "./systemKeying";
@@ -157,6 +159,90 @@ function compatibilityRangeLabel(compat: Record<string, unknown> | undefined): s
   return `compatible{min: ${min}, verified: ${verified}, max: ${max}}`;
 }
 
+function isManifestLikeUrl(rawUrl: string): boolean {
+  const value = asString(rawUrl).trim().toLowerCase();
+  if (!value) return false;
+  return value.endsWith("/module.json") || value.endsWith("/system.json") || value.endsWith("/manifest.json");
+}
+
+function canonicalUpdateUrl(rawUrl: string): string {
+  const value = asString(rawUrl).trim();
+  if (!value) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return isManifestLikeUrl(value) ? "" : value;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  const parts = pathname.split("/").filter(Boolean);
+  const manifestLike = isManifestLikeUrl(value);
+
+  if (host === "raw.githubusercontent.com" && parts.length >= 3) {
+    const [owner, repo, ref] = parts;
+    if (owner && repo && ref) return `https://github.com/${owner}/${repo}/releases/tag/${ref}`;
+  }
+
+  if (host === "github.com" || host === "www.github.com") {
+    if (pathname.includes("/releases/tag/") || pathname.includes("/releases/latest")) return value;
+    if (pathname.includes("/releases/download/")) {
+      const [base, rest] = pathname.split("/releases/download/", 2);
+      const tag = (rest || "").split("/")[0];
+      if (base && tag) return `${origin}${base}/releases/tag/${tag}`;
+    }
+    if (pathname.includes("/releases/latest/download/")) {
+      const [base] = pathname.split("/releases/latest/download/", 1);
+      if (base) return `${origin}${base}/releases/latest`;
+    }
+    if (parts.length >= 4 && parts[2] === "blob" && manifestLike) {
+      const owner = parts[0];
+      const repo = parts[1];
+      const ref = parts[3];
+      if (owner && repo && ref) return `${origin}/${owner}/${repo}/releases/tag/${ref}`;
+    }
+    if (parts.length >= 4 && parts[2] === "raw" && manifestLike) {
+      const owner = parts[0];
+      const repo = parts[1];
+      const ref = parts[3];
+      if (owner && repo && ref) return `${origin}/${owner}/${repo}/releases/tag/${ref}`;
+    }
+    if (manifestLike) return "";
+    if (parts.length >= 2) return `${origin}/${parts[0]}/${parts[1]}`;
+    return value;
+  }
+
+  if (host === "gitlab.com" || host === "www.gitlab.com") {
+    if (pathname.includes("/-/releases/")) return value;
+    if (pathname.includes("/-/archive/")) {
+      const [base, rest] = pathname.split("/-/archive/", 2);
+      const tag = (rest || "").split("/")[0];
+      if (base && tag) return `${origin}${base}/-/releases/${tag}`;
+    }
+    if (pathname.includes("/-/raw/") || pathname.includes("/-/blob/")) {
+      const marker = pathname.includes("/-/raw/") ? "/-/raw/" : "/-/blob/";
+      const [base, rest] = pathname.split(marker, 2);
+      const ref = (rest || "").split("/")[0];
+      if (base && ref) return `${origin}${base}/-/releases/${ref}`;
+    }
+    if (manifestLike) return "";
+    if (parts.length >= 2) return `${origin}/${parts[0]}/${parts[1]}`;
+    return value;
+  }
+
+  if (manifestLike) return "";
+  return value;
+}
+
+function preferredUpdateUrlFromCandidates(...urls: string[]): string {
+  for (const raw of urls) {
+    const candidate = canonicalUpdateUrl(raw);
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
 function StatusBadge({
   icon,
   label,
@@ -243,7 +329,13 @@ function bestRecommendedVersion(row: Record<string, unknown>): string {
   return asString(row.recommendedVersion) || asString(row.targetVersion) || asString(row.latestVersion) || asString(row.version);
 }
 function bestReleaseUrl(row: Record<string, unknown>): string {
-  return asString(row.releaseUrl) || asString(row.manifestUrl) || asString(row.url) || asString(row.projectUrl) || asString(row.downloadUrl);
+  return preferredUpdateUrlFromCandidates(
+    asString(row.releaseUrl),
+    asString(row.downloadUrl),
+    asString(row.projectUrl),
+    asString(row.url),
+    asString(row.manifestUrl)
+  );
 }
 function hasConcreteValue(value: string): boolean {
   const v = asString(value).trim();
@@ -643,20 +735,21 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         if (!moduleId) continue;
         const recommendedVersion = asString(dep.recommendedVersion).trim();
         const releaseUrl = asString(dep.releaseUrl).trim()
-          || asString(dep.manifestUrl).trim()
           || asString(dep.downloadUrl).trim()
-          || asString(dep.projectUrl).trim();
-        if (!hasConcreteValue(recommendedVersion) && !releaseUrl) continue;
+          || asString(dep.projectUrl).trim()
+          || asString(dep.manifestUrl).trim();
+        const updateUrl = preferredUpdateUrlFromCandidates(releaseUrl);
+        if (!hasConcreteValue(recommendedVersion) && !updateUrl) continue;
         const prev = out[moduleId];
         if (!prev) {
           out[moduleId] = {
             recommendedVersion: hasConcreteValue(recommendedVersion) ? recommendedVersion : undefined,
-            releaseUrl: releaseUrl || undefined,
+            releaseUrl: updateUrl || undefined,
           };
           continue;
         }
         if (!hasConcreteValue(asString(prev.recommendedVersion)) && hasConcreteValue(recommendedVersion)) prev.recommendedVersion = recommendedVersion;
-        if (!asString(prev.releaseUrl).trim() && releaseUrl) prev.releaseUrl = releaseUrl;
+        if (!asString(prev.releaseUrl).trim() && updateUrl) prev.releaseUrl = updateUrl;
       }
     }
     return out;
@@ -863,25 +956,41 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         pushRows(asArray(system.unknownModuleRows), "blocked", true);
       }
     }
-    const sorted = rows.sort((a, b) => {
+    const projectedFallback = currentRows
+      .filter((row) => {
+        if (row.system === "unused") return true;
+        return row.relatedSystems.some((systemId) =>
+          selectedCurrentVersionBucket.systems.includes(systemId) && (!activeCurrentSystemId || systemId === activeCurrentSystemId)
+        );
+      })
+      .map((row) => {
+        if (row.system === "unused") return row;
+        const targetSystemId = activeCurrentSystemId
+          || row.relatedSystems.find((id) => selectedCurrentVersionBucket.systems.includes(id))
+          || selectedCurrentVersionBucket.systems[0]
+          || "";
+        const sysCompat = ((row.systemCompatibility as Record<string, unknown> | undefined) || {})[targetSystemId] as Record<string, unknown> | undefined;
+        const foundryOk = versionWithin(row.compatibility, currentFoundryVersion);
+        const systemOk = versionWithin(sysCompat, selectedCurrentVersionBucket.key);
+        const baseline = normalizeModuleState(row);
+        const nextState: ModuleRow["state"] =
+          row.hasMissingDependencies || foundryOk === false || systemOk === false
+            ? "blocked"
+            : baseline.state;
+        return { ...baseline, state: nextState };
+      });
+    const mergedByModule = new Map<string, ModuleRow>();
+    for (const row of rows) mergedByModule.set(row.module, row);
+    for (const row of projectedFallback) {
+      if (!mergedByModule.has(row.module)) mergedByModule.set(row.module, row);
+    }
+    const sorted = Array.from(mergedByModule.values()).sort((a, b) => {
       const pa = rowPriority(a.state, a.hasMissingDependencies);
       const pb = rowPriority(b.state, b.hasMissingDependencies);
       if (pa !== pb) return pa - pb;
       return a.title.localeCompare(b.title);
     });
-    if (sorted.length > 0) return sorted;
-    return currentRows
-      .filter((row) =>
-        row.relatedSystems.some((systemId) =>
-          selectedCurrentVersionBucket.systems.includes(systemId) && (!activeCurrentSystemId || systemId === activeCurrentSystemId)
-        )
-      )
-      .sort((a, b) => {
-        const pa = rowPriority(a.state, a.hasMissingDependencies);
-        const pb = rowPriority(b.state, b.hasMissingDependencies);
-        if (pa !== pb) return pa - pb;
-        return a.title.localeCompare(b.title);
-      });
+    return sorted;
   }, [selectedCurrentVersionBucket, currentRows, planningTargets, currentFoundryVersion, activeCurrentSystemId]);
 
   useEffect(() => {
@@ -893,19 +1002,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const source = sourceForRow(moduleSources, row.module, row.title);
         const hasSource = hasSourceUrls(source);
         if (!hasSource) return false;
-        const moduleKey = asString(row.module).trim();
-        const moduleCached = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()];
-        const cacheReady = Boolean(asString(moduleCached?.recommendedVersion) || asString(moduleCached?.resolvedUrl));
-        if (cacheReady) return false;
         return true;
       })
       .map((row) => row.module)))
       .filter((moduleId) => {
         const source = sourceForRow(moduleSources, moduleId, moduleId);
         if (!source || !hasSourceUrls(source)) return false;
-        const moduleKey = asString(moduleId).trim();
-        const moduleCached = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()];
-        if (moduleCached && (asString(moduleCached.recommendedVersion) || asString(moduleCached.resolvedUrl))) return false;
         const contextKey = `${selectedCurrentSuggestContextKey}::${moduleId}`;
         if (resolvedSourceByContext[contextKey]?.recommendedVersion || resolvedSourceByContext[contextKey]?.resolvedUrl) return false;
         return true;
@@ -937,7 +1039,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           if (!moduleId) continue;
           const suggestion = (row?.suggestion || {}) as Record<string, unknown>;
           const recommendedVersion = asString(suggestion.recommendedVersion);
-          const resolvedUrl = asString(suggestion.releaseUrl) || asString(suggestion.manifestUrl) || asString(suggestion.downloadUrl) || asString(suggestion.projectUrl);
+          const resolvedUrl = preferredUpdateUrlFromCandidates(
+            asString(suggestion.releaseUrl),
+            asString(suggestion.downloadUrl),
+            asString(suggestion.projectUrl),
+            asString(suggestion.manifestUrl)
+          );
           if (!recommendedVersion && !resolvedUrl) continue;
           const contextKey = `${selectedCurrentSuggestContextKey}::${moduleId}`;
           updates[contextKey] = {
@@ -953,7 +1060,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             if (!moduleId) continue;
             const suggestion = (row?.suggestion || {}) as Record<string, unknown>;
             const recommendedVersion = asString(suggestion.recommendedVersion);
-            const resolvedUrl = asString(suggestion.releaseUrl) || asString(suggestion.manifestUrl) || asString(suggestion.downloadUrl) || asString(suggestion.projectUrl);
+            const resolvedUrl = preferredUpdateUrlFromCandidates(
+              asString(suggestion.releaseUrl),
+              asString(suggestion.downloadUrl),
+              asString(suggestion.projectUrl),
+              asString(suggestion.manifestUrl)
+            );
             if (!recommendedVersion && !resolvedUrl) continue;
             byModule[moduleId] = {
               recommendedVersion: recommendedVersion || undefined,
@@ -1166,6 +1278,28 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     () => planningSystemVersionBuckets.find((bucket) => bucket.key === planningSystemVersionFilter) || null,
     [planningSystemVersionFilter, planningSystemVersionBuckets]
   );
+  const selectedPlanningSuggestContext = useMemo(() => {
+    const systemVersions: Record<string, string> = {};
+    if (selectedPlanningVersionBucket) {
+      const selectedSystems = activePlanningSystemId
+        ? selectedPlanningVersionBucket.systems.filter((id) => id === activePlanningSystemId)
+        : selectedPlanningVersionBucket.systems;
+      for (const systemId of selectedSystems) {
+        systemVersions[systemId] = selectedPlanningVersionBucket.key;
+      }
+    }
+    return {
+      targetFoundryVersion: planningFoundryFilter || undefined,
+      installedSystemVersions: systemVersions,
+    };
+  }, [selectedPlanningVersionBucket, planningFoundryFilter, activePlanningSystemId]);
+  const selectedPlanningSuggestContextKey = useMemo(() => {
+    const systems = Object.entries(selectedPlanningSuggestContext.installedSystemVersions || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, version]) => `${id}@${version}`)
+      .join("|");
+    return `${selectedPlanningSuggestContext.targetFoundryVersion || ""}::${systems}`;
+  }, [selectedPlanningSuggestContext]);
 
   useEffect(() => {
     const next: Record<string, string> = {};
@@ -1173,8 +1307,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const installed = asString(currentSystemVersionById[systemId]).trim();
       const options = planningSystemVersionBuckets
         .filter((bucket) => bucket.systems.includes(systemId))
-        .map((bucket) => bucket.key);
-      const fallback = options.includes(installed) ? installed : (options[0] || installed || "");
+        .map((bucket) => ({
+          key: bucket.key,
+          total: selectedPlanningFoundryRows.filter(
+            (row) => asString(row.targetVersion).trim() === bucket.key && row.relatedSystems.includes(systemId)
+          ).length,
+        }));
+      const installedOption = options.find((opt) => opt.key === installed);
+      const preferred = options.find((opt) => opt.total > 0);
+      const fallback = (installedOption && installedOption.total > 0)
+        ? installedOption.key
+        : (preferred?.key || installed || options[0]?.key || "");
       if (fallback) next[systemId] = fallback;
     }
     if (Object.keys(next).length > 0) {
@@ -1184,7 +1327,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const active = activePlanningSystemId || first;
     if (!activePlanningSystemId && first) setActivePlanningSystemId(first);
     if (active && next[active]) setPlanningSystemVersionFilter(next[active]);
-  }, [planningSystemIds, planningSystemVersionBuckets, currentSystemVersionById, activePlanningSystemId]);
+  }, [planningSystemIds, planningSystemVersionBuckets, currentSystemVersionById, activePlanningSystemId, selectedPlanningFoundryRows]);
 
   useEffect(() => {
     if (tab !== "planning") return;
@@ -1198,20 +1341,130 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const selectedPlanningRows = useMemo(() => {
     if (!selectedPlanningVersionBucket) return selectedPlanningFoundryRows;
-    return selectedPlanningFoundryRows
+    const plannerRows = selectedPlanningFoundryRows
       .filter((row) => {
         const targetVersion = asString(row.targetVersion).trim();
         if (targetVersion !== selectedPlanningVersionBucket.key) return false;
         if (!activePlanningSystemId) return true;
         return row.relatedSystems.includes(activePlanningSystemId);
       })
-      .sort((a, b) => {
-        const pa = rowPriority(a.state, a.hasMissingDependencies);
-        const pb = rowPriority(b.state, b.hasMissingDependencies);
-        if (pa !== pb) return pa - pb;
-        return a.title.localeCompare(b.title);
+      .map((row) => normalizeModuleState(row));
+
+    const projectedFallback = currentRows
+      .filter((row) => {
+        if (row.system === "unused") return true;
+        if (!activePlanningSystemId) return true;
+        return row.relatedSystems.includes(activePlanningSystemId);
+      })
+      .map((row) => {
+        if (row.system === "unused") return row as PlanningRow;
+        const targetSystemId = activePlanningSystemId || row.relatedSystems[0] || "";
+        const sysCompat = ((row.systemCompatibility as Record<string, unknown> | undefined) || {})[targetSystemId] as Record<string, unknown> | undefined;
+        const foundryOk = versionWithin(row.compatibility, planningFoundryFilter);
+        const systemOk = versionWithin(sysCompat, selectedPlanningVersionBucket.key);
+        const baseline = normalizeModuleState(row);
+        const nextState: ModuleRow["state"] =
+          row.hasMissingDependencies || foundryOk === false || systemOk === false
+            ? "blocked"
+            : baseline.state;
+        return {
+          ...baseline,
+          state: nextState,
+          targetVersion: selectedPlanningVersionBucket.key,
+        } as PlanningRow;
       });
-  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId]);
+    const mergedByModule = new Map<string, PlanningRow>();
+    for (const row of plannerRows) mergedByModule.set(row.module, row);
+    for (const row of projectedFallback) {
+      if (!mergedByModule.has(row.module)) mergedByModule.set(row.module, row);
+    }
+    return Array.from(mergedByModule.values()).sort((a, b) => {
+      const pa = rowPriority(a.state, a.hasMissingDependencies);
+      const pb = rowPriority(b.state, b.hasMissingDependencies);
+      if (pa !== pb) return pa - pb;
+      return a.title.localeCompare(b.title);
+    });
+  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId, currentRows, planningFoundryFilter]);
+
+  useEffect(() => {
+    if (tab !== "planning") return;
+    if (!model) return;
+    const candidates = Array.from(new Set(selectedPlanningRows
+      .filter((row) => {
+        const source = sourceForRow(moduleSources, row.module, row.title);
+        return hasSourceUrls(source);
+      })
+      .map((row) => row.module)))
+      .filter((moduleId) => {
+        const source = sourceForRow(moduleSources, moduleId, moduleId);
+        if (!source || !hasSourceUrls(source)) return false;
+        const contextKey = `${selectedPlanningSuggestContextKey}::${moduleId}`;
+        if (resolvedSourceByContext[contextKey]?.recommendedVersion || resolvedSourceByContext[contextKey]?.resolvedUrl) return false;
+        return true;
+      });
+    if (candidates.length === 0) { setHydrationBusy(false); return; }
+    const runId = hydrationRunRef.current + 1;
+    hydrationRunRef.current = runId;
+    setHydrationBusy(true);
+    void (async () => {
+      const batch = candidates.map((moduleId) => {
+        const source = sourceForRow(moduleSources, moduleId, moduleId);
+        return {
+          moduleId,
+          manifestUrl: asString(source.manifestUrl),
+          projectUrl: asString(source.projectUrl),
+        };
+      }).filter((item) => item.manifestUrl || item.projectUrl);
+      if (batch.length === 0) {
+        setHydrationBusy(false);
+        return;
+      }
+      try {
+        const payload = await api.suggestModulesBatch(batch, selectedPlanningSuggestContext);
+        if (hydrationRunRef.current !== runId) return;
+        const rows = Array.isArray(payload.rows) ? payload.rows : [];
+        const updates: Record<string, { recommendedVersion?: string; resolvedUrl?: string }> = {};
+        const byModule: Record<string, { recommendedVersion?: string; resolvedUrl?: string }> = {};
+        for (const row of rows) {
+          const moduleId = asString(row?.moduleId);
+          if (!moduleId) continue;
+          const suggestion = (row?.suggestion || {}) as Record<string, unknown>;
+          const recommendedVersion = asString(suggestion.recommendedVersion);
+          const resolvedUrl = preferredUpdateUrlFromCandidates(
+            asString(suggestion.releaseUrl),
+            asString(suggestion.downloadUrl),
+            asString(suggestion.projectUrl),
+            asString(suggestion.manifestUrl)
+          );
+          if (!recommendedVersion && !resolvedUrl) continue;
+          const contextKey = `${selectedPlanningSuggestContextKey}::${moduleId}`;
+          const value = {
+            recommendedVersion: recommendedVersion || undefined,
+            resolvedUrl: resolvedUrl || undefined,
+          };
+          updates[contextKey] = value;
+          byModule[moduleId] = value;
+        }
+        if (Object.keys(updates).length > 0) {
+          setResolvedSourceByContext((prev) => ({ ...prev, ...updates }));
+        }
+        if (Object.keys(byModule).length > 0) {
+          const normalized: Record<string, { recommendedVersion?: string; resolvedUrl?: string }> = {};
+          for (const [k, v] of Object.entries(byModule)) {
+            const key = asString(k).trim();
+            if (!key) continue;
+            normalized[key] = v;
+            normalized[key.toLowerCase()] = v;
+          }
+          setResolvedSourceByModule((prev) => ({ ...prev, ...normalized }));
+        }
+      } catch {
+        // best-effort hydration; keep UI responsive
+      }
+      if (hydrationRunRef.current !== runId) return;
+      setHydrationBusy(false);
+    })();
+  }, [tab, model, moduleSources, selectedPlanningRows, resolvedSourceByContext, selectedPlanningSuggestContext, selectedPlanningSuggestContextKey]);
 
   const filteredPlanning = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1243,7 +1496,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         if (!sys) continue;
         const installedVersion = asString(sys.installedVersion) || asString((model?.installedSystemVersions || {})[systemId]);
         const targetVersion = selectedCurrentVersionBucket.key;
-        const targetUrl = asString(sys.targetUrl) || asString(sys.releaseUrl) || asString(sys.manifestUrl);
+        const targetUrl = preferredUpdateUrlFromCandidates(asString(sys.targetUrl), asString(sys.releaseUrl), asString(sys.manifestUrl));
         systemRows.push({
           kind: "system",
           key: `system-${systemId}-${selectedCurrentVersionBucket.key}`,
@@ -1282,7 +1535,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const targetRef = targetSystems.find((entry) => asString(entry.systemId).trim() === systemId);
         const installedVersion = asString(systemRef?.installedVersion) || asString((model?.installedSystemVersions || {})[systemId]);
         const targetVersion = selectedPlanningVersionBucket.key;
-        const targetUrl = asString(targetRef?.targetUrl) || asString(targetRef?.releaseUrl) || asString(targetRef?.manifestUrl);
+        const targetUrl = preferredUpdateUrlFromCandidates(asString(targetRef?.targetUrl), asString(targetRef?.releaseUrl), asString(targetRef?.manifestUrl));
         systemRows.push({
           kind: "system",
           key: `planning-system-${planningFoundryFilter}-${systemId}-${targetVersion}`,
@@ -1390,7 +1643,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const contextual = await api.suggestModule(contextualInput, selectedCurrentSuggestContext, moduleId);
       const suggestion = ((contextual.suggestion || saved.suggestion || {}) as Record<string, unknown>);
       const recommendedVersion = asString(suggestion.recommendedVersion);
-      const resolvedUrl = asString(suggestion.releaseUrl) || asString(suggestion.manifestUrl) || asString(suggestion.downloadUrl) || asString(suggestion.projectUrl);
+      const resolvedUrl = preferredUpdateUrlFromCandidates(
+        asString(suggestion.releaseUrl),
+        asString(suggestion.downloadUrl),
+        asString(suggestion.projectUrl),
+        asString(suggestion.manifestUrl)
+      );
       if (recommendedVersion || resolvedUrl) {
         const contextKey = `${selectedCurrentSuggestContextKey}::${moduleId}`;
         setResolvedSourceByContext((prev) => ({
@@ -1410,6 +1668,450 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     } finally {
       setUiBusyMessage("");
     }
+  };
+
+  const downloadJsonFile = (filename: string, payload: unknown) => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportFilteredUpdatePlan = async () => {
+    try {
+      setUiBusyMessage("Exporting update plan...");
+      const snapshot = await api.exportSnapshot();
+      const currentRowsExport = currentTableRows.map((item) => {
+        if (item.kind === "system") {
+          return {
+            kind: "system",
+            systemId: item.systemId,
+            status: item.status,
+            updatePath: item.status === "ready" ? (item.installedVersion || "-") : `${item.installedVersion || "-"} -> ${item.targetVersion || "-"}`,
+            installedVersion: item.installedVersion || "-",
+            targetVersion: item.targetVersion || "-",
+            targetUrl: item.targetUrl || "",
+          };
+        }
+        return {
+          kind: "module",
+          moduleId: item.row.module,
+          title: item.row.title,
+          status: item.row.state,
+          hasMissingDependencies: item.row.hasMissingDependencies,
+          reason: item.row.reason,
+          installedVersion: item.row.installedVersion || "-",
+          recommendedVersion: item.row.recommendedVersion || "-",
+          releaseUrl: preferredUpdateUrlFromCandidates(item.row.releaseUrl),
+          relatedSystems: item.row.relatedSystems,
+          usedInWorlds: item.row.usedInWorlds,
+        };
+      });
+      const planningRowsExport = planningTableRows.map((item) => {
+        if (item.kind === "system") {
+          return {
+            kind: "system",
+            systemId: item.systemId,
+            status: item.status,
+            updatePath: item.status === "ready" ? (item.installedVersion || "-") : `${item.installedVersion || "-"} -> ${item.targetVersion || "-"}`,
+            installedVersion: item.installedVersion || "-",
+            targetVersion: item.targetVersion || "-",
+            targetUrl: item.targetUrl || "",
+          };
+        }
+        return {
+          kind: "module",
+          moduleId: item.row.module,
+          title: item.row.title,
+          status: item.row.state,
+          hasMissingDependencies: item.row.hasMissingDependencies,
+          reason: item.row.reason,
+          installedVersion: item.row.installedVersion || "-",
+          recommendedVersion: item.row.recommendedVersion || "-",
+          releaseUrl: preferredUpdateUrlFromCandidates(item.row.releaseUrl),
+          targetVersion: item.row.targetVersion || "-",
+          relatedSystems: item.row.relatedSystems,
+        };
+      });
+      const exportPayload = {
+        generatedAt: new Date().toISOString(),
+        baseReportGeneratedAt: model?.generatedAt || "",
+        snapshot,
+        current: {
+          foundryVersion: currentFoundryVersion || "",
+          activeSystemId: activeCurrentSystemId || "",
+          selectedSystemVersion: currentSystemFilter || "",
+          filters: currentFilters,
+          search: search.trim(),
+          rows: currentRowsExport,
+          counts: {
+            total: currentRowsExport.length,
+            blockedOrMissing: currentRowsExport.filter((r) => (r as { status?: string; hasMissingDependencies?: boolean }).status === "blocked" || Boolean((r as { hasMissingDependencies?: boolean }).hasMissingDependencies)).length,
+            update: currentRowsExport.filter((r) => (r as { status?: string }).status === "update").length,
+            ready: currentRowsExport.filter((r) => (r as { status?: string; hasMissingDependencies?: boolean }).status === "ready" && !Boolean((r as { hasMissingDependencies?: boolean }).hasMissingDependencies)).length,
+          },
+        },
+        destiny: {
+          foundryVersion: planningFoundryFilter || "",
+          activeSystemId: activePlanningSystemId || "",
+          selectedSystemVersion: planningSystemVersionFilter || "",
+          filters: planningFilters,
+          search: search.trim(),
+          rows: planningRowsExport,
+          counts: {
+            total: planningRowsExport.length,
+            blockedOrMissing: planningRowsExport.filter((r) => (r as { status?: string; hasMissingDependencies?: boolean }).status === "blocked" || Boolean((r as { hasMissingDependencies?: boolean }).hasMissingDependencies)).length,
+            update: planningRowsExport.filter((r) => (r as { status?: string }).status === "update").length,
+            ready: planningRowsExport.filter((r) => (r as { status?: string; hasMissingDependencies?: boolean }).status === "ready" && !Boolean((r as { hasMissingDependencies?: boolean }).hasMissingDependencies)).length,
+          },
+        },
+      };
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadJsonFile(`modulator-update-plan-${stamp}.json`, exportPayload);
+      setSuggestResult(`Update plan exported. Snapshot path: ${String(snapshot.path || "-")}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export update plan.");
+    } finally {
+      setUiBusyMessage("");
+    }
+  };
+
+  const renderSystemTableRow = (item: {
+    key: string;
+    systemId: string;
+    status: "update" | "ready";
+    installedVersion: string;
+    targetVersion: string;
+    targetUrl: string;
+    compatibility: Record<string, unknown>;
+  }) => (
+    <tr key={item.key}>
+      <td>{item.systemId} <small>(system)</small></td>
+      <td>
+        {item.status === "ready"
+          ? (item.installedVersion || "-")
+          : <>{(item.installedVersion || "-")} {" \u2192 "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</>}
+      </td>
+      <td>{reasonBadges(item.status === "update" ? "Update suggested for this system." : "No system update required.", item.compatibility, false, true, null, undefined, false)}</td>
+      <td style={{ textAlign: "right" }}>
+        {item.status === "update"
+          ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
+          : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
+      </td>
+    </tr>
+  );
+
+  const renderModuleTableRow = (params: {
+    key: string;
+    row: ModuleRow;
+    updatePathCell: ReactNode;
+    actionsCell: ReactNode;
+    foundryOk: boolean | null;
+    systemOk: boolean | null;
+    sysCompat?: Record<string, unknown>;
+  }) => (
+    <tr key={params.key}>
+      <td>
+        {params.row.hasMissingDependencies ? <span title={missingDependencyLabel(params.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}
+        <span title={params.row.module || "unknown"}>{(params.row.title || "Unknown module")}</span>
+      </td>
+      <td>{params.updatePathCell}</td>
+      <td>{reasonBadges(params.row.reason || "", params.row.compatibility, params.row.hasMissingDependencies, params.foundryOk, params.systemOk, params.sysCompat, true)}</td>
+      <td style={{ textAlign: "right" }}>{params.actionsCell}</td>
+    </tr>
+  );
+
+  const renderCurrentModuleRow = (item: Extract<CurrentTableRow, { kind: "module" }>) => {
+    const moduleKey = asString(item.row.module).trim();
+    const titleKey = asString(item.row.title).trim();
+    const source = sourceForRow(moduleSources, moduleKey, titleKey);
+    const depSuggestion = dependencySuggestionByModule[moduleKey] || dependencySuggestionByModule[moduleKey.toLowerCase()] || dependencySuggestionByModule[titleKey] || dependencySuggestionByModule[titleKey.toLowerCase()] || {};
+    const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {};
+    const contextualRecommended = item.row.recommendedVersion || "-";
+    const contextualUrl = item.row.releaseUrl || "";
+    const contextKey = `${selectedCurrentSuggestContextKey}::${moduleKey}`;
+    const hydratedRecommended = resolvedSourceByContext[contextKey]?.recommendedVersion || "";
+    const hydratedUrl = resolvedSourceByContext[contextKey]?.resolvedUrl || "";
+    const dependencyRecommended = asString(depSuggestion.recommendedVersion);
+    const dependencyUrl = asString(depSuggestion.releaseUrl);
+    const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
+    const moduleUrl = asString(moduleSuggestion.resolvedUrl);
+    const activeSystem = activeCurrentSystemId || item.row.relatedSystems[0] || "";
+    const systemTarget = selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "";
+    const sysCompat = ((item.row.systemCompatibility as Record<string, unknown> | undefined) || {})[activeSystem] as Record<string, unknown> | undefined;
+    const foundryOk = versionWithin(item.row.compatibility, currentFoundryVersion);
+    const systemOk = versionWithin(sysCompat, systemTarget);
+    const staleContextValue = foundryOk === false || systemOk === false;
+    const recommendedCandidates = staleContextValue
+      ? [hydratedRecommended, moduleRecommended, dependencyRecommended, contextualRecommended]
+      : [contextualRecommended, hydratedRecommended, moduleRecommended, dependencyRecommended];
+    const urlCandidates = staleContextValue
+      ? [hydratedUrl, moduleUrl, dependencyUrl, contextualUrl, asString(source.projectUrl), asString(source.manifestUrl)]
+      : [contextualUrl, hydratedUrl, moduleUrl, dependencyUrl, asString(source.projectUrl), asString(source.manifestUrl)];
+    const rawRecommended = recommendedCandidates.find((v) => asString(v).trim() && asString(v).trim() !== "-") || "";
+    const effectiveRecommended = rawRecommended && rawRecommended !== "-" ? rawRecommended : "";
+    const effectiveUrl = preferredUpdateUrlFromCandidates(...urlCandidates);
+    const unresolvedPath = !effectiveUrl && !effectiveRecommended;
+    const pendingResolve = unresolvedPath && hydrationBusy && hasSourceUrls(source);
+    const hasInstalled = Boolean(asString(item.row.installedVersion).trim() && asString(item.row.installedVersion).trim() !== "-");
+    const updatePathCell = item.row.state === "ready" && !item.row.hasMissingDependencies
+      ? (item.row.installedVersion || "-")
+      : (unresolvedPath ? (pendingResolve ? "Loading..." : "?") : <>{(item.row.installedVersion || "-")} {" \u2192 "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{effectiveRecommended || "?"}</a> : (effectiveRecommended || "?")}</>);
+    const actionsCell = (
+      <div style={{ display: "inline-flex", gap: 6, flexWrap: "nowrap" }}>
+        {(item.row.hasMissingDependencies || item.row.state === "blocked") && !effectiveUrl && !effectiveRecommended ? (
+          <>
+            <button className="btn" style={{ background: "#f59e0b", color: "#111827", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, padding: 0 }} title="Find Module" aria-label="Find Module" onClick={() => findSourceForModule(item.row.module, item.row.title)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+            <button className="btn secondary" onClick={() => void setModuleSource(item.row.module)}>Set URL</button>
+          </>
+        ) : !hasInstalled && (effectiveUrl || effectiveRecommended) ? (
+          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Install</button>
+        ) : item.row.state === "update" ? (
+          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button>
+        ) : item.row.state === "blocked" ? (
+          <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
+        ) : (
+          <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>
+        )}
+      </div>
+    );
+    return renderModuleTableRow({
+      key: item.key,
+      row: item.row,
+      updatePathCell,
+      actionsCell,
+      foundryOk,
+      systemOk,
+      sysCompat,
+    });
+  };
+
+  const renderPlanningModuleRow = (item: Extract<PlanningTableRow, { kind: "module" }>) => {
+    const row = item.row;
+    const moduleKey = asString(row.module).trim();
+    const titleKey = asString(row.title).trim();
+    const source = sourceForRow(moduleSources, moduleKey, titleKey);
+    const depSuggestion = dependencySuggestionByModule[moduleKey] || dependencySuggestionByModule[moduleKey.toLowerCase()] || dependencySuggestionByModule[titleKey] || dependencySuggestionByModule[titleKey.toLowerCase()] || {};
+    const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {};
+    const contextKey = `${selectedPlanningSuggestContextKey}::${moduleKey}`;
+    const hydratedRecommended = resolvedSourceByContext[contextKey]?.recommendedVersion || "";
+    const hydratedUrl = resolvedSourceByContext[contextKey]?.resolvedUrl || "";
+    const dependencyRecommended = asString(depSuggestion.recommendedVersion);
+    const dependencyUrl = asString(depSuggestion.releaseUrl);
+    const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
+    const moduleUrl = asString(moduleSuggestion.resolvedUrl);
+    const rowRecommended = asString(row.recommendedVersion);
+    const rowUrl = asString(row.releaseUrl);
+    const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
+    const sysCompat = ((row.systemCompatibility as Record<string, unknown> | undefined) || {})[activeSystem] as Record<string, unknown> | undefined;
+    const foundryOk = versionWithin(row.compatibility, planningFoundryFilter);
+    const systemOk = versionWithin(sysCompat, planningSystemVersionFilter);
+    const staleContextValue = foundryOk === false || systemOk === false;
+    const recommendedCandidates = staleContextValue
+      ? [hydratedRecommended, moduleRecommended, dependencyRecommended, rowRecommended]
+      : [rowRecommended, hydratedRecommended, moduleRecommended, dependencyRecommended];
+    const urlCandidates = staleContextValue
+      ? [hydratedUrl, moduleUrl, dependencyUrl, rowUrl, asString(source.projectUrl), asString(source.manifestUrl)]
+      : [rowUrl, hydratedUrl, moduleUrl, dependencyUrl, asString(source.projectUrl), asString(source.manifestUrl)];
+    const rawRecommended = recommendedCandidates.find((v) => asString(v).trim() && asString(v).trim() !== "-") || "";
+    const effectiveRecommended = rawRecommended && rawRecommended !== "-" ? rawRecommended : "";
+    const effectiveUrl = preferredUpdateUrlFromCandidates(...urlCandidates);
+    const unresolvedPath = !effectiveUrl && !effectiveRecommended;
+    const pendingResolve = unresolvedPath && hydrationBusy && hasSourceUrls(source);
+    const updatePathCell = row.state === "ready" && !row.hasMissingDependencies
+      ? (row.installedVersion || "-")
+      : (unresolvedPath ? (pendingResolve ? "Loading..." : "?") : <>{(row.installedVersion || "-")} {" \u2192 "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{(effectiveRecommended || "?")}</a> : (effectiveRecommended || "?")}</>);
+    const actionsCell = row.hasMissingDependencies
+      ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
+      : row.state === "update"
+        ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
+        : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>;
+    return renderModuleTableRow({
+      key: item.key,
+      row,
+      updatePathCell,
+      actionsCell,
+      foundryOk,
+      systemOk,
+      sysCompat,
+    });
+  };
+
+  const currentSystemFilterRow = (
+    <div className="version-pill-row">
+      {Object.keys(currentSystemVersionById).sort((a, b) => a.localeCompare(b)).map((systemId) => {
+        const header = systemId;
+        const installed = currentSystemVersionById[systemId] || "";
+        const options = currentSystemVersionBuckets
+          .filter((bucket) => bucket.systems.includes(systemId))
+          .map((bucket) => bucket.key)
+          .sort((a, b) => compareVersionAsc(a, b));
+        const anchorIndex = options.findIndex((v) => v === installed);
+        const visibleOptions = anchorIndex < 0 ? options : options.slice(Math.max(0, anchorIndex - 2));
+        const value = currentVersionBySystem[systemId] || visibleOptions[0] || "";
+        const isActive = activeCurrentSystemId === systemId;
+        return (
+          <div
+            key={`sys-pill-${systemId}`}
+            className="metric-card compact version-pill static"
+            style={isActive ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
+            onClick={() => { setActiveCurrentSystemId(systemId); setCurrentSystemFilter(value); setPage(1); }}
+          >
+            <span>{header}</span>
+            <select
+              value={value}
+              onChange={(event) => {
+                const v = event.target.value;
+                setUiBusyMessage("Applying selected system version...");
+                setCurrentVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
+                setActiveCurrentSystemId(systemId);
+                setCurrentSystemFilter(v);
+                setPage(1);
+              }}
+              style={{ borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e5e7eb", padding: "4px 8px", width: "100%" }}
+            >
+              {visibleOptions.map((v) => (
+                <option key={`${systemId}-${v}`} value={v}>{v}{v === installed ? " (Current)" : ""}</option>
+              ))}
+            </select>
+            {isActive ? (
+              <small style={{ color: "#94a3b8", fontSize: 11 }}>
+                Ready: {selectedCurrentVersionBucket?.ready || 0} / {selectedCurrentVersionBucket?.total || 0} / Missing: {selectedCurrentVersionBucket?.missing || 0}
+              </small>
+            ) : <small style={{ color: "#94a3b8", fontSize: 11 }}>Ready: - / - / Missing: -</small>}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const currentStatusFilterRow = (
+    <div className="metrics-row compact" style={{ marginBottom: 0 }}>
+      <button className={`metric-card metric-blocked compact ${currentFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); }}><span>Blocked & Missing</span><strong>{selectedCurrentRows.filter((x) => x.state === "blocked" || x.hasMissingDependencies).length}</strong></button>
+      <button className={`metric-card metric-upgrade compact ${currentFilters.includes("update") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); }}><span>Update</span><strong>{selectedCurrentRows.filter((x) => x.state === "update").length}</strong></button>
+      <button className={`metric-card metric-ready compact ${currentFilters.includes("ready") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); }}><span>Ready</span><strong>{selectedCurrentRows.filter((x) => x.state === "ready").length}</strong></button>
+      <button className={`metric-card metric-unused compact ${currentFilters.includes("unused") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{selectedCurrentRows.filter((x) => x.system === "unused").length}</strong></button>
+    </div>
+  );
+
+  const planningTopFilterRow = (
+    <div className="metrics-row compact" style={{ marginBottom: 8 }}>
+      {planningFoundryBuckets.map((bucket) => {
+        const active = planningFoundryFilter === bucket.key;
+        return (
+          <button
+            key={`planning-foundry-${bucket.key}`}
+            className={`metric-card compact ${active ? "active" : ""}`}
+            onClick={() => {
+              setPlanningFoundryFilter(bucket.key);
+              setPage(1);
+            }}
+          >
+            <strong>Foundry {bucket.key}</strong>
+            <small style={{ display: "block", marginTop: 4, fontSize: 11, opacity: 0.9 }}>
+              <span style={{ display: "block" }}>Ready: {bucket.ready} / {bucket.total}</span>
+              <span style={{ display: "block" }}>Update: {bucket.update}</span>
+              <span style={{ display: "block" }}>Missing: {bucket.missing}</span>
+            </small>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const planningSystemFilterRow = (
+    <div className="version-pill-row" style={{ marginBottom: 8 }}>
+      {planningSystemIds.map((systemId) => {
+        const options = planningSystemVersionBuckets
+          .filter((bucket) => bucket.systems.includes(systemId))
+          .map((bucket) => bucket.key)
+          .sort(compareVersionAsc);
+        const installed = asString(currentSystemVersionById[systemId]).trim();
+        const visibleOptions = options.length > 0 ? options : (installed ? [installed] : []);
+        if (visibleOptions.length === 0) return null;
+        const value = planningVersionBySystem[systemId] || visibleOptions[0] || "";
+        const isActive = activePlanningSystemId === systemId;
+        return (
+          <button
+            key={`planning-system-${systemId}`}
+            className={`metric-card compact version-pill ${isActive ? "active" : ""}`}
+            onClick={() => {
+              setActivePlanningSystemId(systemId);
+              setPlanningSystemVersionFilter(value);
+              setPage(1);
+            }}
+          >
+            <span>{systemId}</span>
+            <select
+              value={value}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                const v = event.target.value;
+                setPlanningVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
+                setActivePlanningSystemId(systemId);
+                setPlanningSystemVersionFilter(v);
+                setPage(1);
+              }}
+              style={{ borderRadius: 8, border: "1px solid #334155", background: "rgba(15,23,42,0.7)", color: "inherit", padding: "4px 8px", minWidth: 124 }}
+            >
+              {visibleOptions.map((v) => (
+                <option key={`${systemId}-${v}`} value={v}>
+                  {v}{v === installed ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+            <small style={{ opacity: 0.85 }}>
+              Ready: {selectedPlanningVersionBucket?.ready || 0} / {selectedPlanningVersionBucket?.total || 0} / Missing: {selectedPlanningVersionBucket?.missing || 0}
+            </small>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const planningStatusFilterRow = (
+    <div className="metrics-row compact" style={{ marginBottom: 0 }}>
+      <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); }}><span>Blocked & Missing</span><strong>{selectedPlanningRows.filter((x) => x.state === "blocked" || x.hasMissingDependencies).length}</strong></button>
+      <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); }}><span>Update</span><strong>{selectedPlanningRows.filter((x) => x.state === "update").length}</strong></button>
+      <button className={`metric-card metric-ready compact ${planningFilters.includes("ready") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); }}><span>Ready</span><strong>{selectedPlanningRows.filter((x) => x.state === "ready").length}</strong></button>
+      <button className={`metric-card metric-unused compact ${planningFilters.includes("unused") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{selectedPlanningRows.filter((x) => x.system === "unused").length}</strong></button>
+    </div>
+  );
+
+  const buildPrimaryActionsRow = (options: { showExportPlan: boolean; showAddModule: boolean }) => {
+    if (!options.showExportPlan && !options.showAddModule) return null;
+    return (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, justifyContent: "flex-end" }}>
+        {options.showExportPlan ? (
+          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void exportFilteredUpdatePlan()}>
+            <span className="icon-wrap" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </span>
+            <span>Export Plan</span>
+          </button>
+        ) : null}
+        {options.showAddModule ? (
+          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} onClick={() => setAddModuleOpen(true)}>
+            <span className="icon-wrap" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </span>
+            <span>Add Module</span>
+          </button>
+        ) : null}
+      </div>
+    );
   };
 
   return (
@@ -1453,165 +2155,37 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       {!firstRunRequired && model ? (
         <section className="panel-grid">
           {tab === "current" ? (
-            <article className="panel">
-              <h3>{currentFoundryVersion ? `Current (${currentFoundryVersion})` : "Current"}</h3>
-              <fieldset className="filters-fieldset">
-                <legend>Filters</legend>
-                <div className="version-pill-row">
-                  {Object.keys(currentSystemVersionById).sort((a, b) => a.localeCompare(b)).map((systemId) => {
-                    const header = systemId;
-                    const installed = currentSystemVersionById[systemId] || "";
-                    const options = currentSystemVersionBuckets
-                      .filter((bucket) => bucket.systems.includes(systemId))
-                      .map((bucket) => bucket.key)
-                      .sort((a, b) => compareVersionAsc(a, b));
-                    const anchorIndex = options.findIndex((v) => v === installed);
-                    const visibleOptions = anchorIndex < 0 ? options : options.slice(Math.max(0, anchorIndex - 2));
-                    const value = currentVersionBySystem[systemId] || visibleOptions[0] || "";
-                    const isActive = activeCurrentSystemId === systemId;
-                    return (
-                      <div
-                        key={`sys-pill-${systemId}`}
-                        className="metric-card compact version-pill static"
-                        style={isActive ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
-                        onClick={() => { setActiveCurrentSystemId(systemId); setCurrentSystemFilter(value); setPage(1); }}
-                      >
-                        <span>{header}</span>
-                        <select
-                          value={value}
-                          onChange={(event) => {
-                            const v = event.target.value;
-                            setUiBusyMessage("Applying selected system version...");
-                            setCurrentVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
-                            setActiveCurrentSystemId(systemId);
-                            setCurrentSystemFilter(v);
-                            setPage(1);
-                          }}
-                          style={{ borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e5e7eb", padding: "4px 8px", width: "100%" }}
-                        >
-                          {visibleOptions.map((v) => (
-                            <option key={`${systemId}-${v}`} value={v}>{v}{v === installed ? " (Current)" : ""}</option>
-                          ))}
-                        </select>
-                        {isActive ? (
-                          <small style={{ color: "#94a3b8", fontSize: 11 }}>
-                            Ready: {selectedCurrentVersionBucket?.ready || 0} / {selectedCurrentVersionBucket?.total || 0} / Missing: {selectedCurrentVersionBucket?.missing || 0}
-                          </small>
-                        ) : <small style={{ color: "#94a3b8", fontSize: 11 }}>Ready: - / - / Missing: -</small>}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="metrics-row compact" style={{ marginBottom: 0 }}>
-                  <button className={`metric-card metric-blocked compact ${currentFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); }}><span>Blocked & Missing</span><strong>{selectedCurrentRows.filter((x) => x.state === "blocked" || x.hasMissingDependencies).length}</strong></button>
-                  <button className={`metric-card metric-upgrade compact ${currentFilters.includes("update") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); }}><span>Update</span><strong>{selectedCurrentRows.filter((x) => x.state === "update").length}</strong></button>
-                  <button className={`metric-card metric-ready compact ${currentFilters.includes("ready") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); }}><span>Ready</span><strong>{selectedCurrentRows.filter((x) => x.state === "ready").length}</strong></button>
-                  <button className={`metric-card metric-unused compact ${currentFilters.includes("unused") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{selectedCurrentRows.filter((x) => x.system === "unused").length}</strong></button>
-                </div>
-              </fieldset>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, justifyContent: "flex-end" }}>
-                <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} onClick={() => setAddModuleOpen(true)}>
-                  <span className="icon-wrap" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </span>
-                  <span>Add Module</span>
-                </button>
-              </div>
-              <table className="report-table"><thead><tr><th><input type="search" placeholder="Name Search" value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></th><th>Update Path</th><th>Status</th><th style={{ textAlign: "right" }}><button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured || fixModules.length === 0} onClick={() => void submitAndWatch("apply", { modules: fixModules, batchSize: 10 })}>Update All ({fixModules.length})</button></th></tr></thead><tbody>
-                {currentPage.rows.map((item) => item.kind === "system"
-                  ? <tr key={item.key}><td>{item.systemId} <small>(system)</small></td><td>{item.status === "ready" ? (item.installedVersion || "-") : <>{(item.installedVersion || "-")} {" \u2192 "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</>}</td><td>{reasonBadges(item.status === "update" ? "Update suggested for this system." : "No system update required.", item.compatibility, false, true, null, undefined, false)}</td><td style={{ textAlign: "right" }}>{item.status === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}</td></tr>
-                  : (() => { const moduleKey = asString(item.row.module).trim(); const titleKey = asString(item.row.title).trim(); const source = sourceForRow(moduleSources, moduleKey, titleKey); const depSuggestion = dependencySuggestionByModule[moduleKey] || dependencySuggestionByModule[moduleKey.toLowerCase()] || dependencySuggestionByModule[titleKey] || dependencySuggestionByModule[titleKey.toLowerCase()] || {}; const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {}; const contextualRecommended = item.row.recommendedVersion || "-"; const contextualUrl = item.row.releaseUrl || ""; const contextKey = `${selectedCurrentSuggestContextKey}::${moduleKey}`; const hydratedRecommended = resolvedSourceByContext[contextKey]?.recommendedVersion || ""; const hydratedUrl = resolvedSourceByContext[contextKey]?.resolvedUrl || ""; const dependencyRecommended = asString(depSuggestion.recommendedVersion); const dependencyUrl = asString(depSuggestion.releaseUrl); const moduleRecommended = asString(moduleSuggestion.recommendedVersion); const moduleUrl = asString(moduleSuggestion.resolvedUrl); const rawRecommended = (contextualRecommended && contextualRecommended !== "-") ? contextualRecommended : (hydratedRecommended || moduleRecommended || dependencyRecommended || ""); const effectiveRecommended = rawRecommended && rawRecommended !== "-" ? rawRecommended : ""; const effectiveUrl = contextualUrl || hydratedUrl || moduleUrl || dependencyUrl || asString(source.manifestUrl) || asString(source.projectUrl) || ""; const unresolvedPath = !effectiveUrl && !effectiveRecommended; const pendingResolve = unresolvedPath && hydrationBusy && hasSourceUrls(source); const activeSystem = activeCurrentSystemId || item.row.relatedSystems[0] || ""; const systemTarget = selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || ""; const sysCompat = ((item.row.systemCompatibility as Record<string, unknown> | undefined) || {})[activeSystem] as Record<string, unknown> | undefined; const foundryOk = versionWithin(item.row.compatibility, currentFoundryVersion); const systemOk = versionWithin(sysCompat, systemTarget); const hasInstalled = Boolean(asString(item.row.installedVersion).trim() && asString(item.row.installedVersion).trim() !== "-"); return <tr key={item.key}><td>{item.row.hasMissingDependencies ? <span title={missingDependencyLabel(item.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}<span title={item.row.module || "unknown"}>{(item.row.title || "Unknown module")}</span></td><td>{item.row.state === "ready" && !item.row.hasMissingDependencies ? (item.row.installedVersion || "-") : (unresolvedPath ? (pendingResolve ? "Loading..." : "?") : <>{(item.row.installedVersion || "-")} {" \u2192 "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{effectiveRecommended || "?"}</a> : (effectiveRecommended || "?")}</>)}</td><td>{reasonBadges(item.row.reason || "", item.row.compatibility, item.row.hasMissingDependencies, foundryOk, systemOk, sysCompat, true)}</td><td style={{ textAlign: "right" }}><div style={{ display: "inline-flex", gap: 6, flexWrap: "nowrap" }}>{(item.row.hasMissingDependencies || item.row.state === "blocked") && !effectiveUrl && !effectiveRecommended ? <><button className="btn" style={{ background: "#f59e0b", color: "#111827", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, padding: 0 }} title="Find Module" aria-label="Find Module" onClick={() => findSourceForModule(item.row.module, item.row.title)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button className="btn secondary" onClick={() => void setModuleSource(item.row.module)}>Set URL</button></> : !hasInstalled && (effectiveUrl || effectiveRecommended) ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Install</button> : item.row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button> : item.row.state === "blocked" ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button> : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}</div></td></tr>; })())}
-              </tbody></table>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="btn secondary" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button><span style={{ alignSelf: "center" }}>{currentPage.page} / {currentPage.totalPages}</span><button className="btn secondary" onClick={() => setPage((p) => Math.min(currentPage.totalPages, p + 1))}>Next</button></div>
-            </article>
+            <UpgradePanel
+              title={currentFoundryVersion ? `Current (${currentFoundryVersion})` : "Current"}
+              systemFilterRow={currentSystemFilterRow}
+              statusFilterRow={currentStatusFilterRow}
+              actionsRow={buildPrimaryActionsRow({ showExportPlan: true, showAddModule: true })}
+              search={showSearch ? search : ""}
+              onSearchChange={(value) => { setSearch(value); setPage(1); }}
+              tableHeadAction={<button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured || fixModules.length === 0} onClick={() => void submitAndWatch("apply", { modules: fixModules, batchSize: 10 })}>Update All ({fixModules.length})</button>}
+              tableBody={currentPage.rows.map((item) => item.kind === "system" ? renderSystemTableRow(item) : renderCurrentModuleRow(item))}
+              page={currentPage.page}
+              totalPages={currentPage.totalPages}
+              onPrev={() => setPage((p) => Math.max(1, p - 1))}
+              onNext={() => setPage((p) => Math.min(currentPage.totalPages, p + 1))}
+            />
           ) : null}
 
           {tab === "planning" ? (
-            <article className="panel">
-              <h3>Planning</h3>
-              <fieldset className="filters-fieldset">
-                <div className="metrics-row compact" style={{ marginBottom: 8 }}>
-                  {planningFoundryBuckets.map((bucket) => {
-                    const active = planningFoundryFilter === bucket.key;
-                    return (
-                      <button
-                        key={`planning-foundry-${bucket.key}`}
-                        className={`metric-card compact ${active ? "active" : ""}`}
-                        onClick={() => {
-                          setPlanningFoundryFilter(bucket.key);
-                          setPage(1);
-                        }}
-                      >
-                        <span>Foundry {bucket.key}</span>
-                        <strong>Ready: {bucket.ready} / {bucket.total} / Missing: {bucket.missing}</strong>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="metrics-row compact" style={{ marginBottom: 8 }}>
-                  {planningSystemIds.map((systemId) => {
-                    const options = planningSystemVersionBuckets
-                      .filter((bucket) => bucket.systems.includes(systemId))
-                      .map((bucket) => bucket.key)
-                      .sort(compareVersionAsc);
-                    const installed = asString(currentSystemVersionById[systemId]).trim();
-                    const visibleOptions = options.length > 0 ? options : (installed ? [installed] : []);
-                    if (visibleOptions.length === 0) return null;
-                    const value = planningVersionBySystem[systemId] || visibleOptions[0] || "";
-                    const isActive = activePlanningSystemId === systemId;
-                    return (
-                      <button
-                        key={`planning-system-${systemId}`}
-                        className={`metric-card compact ${isActive ? "active" : ""}`}
-                        onClick={() => {
-                          setActivePlanningSystemId(systemId);
-                          setPlanningSystemVersionFilter(value);
-                          setPage(1);
-                        }}
-                      >
-                        <span>{systemId}</span>
-                        <select
-                          value={value}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => {
-                            const v = event.target.value;
-                            setPlanningVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
-                            setActivePlanningSystemId(systemId);
-                            setPlanningSystemVersionFilter(v);
-                            setPage(1);
-                          }}
-                          style={{ borderRadius: 8, border: "1px solid #334155", background: "rgba(15,23,42,0.7)", color: "inherit", padding: "4px 8px", minWidth: 124 }}
-                        >
-                          {visibleOptions.map((v) => (
-                            <option key={`${systemId}-${v}`} value={v}>
-                              {v}{v === installed ? " (Current)" : ""}
-                            </option>
-                          ))}
-                        </select>
-                        <small style={{ opacity: 0.85 }}>
-                          Ready: {selectedPlanningVersionBucket?.ready || 0} / {selectedPlanningVersionBucket?.total || 0} / Missing: {selectedPlanningVersionBucket?.missing || 0}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="metrics-row compact" style={{ marginBottom: 0 }}>
-                  <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); }}><span>Blocked & Missing</span><strong>{selectedPlanningRows.filter((x) => x.state === "blocked" || x.hasMissingDependencies).length}</strong></button>
-                  <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); }}><span>Update</span><strong>{selectedPlanningRows.filter((x) => x.state === "update").length}</strong></button>
-                  <button className={`metric-card metric-ready compact ${planningFilters.includes("ready") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); }}><span>Ready</span><strong>{selectedPlanningRows.filter((x) => x.state === "ready").length}</strong></button>
-                  <button className={`metric-card metric-unused compact ${planningFilters.includes("unused") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); }}><span>Unused</span><strong>{selectedPlanningRows.filter((x) => x.system === "unused").length}</strong></button>
-                </div>
-              </fieldset>
-              <table className="report-table"><thead><tr><th><input type="search" placeholder="Name Search" value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></th><th>Update Path</th><th>Status</th><th style={{ textAlign: "right" }}></th></tr></thead><tbody>
-                {planningPage.rows.map((item) => item.kind === "system"
-                  ? <tr key={item.key}><td>{item.systemId} <small>(system)</small></td><td>{item.status === "ready" ? (item.installedVersion || "-") : <>{(item.installedVersion || "-")} {" \u2192 "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</>}</td><td>{reasonBadges(item.status === "update" ? "Update suggested for this system." : "No system update required.", item.compatibility, false, true, null, undefined, false)}</td><td style={{ textAlign: "right" }}>{item.status === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}</td></tr>
-                  : (() => { const row = item.row; const unresolvedPath = row.hasMissingDependencies && !row.releaseUrl && (!row.recommendedVersion || row.recommendedVersion === "-"); const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || ""); const sysCompat = ((row.systemCompatibility as Record<string, unknown> | undefined) || {})[activeSystem] as Record<string, unknown> | undefined; const foundryOk = versionWithin(row.compatibility, planningFoundryFilter); const systemOk = versionWithin(sysCompat, planningSystemVersionFilter); return <tr key={item.key}><td>{row.hasMissingDependencies ? <span title={missingDependencyLabel(row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}<span title={row.module}>{row.title}</span></td><td>{row.state === "ready" && !row.hasMissingDependencies ? (row.installedVersion || "-") : (unresolvedPath ? "?" : <>{(row.installedVersion || "-")} {" \u2192 "} {row.releaseUrl ? <a href={row.releaseUrl} target="_blank" rel="noreferrer">{(row.recommendedVersion || "-")}</a> : (row.recommendedVersion || "-")}</>)}</td><td>{reasonBadges(row.reason || "", row.compatibility, row.hasMissingDependencies, foundryOk, systemOk, sysCompat, true)}</td><td style={{ textAlign: "right" }}>{row.hasMissingDependencies ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button> : row.state === "update" ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button> : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}</td></tr>; })())}
-              </tbody></table>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="btn secondary" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button><span style={{ alignSelf: "center" }}>{planningPage.page} / {planningPage.totalPages}</span><button className="btn secondary" onClick={() => setPage((p) => Math.min(planningPage.totalPages, p + 1))}>Next</button></div>
-            </article>
+            <UpgradePanel
+              title="Planning"
+              topFilterRow={planningTopFilterRow}
+              systemFilterRow={planningSystemFilterRow}
+              statusFilterRow={planningStatusFilterRow}
+              actionsRow={buildPrimaryActionsRow({ showExportPlan: true, showAddModule: false })}
+              search={showSearch ? search : ""}
+              onSearchChange={(value) => { setSearch(value); setPage(1); }}
+              tableBody={planningPage.rows.map((item) => item.kind === "system" ? renderSystemTableRow(item) : renderPlanningModuleRow(item))}
+              page={planningPage.page}
+              totalPages={planningPage.totalPages}
+              onPrev={() => setPage((p) => Math.max(1, p - 1))}
+              onNext={() => setPage((p) => Math.min(planningPage.totalPages, p + 1))}
+            />
           ) : null}
 
           {tab === "backups" ? (

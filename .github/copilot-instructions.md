@@ -16,6 +16,7 @@ O objetivo principal e recomendar versoes compativeis com o Foundry instalado, c
 - Preserve compatibilidade com o fluxo atual da CLI e da API.
 - Evite alterar contratos JSON existentes sem necessidade.
 - Sempre considerar o impacto em `reports/`, `state/resolver.db` e cache.
+- Antes de iniciar qualquer implementacao, ler toda a queue/TODO/roadmap atual (itens abertos e pendentes) para evitar retrabalho e regressao de contexto.
 - Preferir `/api/v1/*` para novas integracoes de frontend (mantendo backward compatibility em `/api/*`).
 - A UI React e servida por feature flag:
   - `USE_NEW_UI=true`

@@ -265,7 +265,7 @@ body.light-mode {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 6px;
-  justify-content: flex-start;
+  justify-content: flex-end;
   align-items: flex-start;
 }
 .version-pill-row .version-pill {

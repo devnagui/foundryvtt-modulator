@@ -56,6 +56,88 @@ _REPORT_SUGGEST_CACHE: dict[str, dict[str, Any]] = {}
 _REPORT_SUGGEST_CACHE_LOCK = threading.Lock()
 
 
+def _is_manifest_like_url(raw_url: str) -> bool:
+    value = str(raw_url or "").strip().lower()
+    return bool(
+        value.endswith("/module.json")
+        or value.endswith("/system.json")
+        or value.endswith("/manifest.json")
+    )
+
+
+def _canonical_update_url(raw_url: str) -> str:
+    value = str(raw_url or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return "" if _is_manifest_like_url(value) else value
+    host = str(parsed.netloc or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        return "" if _is_manifest_like_url(value) else value
+    path = str(parsed.path or "").rstrip("/")
+    parts = [part for part in path.split("/") if part]
+    manifest_like = _is_manifest_like_url(value)
+
+    if host == "raw.githubusercontent.com" and len(parts) >= 3:
+        owner, repo, ref = parts[0], parts[1], parts[2]
+        if owner and repo and ref:
+            return f"https://github.com/{owner}/{repo}/releases/tag/{ref}"
+
+    if host in {"github.com", "www.github.com"}:
+        if "/releases/tag/" in path or "/releases/latest" in path:
+            return value
+        if "/releases/download/" in path:
+            base, _, rest = path.partition("/releases/download/")
+            tag = str(rest).split("/", 1)[0].strip()
+            if base and tag:
+                return f"{parsed.scheme}://{parsed.netloc}{base}/releases/tag/{tag}"
+        if "/releases/latest/download/" in path:
+            base, _, _ = path.partition("/releases/latest/download/")
+            if base:
+                return f"{parsed.scheme}://{parsed.netloc}{base}/releases/latest"
+        if len(parts) >= 4 and parts[2] in {"blob", "raw"} and manifest_like:
+            owner, repo, ref = parts[0], parts[1], parts[3]
+            if owner and repo and ref:
+                return f"{parsed.scheme}://{parsed.netloc}/{owner}/{repo}/releases/tag/{ref}"
+        if manifest_like:
+            return ""
+        if len(parts) >= 2:
+            return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/{parts[1]}"
+        return value
+
+    if host in {"gitlab.com", "www.gitlab.com"}:
+        if "/-/releases/" in path:
+            return value
+        if "/-/archive/" in path:
+            base, _, rest = path.partition("/-/archive/")
+            tag = str(rest).split("/", 1)[0].strip()
+            if base and tag:
+                return f"{parsed.scheme}://{parsed.netloc}{base}/-/releases/{tag}"
+        if "/-/raw/" in path or "/-/blob/" in path:
+            marker = "/-/raw/" if "/-/raw/" in path else "/-/blob/"
+            base, _, rest = path.partition(marker)
+            ref = str(rest).split("/", 1)[0].strip()
+            if base and ref:
+                return f"{parsed.scheme}://{parsed.netloc}{base}/-/releases/{ref}"
+        if manifest_like:
+            return ""
+        if len(parts) >= 2:
+            return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/{parts[1]}"
+        return value
+
+    return "" if manifest_like else value
+
+
+def _preferred_update_url(*urls: Any) -> str:
+    for raw in urls:
+        canonical = _canonical_update_url(str(raw or ""))
+        if canonical:
+            return canonical
+    return ""
+
+
 def get_runtime() -> AppRuntime:
     global _RUNTIME
     if _RUNTIME is not None:
@@ -260,7 +342,14 @@ def _enrich_current_rows_with_precomputed_suggestions(
         if not module_id:
             continue
         recommended = str(row.get("recommendedVersion") or "").strip()
-        release_url = str(row.get("releaseUrl") or "").strip()
+        release_url = _preferred_update_url(
+            row.get("releaseUrl"),
+            row.get("downloadUrl"),
+            row.get("projectUrl"),
+            row.get("manifestUrl"),
+        )
+        if release_url:
+            row["releaseUrl"] = release_url
         if (recommended and recommended != "-") or release_url:
             continue
         suggestion = _resolve_suggestion_from_sources_with_caches(
@@ -276,13 +365,12 @@ def _enrich_current_rows_with_precomputed_suggestions(
         if not suggestion:
             continue
         suggested_version = str(suggestion.get("recommendedVersion") or "").strip()
-        suggested_url = str(
-            suggestion.get("releaseUrl")
-            or suggestion.get("manifestUrl")
-            or suggestion.get("downloadUrl")
-            or suggestion.get("projectUrl")
-            or ""
-        ).strip()
+        suggested_url = _preferred_update_url(
+            suggestion.get("releaseUrl"),
+            suggestion.get("downloadUrl"),
+            suggestion.get("projectUrl"),
+            suggestion.get("manifestUrl"),
+        )
         if suggested_version:
             row["recommendedVersion"] = suggested_version
         if suggested_url:
@@ -339,10 +427,18 @@ def _enrich_results_dependency_actions_with_precomputed_suggestions(
             suggested_version = str(suggestion.get("recommendedVersion") or "").strip()
             suggested_manifest = str(suggestion.get("manifestUrl") or "").strip()
             suggested_download = str(suggestion.get("downloadUrl") or "").strip()
+            suggested_release = _preferred_update_url(
+                suggestion.get("releaseUrl"),
+                suggestion.get("downloadUrl"),
+                suggestion.get("projectUrl"),
+                suggestion.get("manifestUrl"),
+            )
             suggested_compat = suggestion.get("compatibility")
             suggested_sys_compat = suggestion.get("systemCompatibility")
             if suggested_version:
                 dep["recommendedVersion"] = suggested_version
+            if suggested_release:
+                dep["releaseUrl"] = suggested_release
             if suggested_manifest:
                 dep["manifestUrl"] = suggested_manifest
             if suggested_download:
@@ -936,6 +1032,11 @@ def _suggest_best_release_for_module_with_caches(
         "title": module.title,
         "installedVersion": recommendation.installed_version,
         "recommendedVersion": recommendation.recommended_version,
+        "releaseUrl": _preferred_update_url(
+            recommendation.download_url,
+            getattr(recommendation, "project_url", ""),
+            recommendation.manifest_url,
+        ),
         "manifestUrl": recommendation.manifest_url,
         "downloadUrl": recommendation.download_url,
         "compatibility": recommendation.compatibility,
@@ -950,6 +1051,11 @@ def _suggest_best_release_for_module_with_caches(
                 "installedVersion": action.installed_version,
                 "recommendedVersion": action.recommended_version,
                 "reason": action.reason,
+                "releaseUrl": _preferred_update_url(
+                    action.download_url,
+                    getattr(action, "project_url", ""),
+                    action.manifest_url,
+                ),
                 "manifestUrl": action.manifest_url,
                 "compatibility": action.compatibility,
                 "systemCompatibility": action.system_compatibility,

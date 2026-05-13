@@ -740,20 +740,35 @@ def _metric_card(
 def _pick_link(row: dict) -> str | None:
     explicit = str(row.get("releaseUrl") or "").strip()
     if explicit:
-        return explicit
+        normalized = _canonical_update_link(explicit)
+        if normalized:
+            return normalized
     download = str(row.get("downloadUrl") or "").strip()
+    project = str(row.get("projectUrl") or "").strip()
     manifest = str(row.get("manifestUrl") or "").strip()
-    release_from_download = _github_release_url(download)
-    if release_from_download:
-        return release_from_download
-    release_from_manifest = _github_release_url(manifest) or _github_release_from_raw_manifest(manifest)
-    if release_from_manifest:
-        return release_from_manifest
-    if manifest:
-        return manifest
-    if download.lower().endswith(".zip"):
-        return _github_repo_url(download)
-    return download or None
+    for candidate in (download, project, manifest):
+        normalized = _canonical_update_link(candidate)
+        if normalized:
+            return normalized
+    return None
+
+
+def _canonical_update_link(raw_url: str) -> str | None:
+    value = str(raw_url or "").strip()
+    if not value:
+        return None
+    release = _github_release_url(value) or _github_release_from_raw_manifest(value) or _gitlab_release_url(value)
+    if release:
+        return release
+    if _is_manifest_like_url(value):
+        return None
+    repo = _github_repo_url(value) or _gitlab_repo_url(value)
+    return repo or value
+
+
+def _is_manifest_like_url(raw_url: str) -> bool:
+    value = str(raw_url or "").strip().lower()
+    return value.endswith("/module.json") or value.endswith("/system.json") or value.endswith("/manifest.json")
 
 
 def _github_release_url(raw_url: str) -> str | None:
@@ -780,6 +795,12 @@ def _github_release_url(raw_url: str) -> str | None:
         tag = rest.split("/", 1)[0].strip()
         if base and tag:
             return f"{parsed.scheme}://{parsed.netloc}{base}/releases/tag/{tag}"
+    if "/blob/" in path and _is_manifest_like_url(value):
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 4:
+            owner, repo, ref = parts[0], parts[1], parts[3]
+            if owner and repo and ref:
+                return f"{parsed.scheme}://{parsed.netloc}/{owner}/{repo}/releases/tag/{ref}"
     return None
 
 
@@ -824,6 +845,55 @@ def _github_repo_url(raw_url: str) -> str | None:
     if not owner or not repo:
         return None
     return f"{parsed.scheme}://{parsed.netloc}/{owner}/{repo}"
+
+
+def _gitlab_release_url(raw_url: str) -> str | None:
+    value = str(raw_url or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    host = parsed.netloc.lower()
+    if host not in {"gitlab.com", "www.gitlab.com"}:
+        return None
+    path = parsed.path.rstrip("/")
+    if "/-/releases/" in path:
+        return value
+    if "/-/archive/" in path:
+        base, _, rest = path.partition("/-/archive/")
+        tag = rest.split("/", 1)[0].strip()
+        if base and tag:
+            return f"{parsed.scheme}://{parsed.netloc}{base}/-/releases/{tag}"
+    if "/-/raw/" in path or "/-/blob/" in path:
+        marker = "/-/raw/" if "/-/raw/" in path else "/-/blob/"
+        base, _, rest = path.partition(marker)
+        ref = rest.split("/", 1)[0].strip()
+        if base and ref:
+            return f"{parsed.scheme}://{parsed.netloc}{base}/-/releases/{ref}"
+    return None
+
+
+def _gitlab_repo_url(raw_url: str) -> str | None:
+    value = str(raw_url or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    host = parsed.netloc.lower()
+    if host not in {"gitlab.com", "www.gitlab.com"}:
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/{parts[1]}"
 
 
 def _relative_time(raw_value) -> str:

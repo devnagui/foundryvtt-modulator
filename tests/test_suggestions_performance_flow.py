@@ -132,6 +132,32 @@ class SuggestionsPerformanceFlowTests(unittest.TestCase):
         self.assertEqual("https://gitlab.com/tposney/dae/-/releases/13.0.10", rows[0].get("releaseUrl"))
         self.assertEqual("missing", rows[0].get("presentationStatus"))
 
+    def test_read_report_model_enriches_release_link_from_manifest_when_release_missing(self) -> None:
+        from backend.app.services.runtime import get_runtime, read_report_model
+
+        self._write_report_with_current_row("dae")
+        runtime = get_runtime()
+        runtime.module_source_store.upsert_source(
+            module_id="dae",
+            manifest_url="",
+            project_url="https://gitlab.com/tposney/dae",
+        )
+        suggestion = {
+            "module": "dae",
+            "recommendedVersion": "13.0.10",
+            "manifestUrl": "https://gitlab.com/tposney/dae/-/raw/13.0.10/module.json",
+        }
+        with patch(
+            "backend.app.services.runtime._suggest_best_release_for_module_with_caches",
+            return_value=suggestion,
+        ):
+            model = read_report_model(runtime)
+
+        rows = (((model.get("view") or {}).get("currentSystemUpgrades") or {}).get("rows") or [])
+        self.assertEqual(1, len(rows))
+        self.assertEqual("13.0.10", rows[0].get("recommendedVersion"))
+        self.assertEqual("https://gitlab.com/tposney/dae/-/releases/13.0.10", rows[0].get("releaseUrl"))
+
     def test_read_report_model_reuses_context_cache(self) -> None:
         from backend.app.services.runtime import get_runtime, read_report_model
 
@@ -263,6 +289,7 @@ class SuggestionsPerformanceFlowTests(unittest.TestCase):
         self.assertEqual("13.0.10", dep.get("recommendedVersion"))
         self.assertEqual("https://gitlab.com/tposney/dae/-/raw/13.0.10/module.json", dep.get("manifestUrl"))
         self.assertEqual("https://gitlab.com/tposney/dae/-/archive/13.0.10/dae.zip", dep.get("downloadUrl"))
+        self.assertEqual("https://gitlab.com/tposney/dae/-/releases/13.0.10", dep.get("releaseUrl"))
 
     def test_enrich_latest_report_file_keeps_unknown_dependency_action_when_source_missing(self) -> None:
         from backend.app.services.runtime import _enrich_latest_report_file, get_runtime

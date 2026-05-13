@@ -2,6 +2,19 @@
 
 This file is the canonical reference for module/system classification and UI behavior.
 
+## 0) Scope (global, not per-module)
+
+All rules in this document apply to **every module row** in Current and Planning.
+
+- No module-specific exception is allowed in classification/render logic.
+- Examples such as `dae` and `socketlib` are illustrative only.
+- Any compatibility/status/update-path decision must be derived from:
+  - selected Foundry target,
+  - selected system target,
+  - row compatibility metadata,
+  - availability of source URLs,
+  - resolved recommendation metadata.
+
 ## 1) Canonical status priority
 
 Priority order:
@@ -109,6 +122,19 @@ Tooltip must include:
 - If recommendation exists: render `installed -> recommended`.
 - If recommendation is still resolving and source exists: render `Loading...`.
 - If no recommendation after resolution attempt and no source: render `?`.
+
+### 6.1 Context-aware recommendation precedence (Current + Planning)
+
+Recommendation resolution must be contextual to selected filters.
+
+- Primary context key: `targetFoundryVersion + installedSystemVersions + moduleId`.
+- If row baseline recommendation is incompatible with selected context, prefer contextual hydrated recommendation.
+- Fallback order (recommended/version URL):
+  1. contextual (hydrated for selected context)
+  2. module-level cached suggestion
+  3. dependency-level suggestion
+  4. baseline row value (only if still valid/usable)
+- This rule is mandatory for all modules, preventing stale scan values from overriding selected filter context.
 
 ## 7) Start Scan behavior (required)
 
