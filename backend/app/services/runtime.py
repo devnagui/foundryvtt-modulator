@@ -429,6 +429,24 @@ def _annotate_presentation_statuses(view: dict[str, Any]) -> None:
                             row["hasMissingDependencies"] = has_missing
 
 
+def _index_planner_targets_by_foundry(view: dict[str, Any]) -> None:
+    planner = view.get("systemUpgradePlanner")
+    if not isinstance(planner, dict):
+        return
+    targets = planner.get("targets")
+    if not isinstance(targets, list):
+        return
+    by_foundry: dict[str, Any] = {}
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        version = str(target.get("foundryVersion") or "").strip()
+        if not version:
+            continue
+        by_foundry[version] = target
+    planner["targetsByFoundry"] = by_foundry
+
+
 def read_report_model(runtime: AppRuntime) -> dict[str, Any]:
     report_path = runtime.config.reports_dir / "module-resolver-latest.json"
     if not report_path.exists():
@@ -490,6 +508,10 @@ def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None
         _annotate_presentation_statuses(view)
     except Exception:
         pass
+    try:
+        _index_planner_targets_by_foundry(view)
+    except Exception:
+        pass
     payload["reportViews"] = report_views
 
 
@@ -524,6 +546,46 @@ def export_latest_report_html(runtime: AppRuntime, output_path: str = "") -> dic
         "ok": True,
         "path": str(target),
         "generatedAt": _utc_now_iso(),
+    }
+
+
+def export_modules_snapshot(runtime: AppRuntime, output_path: str = "") -> dict[str, Any]:
+    data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    ok, normalized_root, details = _validate_foundry_root_path(data_root)
+    if not ok:
+        raise ValueError(details.get("message") or "Invalid Foundry root.")
+    foundry_version, foundry_source = detect_foundry_version(normalized_root)
+    systems = load_system_versions(normalized_root)
+    modules_dir = str(modules_dir_from_data_root(normalized_root))
+    modules = load_modules(modules_dir)
+    payload = {
+        "generatedAt": _utc_now_iso(),
+        "dataRoot": normalized_root,
+        "foundryVersion": foundry_version,
+        "foundryVersionSource": foundry_source,
+        "systems": systems,
+        "modules": [
+            {
+                "module": item.module_id,
+                "title": item.title,
+                "version": item.version,
+                "manifestUrl": item.manifest_url,
+                "projectUrl": item.project_url,
+                "path": item.path,
+            }
+            for item in modules
+        ],
+    }
+    target = Path(output_path).expanduser().resolve() if str(output_path or "").strip() else (runtime.config.reports_dir / "module-snapshot-latest.json")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target),
+        "modulesCount": len(modules),
+        "systemsCount": len(systems),
+        "foundryVersion": foundry_version,
+        "generatedAt": payload["generatedAt"],
     }
 
 

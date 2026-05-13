@@ -1,91 +1,101 @@
 ﻿# FoundryVTT Modulator
 
-Simple tool to analyze Foundry modules, suggest compatible versions, and run safe maintenance actions.
+FoundryVTT Modulator helps you plan and apply safe module/system version updates based on:
 
-## UI First (Recommended)
+- Current Foundry version
+- Installed game systems
+- Module compatibility metadata (`minimum`, `verified`, `maximum`)
+- Dependency constraints between modules
 
-Use the web UI for daily operations.
+The goal is to reduce broken upgrades and make update decisions predictable.
 
-### 1) Start the app
+## What the app does
+
+- Scans installed systems/modules and builds a compatibility report
+- Suggests update/install targets for modules and systems
+- Highlights blockers and missing dependencies
+- Lets you plan upgrades for future Foundry versions
+- Keeps operational history for rollback/maintenance workflows
+
+## Quick Start (UI)
+
+### 1) Install dependencies
 
 ```bash
 pip install -r backend/requirements.txt
-USE_NEW_UI=true uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+### 2) Run API + UI
+
+```bash
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
 ```
 
 Open:
 
 - `http://127.0.0.1:8787/`
 
-### Runtime
+### 3) First login
 
-FastAPI backend is the standard runtime path.
+- Create admin username/password on first access.
 
-### React UI (current recommended UI)
+### 4) Configure Foundry path
 
-Build frontend:
+- Click the gear button.
+- Set Foundry data root.
+- Validate and save.
 
-```bash
-cd frontend
-npm install
-npm run build
+### 5) Start Scan
+
+- Click `Start Scan`.
+- Review results in `Current`.
+
+### 6) Use Planning
+
+- Select target Foundry version.
+- Review suggested system/module paths for that target.
+- Apply updates in your preferred sequence.
+
+## Main Screens
+
+- `Current`: current state, blockers, update/install actions
+- `Planning`: target Foundry view, future-safe suggestions
+- `Backups`: maintenance/health/rollback helpers
+
+## Troubleshooting
+
+### PowerShell blocks `npm.ps1`
+
+Use `npm.cmd` in this repo, or allow scripts for current user:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-Build and run FastAPI backend:
+### `Start Scan` disabled
 
-```bash
-USE_NEW_UI=true uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
-```
+- Foundry path not configured or invalid.
+- Reopen settings (gear), validate path, save again.
 
-Current UI flow:
+### Missing recommendation (`?`)
 
-- Header actions: `Start Scan`, `Settings (gear)`, `Logout`
-- Gear status:
-  - yellow = Foundry path not configured/invalid
-  - green = Foundry path configured/valid
-- `Start Scan` is disabled until Foundry path is valid
-- `Settings` opens modal to configure Foundry Data Root
+- Module source URL not configured, or source cannot be resolved.
+- Set module source (`manifestUrl`/`projectUrl`) and re-scan.
 
-### 2) First login setup
+### macOS/Linux packaging script fails with `bash\r`
 
-- Create `username + password`
-- Password policy is enforced (strong password required)
+- This is usually CRLF line ending mismatch.
+- CI now normalizes shell scripts before packaging runs.
 
-### 3) Configure Foundry path
+## CLI (still available)
 
-- Click the `gear` button in the header
-- Select or paste your Foundry root path
-- Validate and save
+CLI is **not removed**.
 
-### 4) Use main UI flows
-
-- `Current`: current module status and actions
-- `Foundry Upgrade`: plan for future Foundry versions
-- `Backups`: cleanup/maintenance helpers
-- `Unused Modules`: compatibility and cleanup actions
-- `Add Module`: suggest best version from `module.json` URL
-
-## UI Screenshots (Placeholders)
-
-Add example images here:
-
-- `docs/images/ui-login.png`
-- `docs/images/ui-dashboard.png`
-- `docs/images/ui-settings-modal.png`
-- `docs/images/ui-add-module-modal.png`
-
-Example markdown:
-
-```md
-![Login](docs/images/ui-login.png)
-![Dashboard](docs/images/ui-dashboard.png)
-```
-
-## CLI Commands
-
-Use CLI when you want automation or scripting.
-
-### Dry-run (safe preview)
+### Dry run
 
 ```bash
 python -m resolver.cli \
@@ -94,18 +104,7 @@ python -m resolver.cli \
   --batch-size 10
 ```
 
-### Analyze specific modules
-
-```bash
-python -m resolver.cli \
-  --data-root /path/to/foundry/root \
-  --module midi-qol \
-  --module dae \
-  --dry-run \
-  --batch-size 10
-```
-
-### Apply updates
+### Apply
 
 ```bash
 python -m resolver.cli \
@@ -114,44 +113,29 @@ python -m resolver.cli \
   --batch-size 10
 ```
 
-## Security Notes
+### Filter by module
 
-- Auth uses `username + password` with PBKDF2 hash
-- Login lockout on repeated failures
-- CSRF protection on authenticated `POST` endpoints
-- Global request rate limiting by IP
-- Session cookie is HttpOnly (`mm_session`)
+```bash
+python -m resolver.cli \
+  --data-root /path/to/foundry/root \
+  --module midi-qol \
+  --module dae \
+  --dry-run
+```
 
-If you are locked out and cannot recover:
-
-1. Stop the service
-2. Delete `state/auth.json`
-3. Start again and create new credentials
-
-## Reports and Artifacts
+## Artifacts
 
 Generated files (latest):
 
 - `reports/module-resolver-latest.log`
 - `reports/module-resolver-latest.json`
-- `reports/module-resolver-latest.html` (optional, generated only by explicit export)
+- `reports/module-resolver-latest.html` (optional via explicit export)
 
-HTML export endpoint:
+Optional HTML export endpoint:
 
 - `POST /api/v1/report/v3/export-html`
-
-## Docker (optional)
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-## CI/CD
-
-- CI: `.github/workflows/ci.yml`
-- Release: `.github/workflows/release.yml`
+- `POST /api/v1/report/v3/export-snapshot` (modules/systems snapshot JSON)
 
 ## License
 
-- `AGPL-3.0-or-later` (see `LICENSE`)
-- Attribution details in `NOTICE`
+- `AGPL-3.0-or-later`

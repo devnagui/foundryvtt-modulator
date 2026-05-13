@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Header } from "../components/Header";
 import { api, type FoundryRootStatus, type ModuleSourceRow, type ReportModel } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
@@ -156,6 +156,45 @@ function compatibilityRangeLabel(compat: Record<string, unknown> | undefined): s
   const max = asString(compat?.maximum ?? compat?.max) || "-";
   return `compatible{min: ${min}, verified: ${verified}, max: ${max}}`;
 }
+
+function StatusBadge({
+  icon,
+  label,
+  tone,
+}: {
+  icon: string;
+  label: string;
+  tone: "ok" | "fail" | "warn" | "neutral";
+}) {
+  const [open, setOpen] = useState(false);
+  const tooltipId = useId();
+  return (
+    <button
+      type="button"
+      className={`status-badge ${tone}`}
+      title={label}
+      aria-label={label}
+      aria-describedby={open ? tooltipId : undefined}
+      onClick={() => setOpen((v) => !v)}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onBlur={() => setOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      }}
+    >
+      <span>{icon}</span>
+      {open ? (
+        <span id={tooltipId} role="tooltip" className="status-badge-tooltip">
+          {label}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function reasonBadges(
   _reason: string,
   compatibility: Record<string, unknown> | undefined,
@@ -190,28 +229,12 @@ function reasonBadges(
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}>
       {badges.map((badge, idx) => (
-        <span
+        <StatusBadge
           key={`${badge.icon}-${idx}`}
-          title={badge.title}
-          aria-label={badge.title}
-          style={{
-            minWidth: 30,
-            height: 30,
-            padding: "0 10px",
-            borderRadius: 8,
-            border: "1px solid #334155",
-            background: badge.tone === "ok" ? "#166534" : (badge.tone === "fail" ? "#7f1d1d" : (badge.tone === "warn" ? "#854d0e" : "#1f2937")),
-            color: badge.tone === "ok" ? "#dcfce7" : (badge.tone === "fail" ? "#fecaca" : (badge.tone === "warn" ? "#fef3c7" : "#e5e7eb")),
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-            fontWeight: 700,
-            lineHeight: 1,
-          }}
-        >
-          {badge.icon}
-        </span>
+          icon={badge.icon}
+          label={badge.title}
+          tone={badge.tone}
+        />
       ))}
     </div>
   );
@@ -410,6 +433,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const view = model?.view || {};
   const currentSystems = asArray(view.currentSystemUpgrades?.rows);
   const planningTargets = asArray(view.systemUpgradePlanner?.targets);
+  const planningTargetsByFoundry = (view.systemUpgradePlanner?.targetsByFoundry as Record<string, unknown> | undefined) || {};
   const backupRows = asArray(view.backupManagement?.rows);
   const applyHistoryRows = asArray(view.backupManagement?.applyHistory);
   const unusedRows = asArray(view.unusedModules?.rows);
@@ -988,12 +1012,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const planningRowsByFoundry = useMemo<Record<string, PlanningRow[]>>(() => {
     const byFoundry: Record<string, PlanningRow[]> = {};
-    for (const target of planningTargets) {
-      const foundryVersion = asString(target.foundryVersion).trim();
+    const targetPool = Object.keys(planningTargetsByFoundry).length > 0
+      ? Object.values(planningTargetsByFoundry).filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object"))
+      : planningTargets;
+    for (const target of targetPool) {
+      const foundryVersion = asString((target as Record<string, unknown>).foundryVersion).trim();
       if (!foundryVersion) continue;
       if (!byFoundry[foundryVersion]) byFoundry[foundryVersion] = [];
       const rows = byFoundry[foundryVersion];
-      const systemRows = asArray(target.systemRows).length > 0 ? asArray(target.systemRows) : asArray(target.systems);
+      const systemRows = asArray((target as Record<string, unknown>).systemRows).length > 0 ? asArray((target as Record<string, unknown>).systemRows) : asArray((target as Record<string, unknown>).systems);
       for (const system of systemRows) {
         const systemId = asString(system.systemId).trim();
         const systemName = asString(system.title) || systemId || "-";
@@ -1027,7 +1054,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         pushRows(asArray(system.compatibleModuleRows), "ready");
         pushRows(asArray(system.unknownModuleRows), "blocked", true);
       }
-      for (const row of asArray(target.localManifestManualModules)) {
+      for (const row of asArray((target as Record<string, unknown>).localManifestManualModules)) {
         const moduleId = cleanModuleId(asString(row.module));
         if (!moduleId) continue;
         const reason = asString(row.reason) || "Unused/manual module for this target";
@@ -1056,7 +1083,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       });
     }
     return byFoundry;
-  }, [planningTargets]);
+  }, [planningTargets, planningTargetsByFoundry]);
 
   const planningFoundryBuckets = useMemo<FoundryVersionBucket[]>(() => {
     return Object.entries(planningRowsByFoundry)
@@ -1244,7 +1271,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningTableRows = useMemo<PlanningTableRow[]>(() => {
     const systemRows: Extract<PlanningTableRow, { kind: "system" }>[] = [];
     if (selectedPlanningVersionBucket) {
-      const selectedTarget = planningTargets.find((target) => asString(target.foundryVersion).trim() === planningFoundryFilter);
+      const selectedTargetFromIndex = planningTargetsByFoundry[planningFoundryFilter];
+      const selectedTarget = selectedTargetFromIndex && typeof selectedTargetFromIndex === "object"
+        ? (selectedTargetFromIndex as Record<string, unknown>)
+        : planningTargets.find((target) => asString(target.foundryVersion).trim() === planningFoundryFilter);
       const targetSystems = selectedTarget ? (asArray(selectedTarget.systemRows).length > 0 ? asArray(selectedTarget.systemRows) : asArray(selectedTarget.systems)) : [];
       for (const systemId of selectedPlanningVersionBucket.systems) {
         if (activePlanningSystemId && systemId !== activePlanningSystemId) continue;
@@ -1276,6 +1306,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   }, [
     selectedPlanningVersionBucket,
     planningTargets,
+    planningTargetsByFoundry,
     planningFoundryFilter,
     currentSystems,
     activePlanningSystemId,

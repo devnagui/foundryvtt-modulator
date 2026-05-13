@@ -133,6 +133,41 @@ class FastApiIntegrationTests(unittest.TestCase):
         html_path = Path(payload.get("path") or "")
         self.assertTrue(html_path.exists())
 
+    def test_report_snapshot_export_endpoint_generates_json(self) -> None:
+        self.client.post(
+            "/api/v1/auth/setup",
+            json={"username": "tester.user", "password": "Strong!Pass123", "confirmPassword": "Strong!Pass123"},
+        )
+        module_dir = Path(os.environ["RESOLVER_DATA_ROOT"]) / "Data" / "modules" / "snapmod"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        logs_dir = Path(os.environ["RESOLVER_DATA_ROOT"]) / "Logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "diagnostics.json").write_text(
+            json.dumps({"foundry": {"generation": 13, "build": 351}}),
+            encoding="utf-8",
+        )
+        (module_dir / "module.json").write_text(
+            json.dumps(
+                {
+                    "id": "snapmod",
+                    "title": "Snapshot Module",
+                    "version": "1.2.3",
+                    "compatibility": {"minimum": "13", "verified": "13.351", "maximum": "13.999"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        csrf = self.client.cookies.get("mm_csrf") or ""
+        response = self.client.post("/api/v1/report/v3/export-snapshot", json={}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(bool(payload.get("ok")))
+        out = Path(payload.get("path") or "")
+        self.assertTrue(out.exists())
+        snapshot = json.loads(out.read_text(encoding="utf-8"))
+        self.assertIn("modules", snapshot)
+        self.assertTrue(any(str(row.get("module")) == "snapmod" for row in (snapshot.get("modules") or [])))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from backend.app.services.runtime import _annotate_presentation_statuses
+from backend.app.services.runtime import _annotate_presentation_statuses, _index_planner_targets_by_foundry
 
 
 class RuntimePresentationStatusTests(unittest.TestCase):
@@ -122,6 +122,23 @@ class RuntimePresentationStatusTests(unittest.TestCase):
         row = view["systemUpgradePlanner"]["targets"][0]["systemRows"][0]["compatibleModuleRows"][0]
         self.assertEqual("missing", row.get("presentationStatus"))
         self.assertTrue(bool(row.get("hasMissingDependencies")))
+
+    def test_planner_targets_indexed_by_foundry_version(self) -> None:
+        view = {
+            "systemUpgradePlanner": {
+                "targets": [
+                    {"foundryVersion": "13.350", "systemRows": []},
+                    {"foundryVersion": "14.0.2", "systemRows": []},
+                ]
+            }
+        }
+        _index_planner_targets_by_foundry(view)
+        planner = view["systemUpgradePlanner"]
+        indexed = planner.get("targetsByFoundry") or {}
+        self.assertIn("13.350", indexed)
+        self.assertIn("14.0.2", indexed)
+        self.assertEqual("13.350", indexed["13.350"].get("foundryVersion"))
+        self.assertEqual("14.0.2", indexed["14.0.2"].get("foundryVersion"))
 
 
 if __name__ == "__main__":

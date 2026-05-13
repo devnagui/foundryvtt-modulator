@@ -46,10 +46,10 @@ jobs:
       - name: Build Linux .deb
         if: matrix.os == 'ubuntu-latest'
         run: |
+          find packaging -type f -name "*.sh" -print0 | xargs -0 sed -i 's/\r$//'
           sudo apt-get update
           sudo apt-get install -y dpkg-dev
-          chmod +x packaging/deb/build_deb.sh
-          ./packaging/deb/build_deb.sh "${GITHUB_REF_NAME#v}"
+          bash packaging/deb/build_deb.sh "${GITHUB_REF_NAME#v}"
 
       - name: Build Windows exe
         if: matrix.os == 'windows-latest'
@@ -61,8 +61,8 @@ jobs:
       - name: Build macOS app
         if: matrix.os == 'macos-latest'
         run: |
-          chmod +x packaging/macos/build_macos_app.sh
-          ./packaging/macos/build_macos_app.sh "${GITHUB_REF_NAME#v}"
+          find packaging -type f -name "*.sh" -print0 | xargs -0 sed -i '' 's/\r$//'
+          bash packaging/macos/build_macos_app.sh "${GITHUB_REF_NAME#v}"
 
       - name: Collect artifacts
         shell: bash

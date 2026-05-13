@@ -23,7 +23,11 @@ export type ReportModel = {
   view: {
     summary?: { usedModuleCount?: number };
     currentSystemUpgrades?: { rows?: Array<Record<string, unknown>> };
-    systemUpgradePlanner?: { targets?: Array<Record<string, unknown>>; summary?: Record<string, unknown> };
+    systemUpgradePlanner?: {
+      targets?: Array<Record<string, unknown>>;
+      targetsByFoundry?: Record<string, Record<string, unknown>>;
+      summary?: Record<string, unknown>;
+    };
     backupManagement?: { rows?: Array<Record<string, unknown>>; totalBackupCount?: number; applyHistory?: Array<Record<string, unknown>> };
     unusedModules?: { rows?: Array<Record<string, unknown>>; count?: number };
   };
@@ -116,6 +120,14 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }),
   reportV3Model: () => request<ReportModel>("/api/v1/report/v3/model"),
+  exportSnapshot: (outputPath = "") =>
+    request<{ ok: boolean; path: string; modulesCount: number; systemsCount: number; foundryVersion: string }>(
+      "/api/v1/report/v3/export-snapshot",
+      {
+        method: "POST",
+        body: JSON.stringify({ outputPath }),
+      }
+    ),
   submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "rollback-batch", payload: Record<string, unknown>) =>
     request<ActionSubmitResponse>("/api/v1/actions/submit", {
       method: "POST",
