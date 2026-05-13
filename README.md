@@ -136,6 +136,32 @@ Optional HTML export endpoint:
 - `POST /api/v1/report/v3/export-html`
 - `POST /api/v1/report/v3/export-snapshot` (modules/systems snapshot JSON)
 
+## Docker
+
+Single service (API/UI only):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Self-host stack with nginx included (recommended for safer defaults):
+
+```bash
+docker compose -f docker-compose.selfhost.yml up -d --build
+```
+
+Notes for `docker-compose.selfhost.yml`:
+
+- UI path is `/modulator`
+- `/api/v1/*` is restricted to localhost/LAN by default in `deploy/nginx/modulator.conf`
+- Legacy `/module-resolver*` is disabled by default
+
+Environment variables you may set:
+
+- `FOUNDRY_DATA_ROOT` (required)
+- `MODULATOR_HTTP_BIND` (default `127.0.0.1`)
+- `MODULATOR_HTTP_PORT` (default `8788`)
+
 ## License
 
 - `AGPL-3.0-or-later`

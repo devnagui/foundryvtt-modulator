@@ -29,6 +29,8 @@ O objetivo principal e recomendar versoes compativeis com o Foundry instalado, c
 - Nunca remover/modificar arquivos fora do escopo de `Data/modules` e `Backups/modules`.
 - Sempre manter trilha de auditoria para acoes sensiveis.
 - Quando Foundry path nao estiver validado, UI deve bloquear scans/acoes e orientar configuracao.
+- Nao expor `/api/v1/*` publicamente sem protecao explicita (allowlist IP, VPN, ou auth adicional no proxy).
+- Em self-hosting, preferir `docker-compose.selfhost.yml` + `deploy/nginx/modulator.conf` (API restrita por default).
 
 ## Testes
 
