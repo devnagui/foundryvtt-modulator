@@ -4,12 +4,26 @@ from .models import ReleaseRecord
 from .versioning import compare_versions, exceeds_maximum, is_below_minimum, parse_version, version_distance, version_major
 
 
+def _as_dict(raw: object) -> dict:
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_compatibility(raw: object) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                return item
+    return {}
+
+
 def satisfies_release_constraints(
     release: ReleaseRecord,
     target_version: str,
     installed_system_versions: dict[str, str],
 ) -> bool:
-    compatibility = release.compatibility or {}
+    compatibility = _normalize_compatibility(release.compatibility)
     minimum = compatibility.get("minimum")
     maximum = compatibility.get("maximum")
     if minimum not in (None, "") and _minimum_excludes_target(minimum, target_version):
@@ -26,7 +40,7 @@ def candidate_sort_key(
     target_version: str,
     installed_system_versions: dict[str, str],
 ) -> tuple:
-    compatibility = release.compatibility or {}
+    compatibility = _normalize_compatibility(release.compatibility)
     verified = compatibility.get("verified")
     target_major = version_major(target_version)
     verified_major = version_major(verified)
@@ -60,7 +74,7 @@ def explain_choice(
     target_version: str,
     installed_system_versions: dict[str, str],
 ) -> tuple[str, str]:
-    compatibility = release.compatibility or {}
+    compatibility = _normalize_compatibility(release.compatibility)
     verified = compatibility.get("verified")
     source = release.source
     if len(all_releases) == 1 and source == "local-manifest":
@@ -78,11 +92,12 @@ def explain_choice(
 def _systems_are_compatible(release: ReleaseRecord, installed_system_versions: dict[str, str]) -> bool:
     if not installed_system_versions:
         return True
-    if not release.system_compatibility:
+    system_meta = _as_dict(release.system_compatibility)
+    if not system_meta:
         # Missing system metadata should be treated as "unknown", not a hard failure.
         return True
     for system_id, installed_version in installed_system_versions.items():
-        compatibility = (release.system_compatibility or {}).get(system_id) or {}
+        compatibility = _normalize_compatibility(system_meta.get(system_id))
         if not compatibility:
             # No explicit compatibility for this system -> unknown, keep candidate.
             continue
@@ -102,7 +117,7 @@ def _systems_are_compatible(release: ReleaseRecord, installed_system_versions: d
 
 
 def _system_reason_fragment(release: ReleaseRecord, installed_system_versions: dict[str, str]) -> str:
-    for system_id, compatibility in release.system_compatibility.items():
+    for system_id, compatibility in _as_dict(release.system_compatibility).items():
         installed_version = installed_system_versions.get(system_id)
         if installed_version and compatibility:
             return f" with installed system {system_id} {installed_version} inside declared compatibility"

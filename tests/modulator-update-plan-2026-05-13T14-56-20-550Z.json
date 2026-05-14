@@ -1,0 +1,3575 @@
+{
+  "generatedAt": "2026-05-13T14:56:20.550Z",
+  "baseReportGeneratedAt": "2026-05-13T14:56:08.027770+00:00",
+  "snapshot": {
+    "ok": true,
+    "path": "/app/reports/module-snapshot-latest.json",
+    "modulesCount": 247,
+    "systemsCount": 3,
+    "foundryVersion": "13.351",
+    "generatedAt": "2026-05-13T14:56:20.789742Z"
+  },
+  "current": {
+    "foundryVersion": "13.351",
+    "activeSystemId": "dnd5e",
+    "selectedSystemVersion": "5.3.0",
+    "filters": [],
+    "search": "",
+    "rows": [
+      {
+        "kind": "module",
+        "moduleId": "moulinette-core",
+        "title": "moulinette-core",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Required module is not installed and could not be resolved from available metadata.",
+        "installedVersion": "-",
+        "recommendedVersion": "-",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-urbanext",
+        "title": "The MAD Cartographer | Urban Exteriors | Battlemap Pack",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release was found for current Foundry 13.351 with upgraded system dnd5e 5.3.1.",
+        "installedVersion": "12.1.2",
+        "recommendedVersion": "12.1.2",
+        "releaseUrl": "",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "autoanimations",
+        "title": "Automated Animations",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1, but requires dependency updates: sequencer (3.6.11 -> 4.0.0).",
+        "installedVersion": "6.8.2",
+        "recommendedVersion": "6.8.2",
+        "releaseUrl": "https://github.com/theripper93/autoanimations/releases/tag/6.8.2",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "automated-conditions-5e",
+        "title": "Automated Conditions 5e",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; module should move to 13.5310.4.3.",
+        "installedVersion": "13.5300.1",
+        "recommendedVersion": "13.5310.4.3",
+        "releaseUrl": "https://github.com/thatlonelybugbear/automated-conditions-5e/releases/tag/v13.5310.4.3",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "chris-premades",
+        "title": "Cauldron of Plentiful Resources",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; module should move to 1.5.30.",
+        "installedVersion": "1.5.20",
+        "recommendedVersion": "1.5.30",
+        "releaseUrl": "https://github.com/chrisk123999/chris-premades/releases/tag/1.5.30",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "gambits-premades",
+        "title": "Gambit's Premades",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1, but requires dependency updates: sequencer (3.6.11 -> 4.0.0).",
+        "installedVersion": "2.1.42",
+        "recommendedVersion": "2.1.42",
+        "releaseUrl": "https://github.com/gambit07/gambits-premades/releases/tag/2.1.42",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "gm-screen",
+        "title": "GM Screen",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 6.0.0 with attention because verification metadata is older.",
+        "installedVersion": "5.6.2",
+        "recommendedVersion": "6.0.0",
+        "releaseUrl": "https://github.com/samulopez/foundryvtt-gmScreen/releases/tag/v6.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "lordudice",
+        "title": "Lordu's Custom Dice for Dice So Nice",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "0.41",
+        "recommendedVersion": "0.42",
+        "releaseUrl": "https://github.com/LorduFreeman/foundry-lordudice/releases/tag/0.42",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mobile-improvements",
+        "title": "Mobile Improvements",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from gitlab-tags.",
+        "installedVersion": "2.0.0",
+        "recommendedVersion": "v2.0.0",
+        "releaseUrl": "https://gitlab.com/fvtt-modules-lab/mobile-improvements/-/releases/v2.0.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "obs-utils",
+        "title": "OBS Utils",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 4.4.0 with attention because verification metadata is older.",
+        "installedVersion": "4.3.2",
+        "recommendedVersion": "4.4.0",
+        "releaseUrl": "https://github.com/FaeyUmbrea/obs-utils/releases/tag/4.4.0",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "sequencer",
+        "title": "Sequencer",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 4.0.0 with attention because verification metadata is older.",
+        "installedVersion": "3.6.11",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/fantasycalendar/FoundryVTT-Sequencer/releases/tag/4.0.0",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "tidy5e-sheet",
+        "title": "Tidy 5e Sheets",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 13.3.0 with attention because verification metadata is older.",
+        "installedVersion": "13.2.1",
+        "recommendedVersion": "13.3.0",
+        "releaseUrl": "https://github.com/kgar/foundry-vtt-tidy-5e-sheets/releases/tag/v13.3.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-action-hud-core",
+        "title": "Token Action HUD Core",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 2.1.1 with attention because verification metadata is older.",
+        "installedVersion": "2.0.16",
+        "recommendedVersion": "2.1.1",
+        "releaseUrl": "https://github.com/Larkinabout/fvtt-token-action-hud-core/releases/tag/2.1.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-action-hud-dnd5e",
+        "title": "Token Action HUD D&D 5e",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; module can move to 2.1.0 with attention because verification metadata is older.",
+        "installedVersion": "2.0.7",
+        "recommendedVersion": "2.1.0",
+        "releaseUrl": "https://github.com/Larkinabout/fvtt-token-action-hud-dnd5e/releases/tag/2.1.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "ActiveAuras",
+        "title": "Active Auras",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "0.12.7",
+        "recommendedVersion": "0.12.7",
+        "releaseUrl": "https://github.com/kandashi/Active-Auras/releases/tag/0.12.7",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "enhancedcombathud",
+        "title": "Argon - Combat HUD (CORE)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "4.1.2",
+        "recommendedVersion": "4.1.2",
+        "releaseUrl": "https://github.com/theripper93/enhancedcombathud/releases/tag/4.1.2",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "enhancedcombathud-dnd5e",
+        "title": "Argon - Combat HUD (DND5E)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "5.1.5",
+        "recommendedVersion": "5.1.5",
+        "releaseUrl": "https://github.com/theripper93/enhancedcombathud-dnd5e/releases/tag/5.1.5",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "art-for-daggerheart",
+        "title": "Art for Daggerheart",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 1.0.0 is newer than the best compatible catalog candidate (0.9.6); rollback suggestions are suppressed.",
+        "installedVersion": "1.0.0",
+        "recommendedVersion": "1.0.0",
+        "releaseUrl": "https://github.com/mordachai/art-for-daggerheart/releases/latest/download/art-for-daggerheart.zip",
+        "relatedSystems": [
+          "daggerheart",
+          "daggerheart-unofficial"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "auraeffects",
+        "title": "Aura Effects",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.5.2",
+        "recommendedVersion": "1.5.2",
+        "releaseUrl": "https://github.com/roth-michael/Aura-Effects/releases/tag/1.5.2",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "automated-evocations",
+        "title": "Automated Evocations - Companion Manager",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "5.0.0",
+        "recommendedVersion": "5.0.0",
+        "releaseUrl": "https://github.com/theripper93/automated-evocations/releases/tag/5.0.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "wm5e",
+        "title": "Automated Masteries 5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "14.530.1",
+        "recommendedVersion": "14.530.1",
+        "releaseUrl": "https://github.com/thatlonelybugbear/wm5e/releases/tag/v14.530.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "babele",
+        "title": "Babele",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 2.7.9 is newer than the best compatible catalog candidate (2.7.7); rollback suggestions are suppressed.",
+        "installedVersion": "2.7.9",
+        "recommendedVersion": "2.7.9",
+        "releaseUrl": "https://gitlab.com/riccisi/foundryvtt-babele",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "multi-token-edit",
+        "title": "Baileywiki Mass Edit",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "2.7.15",
+        "recommendedVersion": "2.7.15",
+        "releaseUrl": "https://github.com/Aedif/multi-token-edit/releases/tag/2.7.15",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "bsa-dnd5e",
+        "title": "Beaver's System Adaptation dnd5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "2.1.10",
+        "recommendedVersion": "2.1.10",
+        "releaseUrl": "https://github.com/AngryBeaver/bsa-dnd5e/releases/latest/download/bsa-dnd5e.zip",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-woadvsurestone",
+        "title": "Beneath Surestone Abbey | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.0",
+        "recommendedVersion": "13.0.0",
+        "releaseUrl": "https://themadcartographer.com/downloads/theme/00-adventures/wo-surestone-88nfjdif/MAD-ATT-FVTT-WOADVSurestone.zip",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "betterroofs",
+        "title": "Better Roofs",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "3.0.0",
+        "recommendedVersion": "3.0.0",
+        "releaseUrl": "https://github.com/theripper93/Better-Roofs/releases/tag/3.0.0",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "bossbar",
+        "title": "Bossbar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "4.0.0",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/theripper93/Boss-Bar/releases/tag/4.0.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "campaign-codex",
+        "title": "Campaign Codex",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "3.8.1",
+        "recommendedVersion": "3.8.1",
+        "releaseUrl": "https://github.com/xthesaintx/cc13/releases/tag/3.8.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "crlngn-ui",
+        "title": "Carolingian UI",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 2.29.6 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "2.29.6",
+        "recommendedVersion": "2.29.6",
+        "releaseUrl": "https://github.com/crlngn/crlngn-ui/releases/tag/v2.29.6",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "combat-tracker-dock",
+        "title": "Carousel Combat Tracker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "4.1.8",
+        "recommendedVersion": "4.1.8",
+        "releaseUrl": "https://github.com/theripper93/combat-tracker-dock/releases/tag/4.1.8",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Storm King's Thunder"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "chat-trimmer",
+        "title": "Chat Trimmer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.0.6",
+        "recommendedVersion": "1.0.6",
+        "releaseUrl": "https://github.com/roi007leaf/chat-trimmer/releases/tag/1.0.6",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-classicdun-2",
+        "title": "Classic Dungeons 2 Map Pack | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.1",
+        "recommendedVersion": "13.0.1",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "color-picker",
+        "title": "Color Picker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.7",
+        "recommendedVersion": "1.7",
+        "releaseUrl": "https://github.com/Larkinabout/fvtt-color-picker/releases/tag/1.7",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "combatbooster",
+        "title": "Combat Booster: Turn Marker, Recent Actions and more",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "5.0.2",
+        "recommendedVersion": "5.0.2",
+        "releaseUrl": "https://github.com/theripper93/Combat-Booster/releases/tag/5.0.2",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "compact-scene-navigation",
+        "title": "Compact Scene Navigation",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.0.2",
+        "recommendedVersion": "1.0.2",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "tph-cybercity",
+        "title": "Cyber City Map Pack | The MAD Cartographer Sci-Fi",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.4.0",
+        "recommendedVersion": "13.4.0",
+        "releaseUrl": "https://planethoppers.themadnetwork.co.uk/downloads/Foundry/tph-cybercity-654fxg5/tph-cybercity.zip",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-extra-content",
+        "title": "Daggerheart - Extra Content",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.5.9",
+        "recommendedVersion": "1.5.9",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-extra-content/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-br",
+        "title": "Daggerheart - Tradução Corrigida para Brasileiro",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.4.5",
+        "recommendedVersion": "1.4.5",
+        "releaseUrl": "https://codeload.github.com/raposoel/DH-BR/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "duality-roller",
+        "title": "Daggerheart Duality Dice Roller",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.1.6",
+        "recommendedVersion": "0.1.6",
+        "releaseUrl": "https://git.geeks.gay/cosmo/DualityDiceRoller/releases/download/0.1.7/DualityDiceRoller.zip",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-gm-hud",
+        "title": "Daggerheart GM HUD",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/mordachai/daggerheart-gm-hud/releases/latest/download/daggerheart-gm-hud.zip",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-hud",
+        "title": "Daggerheart HUD",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.11.1",
+        "recommendedVersion": "1.11.1",
+        "releaseUrl": "https://github.com/mordachai/daggerheart-hud/releases/latest/download/daggerheart-hud.zip",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-plus",
+        "title": "Daggerheart Plus",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.5.0",
+        "recommendedVersion": "1.5.0",
+        "releaseUrl": "https://github.com/featureJosh/daggerheart-plus",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-death-moves",
+        "title": "Daggerheart: Death Moves",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-death-moves/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-quickactions",
+        "title": "Daggerheart: Quick Actions",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.3.2",
+        "recommendedVersion": "0.3.2",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-quickactions/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-store",
+        "title": "Daggerheart: Store",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.4.4",
+        "recommendedVersion": "0.4.4",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-store/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "ddb-importer",
+        "title": "DDB-Importer: A D&D Beyond Integrator",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "7.1.9",
+        "recommendedVersion": "7.1.9",
+        "releaseUrl": "https://github.com/mrprimate/ddb-importer/releases/tag/7.1.9",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Storm King's Thunder"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "df-settings-clarity",
+        "title": "DF Settings Clarity",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.0",
+        "recommendedVersion": "13.0.0",
+        "releaseUrl": "https://dragonflagon.cafe/mods/pak/df-settings-clarity",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "df-templates",
+        "title": "DF Template Enhancements",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.0",
+        "recommendedVersion": "2.0.0",
+        "releaseUrl": "https://dragonflagon.cafe/mods/pak/df-templates",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "dice-so-nice",
+        "title": "Dice So Nice!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "5.3.4",
+        "recommendedVersion": "5.3.4",
+        "releaseUrl": "https://gitlab.com/riccisi/foundryvtt-dice-so-nice",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "em-tile-utilities",
+        "title": "Dorman Lakely's Tile Utilities",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "https://github.com/jesshmusic/em-tile-utilities/releases/tag/v2.0.1",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "downtime-dnd5e",
+        "title": "Downtime (Dnd5e)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.0.7",
+        "recommendedVersion": "13.0.7",
+        "releaseUrl": "https://github.com/laquasicinque/foundryvtt-downtime-dnd5e/releases/tag/13.0.7",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "dae",
+        "title": "Dynamic effects using Active Effects (DAE)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.0.26",
+        "recommendedVersion": "13.0.26",
+        "releaseUrl": "https://gitlab.com/tposney/dae",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "enhanced-region-behavior",
+        "title": "Enhanced Region Behavior",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.4.4",
+        "recommendedVersion": "1.4.4",
+        "releaseUrl": "https://github.com/txm3278/Enhanced-Region-Behaviors/releases/tag/1.4.4",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-faewilds2",
+        "title": "Faewilds 2 Map Pack | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.3.0",
+        "recommendedVersion": "13.3.0",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fear-tracker",
+        "title": "Fear Tracker for Foundry",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "0.4.09",
+        "recommendedVersion": "0.4.09",
+        "releaseUrl": "https://github.com/andrewbrick/Fear-Tracker-for-Foundry",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "flash-rolls-5e",
+        "title": "Flash Token Bar 5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "1.26.0",
+        "recommendedVersion": "1.26.0",
+        "releaseUrl": "https://github.com/crlngn/flash-rolls-5e/releases/tag/v1.26.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "follow-me-if-you-can",
+        "title": "Follow Me If You Can!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/Frenchy-s-module/follow-me-if-you-can/releases/tag/V1.4.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "follow-the-token",
+        "title": "Follow The Token",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.2.0",
+        "recommendedVersion": "1.2.0",
+        "releaseUrl": "https://github.com/mateusrodrigo/foundryvtt-follow-the-token/releases/tag/v1.2.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "forien-copy-environment",
+        "title": "Forien's Copy Environment",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "v3.0.0",
+        "recommendedVersion": "v3.0.0",
+        "releaseUrl": "https://github.com/League-of-Foundry-Developers/foundryvtt-forien-copy-environment/releases/tag/v3.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "forien-quest-log",
+        "title": "Forien's Quest Log",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "v0.9.0",
+        "recommendedVersion": "v0.9.0",
+        "releaseUrl": "https://github.com/Forien/foundryvtt-forien-quest-log/releases/tag/v0.9.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "farchievements",
+        "title": "Foundry Achievements",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 13.03 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "13.03",
+        "recommendedVersion": "13.03",
+        "releaseUrl": "https://github.com/Handyfon/Farchievements/releases/tag/master",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "gatherer",
+        "title": "Gatherer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "4.1.9",
+        "recommendedVersion": "4.1.9",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "give-item",
+        "title": "Give item to another player",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 2.1.1 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "2.1.1",
+        "recommendedVersion": "2.1.1",
+        "releaseUrl": "https://github.com/Sepichat/FoundryVTT-GiveItem/releases/tag/v2.1.1",
+        "relatedSystems": [
+          "dnd5e",
+          "pf2e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "healthEstimate",
+        "title": "Health Estimate",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "34.3.6",
+        "recommendedVersion": "34.3.6",
+        "releaseUrl": "https://github.com/mclemente/healthEstimate/releases/tag/34.3.6",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "heartbeat",
+        "title": "Heartbeat",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.3.3",
+        "recommendedVersion": "13.3.3",
+        "releaseUrl": "https://github.com/Handyfon/heartbeat",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "hexplorer",
+        "title": "Hexplorer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.8",
+        "recommendedVersion": "2.0.8",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "indy-dice-stats",
+        "title": "Indy Dice Stats",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.4",
+        "recommendedVersion": "1.1.4",
+        "releaseUrl": "https://github.com/jwrpalmer99/indy-dice-stats/releases/tag/v1.1.4",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "indy-downtime",
+        "title": "Indy Downtime Tracker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.6",
+        "recommendedVersion": "1.1.6",
+        "releaseUrl": "https://github.com/jwrpalmer99/indy-downtime/releases/tag/v1.1.6",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "items-with-spells-5e",
+        "title": "Items with Spells DnD5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "13.0.2",
+        "recommendedVersion": "13.0.2",
+        "releaseUrl": "https://github.com/morepurplemorebetter/fvtt-items-with-spells-5e/releases/tag/v13.0.2",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "lmrtfy",
+        "title": "Let Me Roll That For You!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 3.1.9 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "3.1.9",
+        "recommendedVersion": "3.1.9",
+        "releaseUrl": "https://github.com/League-of-Foundry-Developers/fvtt-module-lmrtfy/releases/tag/v3.1.9",
+        "relatedSystems": [
+          "coc",
+          "cof",
+          "D35E",
+          "degenesis",
+          "demonlord",
+          "dnd5e",
+          "dnd5eJP",
+          "ffd20",
+          "foundry-chromatic-dungeons",
+          "ose",
+          "pf1",
+          "pf2e",
+          "sw5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "levels",
+        "title": "Levels",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "6.1.0",
+        "recommendedVersion": "6.1.0",
+        "releaseUrl": "https://github.com/theripper93/Levels/releases/tag/6.1.0",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Storm King's Thunder",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "levels-layer-effects",
+        "title": "Levels - Depth Blur",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "colorsettings",
+        "title": "lib - Color Settings",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "3.0.4",
+        "recommendedVersion": "3.0.4",
+        "releaseUrl": "https://github.com/ardittristan/VTTColorSettings/releases/tag/3.0.4",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "scene-packer",
+        "title": "Library: Scene Packer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "2.8.11",
+        "recommendedVersion": "2.8.11",
+        "releaseUrl": "https://github.com/League-of-Foundry-Developers/scene-packer/releases/tag/2.8.11",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "lib-wrapper",
+        "title": "libWrapper",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.13.4.0",
+        "recommendedVersion": "1.13.4.0",
+        "releaseUrl": "https://github.com/ruipin/fvtt-lib-wrapper/releases/tag/v1.13.4.0",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "avclient-livekit",
+        "title": "LiveKit AVClient",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "0.6.6",
+        "recommendedVersion": "0.6.6",
+        "releaseUrl": "https://github.com/bekriebel/fvtt-module-avclient-livekit/releases/tag/v0.6.6",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "macro-runner",
+        "title": "Macro Runner",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade CoC7 8.4; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "0.0.1",
+        "recommendedVersion": "0.0.1",
+        "releaseUrl": "https://gitlab.com/sir.sly/foundryvtt-distribuition/-/releases/main",
+        "relatedSystems": [
+          "CoC7"
+        ],
+        "usedInWorlds": [
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "macro-wheel",
+        "title": "Macro Wheel",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.1.0",
+        "recommendedVersion": "3.1.0",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mastercrafted",
+        "title": "Mastercrafted - Crafting Manager",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "4.0.6",
+        "recommendedVersion": "4.0.6",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mmm",
+        "title": "Maxwell's Manual of Malicious Maladies",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "5.0.1",
+        "recommendedVersion": "5.0.1",
+        "releaseUrl": "https://github.com/theripper93/Maxwell-s-Manual-of-Malicious-Maladies/releases/tag/5.0.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "midi-item-showcase-community",
+        "title": "Midi Item Showcase - Community",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.6.9",
+        "recommendedVersion": "1.6.9",
+        "releaseUrl": "https://github.com/txm3278/midi-item-showcase-community/releases/tag/1.6.9",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "midi-qol",
+        "title": "Midi QOL",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 13.0.61 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "13.0.61",
+        "recommendedVersion": "13.0.61",
+        "releaseUrl": "https://gitlab.com/tposney/midi-qol",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Storm King's Thunder"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mobile-companion-dnd5e",
+        "title": "Mobile Companion - Dungeons & Dragons 5th Edition",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.21.11-light",
+        "recommendedVersion": "0.21.11-light",
+        "releaseUrl": "https://hub.adventurer-backpack.com/api/download/module/mobile-companion-dnd5e/0.21.11-light",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-active-tiles",
+        "title": "Monk's Active Tile Triggers",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.06",
+        "recommendedVersion": "13.06",
+        "releaseUrl": "https://github.com/ironmonk108/monks-active-tiles",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-combat-details",
+        "title": "Monk's Combat Details",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.05",
+        "recommendedVersion": "13.05",
+        "releaseUrl": "https://github.com/ironmonk108/monks-combat-details",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-combat-marker",
+        "title": "Monk's Combat Marker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "12.01",
+        "recommendedVersion": "12.01",
+        "releaseUrl": "https://github.com/ironmonk88/monks-combat-marker",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-little-details",
+        "title": "Monk's Little Details",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.03",
+        "recommendedVersion": "13.03",
+        "releaseUrl": "https://github.com/ironmonk108/monks-little-details",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-tokenbar",
+        "title": "Monk's TokenBar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.02",
+        "recommendedVersion": "13.02",
+        "releaseUrl": "https://github.com/ironmonk108/monks-tokenbar",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "moulinette-compendiums",
+        "title": "Moulinette Compendiums (module)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Module matches Foundry compatibility, but one or more required module dependencies could not be fully satisfied.",
+        "installedVersion": "12.1.0",
+        "recommendedVersion": "12.1.0",
+        "releaseUrl": "https://github.com/SvenWerlen/moulinette-compendiums",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-paper-doll-ui",
+        "title": "Paper Doll",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.1.1",
+        "recommendedVersion": "2.1.1",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "patrol",
+        "title": "Patrol",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade CoC7 8.4.",
+        "installedVersion": "3.0.3",
+        "recommendedVersion": "3.0.3",
+        "releaseUrl": "https://github.com/theripper93/Patrol/releases/tag/3.0.3",
+        "relatedSystems": [
+          "CoC7"
+        ],
+        "usedInWorlds": [
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "popout",
+        "title": "PopOut!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "2.23",
+        "recommendedVersion": "2.23",
+        "releaseUrl": "https://github.com/League-of-Foundry-Developers/fvtt-module-popout",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "portal-lib",
+        "title": "Portal",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "3.0.4",
+        "recommendedVersion": "3.0.4",
+        "releaseUrl": "https://github.com/theripper93/portal-lib/releases/tag/3.0.4",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "potion-crafting-and-gathering",
+        "title": "Potion Crafting & Gathering",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "4.0.0",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/theripper93/potion-crafting-and-gathering/releases/tag/4.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-perf-optim",
+        "title": "Prime Performance",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "0.11.11",
+        "recommendedVersion": "0.11.11",
+        "releaseUrl": "https://github.com/Codas/foundryvtt-performance-hacks/releases/tag/v0.11.11",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "progress-countdown-tracker",
+        "title": "Progress/Countdown Tracker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.0.23",
+        "recommendedVersion": "1.0.23",
+        "releaseUrl": "https://github.com/andrewbrick/progress-countdown-tracker-for-foundry",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "proper-pixels",
+        "title": "Proper Pixels",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/Tronikart/proper-pixels/releases/latest/download/module.zip",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "foundry-quick-upload",
+        "title": "Quick Upload",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.0.3",
+        "recommendedVersion": "1.0.3",
+        "releaseUrl": "https://github.com/kagangtuya-star/foundry-quick-upload/releases/tag/v1.0.3",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "ready-set-roll-5e",
+        "title": "Ready Set Roll for D&D5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "3.5.0",
+        "recommendedVersion": "3.5.0",
+        "releaseUrl": "https://github.com/MangoFVTT/fvtt-ready-set-roll-5e/releases/tag/release-3.5.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "pf2e-reactive-token-ring",
+        "title": "REDY: Reactive Dynamic Token Rings",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "3.0.0",
+        "recommendedVersion": "3.0.0",
+        "releaseUrl": "https://github.com/ChasarooniZ/PF2e-Reactive-Token-Ring/releases/tag/3.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "region-attacher",
+        "title": "Region Attacher",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.11.2",
+        "recommendedVersion": "1.11.2",
+        "releaseUrl": "https://github.com/roth-michael/region-attacher/releases/tag/1.11.2",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "remote-highlight-ui",
+        "title": "Remote Highlight UI",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.3.5",
+        "recommendedVersion": "2.3.5",
+        "releaseUrl": "https://github.com/shemetz/remote-highlight-ui/releases/tag/2.3.5",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "resizable-camera-bar",
+        "title": "Resizable Camera Bar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "3.0.0",
+        "recommendedVersion": "3.0.0",
+        "releaseUrl": "https://github.com/jacksands/resizable-camera-bar",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fateroll",
+        "title": "Roll of Fate",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "14.0",
+        "recommendedVersion": "14.0",
+        "releaseUrl": "https://github.com/Handyfon/roll-of-fate",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "damage-numbers",
+        "title": "RPG Damage Numbers",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "5.0.2",
+        "recommendedVersion": "5.0.2",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "scene-preview",
+        "title": "Scene Preview",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.3.0",
+        "recommendedVersion": "3.3.0",
+        "releaseUrl": "https://github.com/saif-ellafi/foundryvtt-scene-preview/releases/tag/3.3.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "more-dynamic-token-rings",
+        "title": "SETT: Some Extra Token (ring) Types",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "2.0.0",
+        "recommendedVersion": "2.0.0",
+        "releaseUrl": "https://github.com/ChasarooniZ/More-Dynamic-Token-Rings/releases/tag/2.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "settings-markers",
+        "title": "Settings Markers",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.1.0",
+        "recommendedVersion": "2.1.0",
+        "releaseUrl": "https://github.com/reonZ/settings-markers/releases/tag/2.1.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "sheet-export",
+        "title": "Sheet export",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "0.14.1",
+        "recommendedVersion": "0.14.1",
+        "releaseUrl": "https://github.com/gioppoluca/sheet-export/releases/tag/0.14.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-quest",
+        "title": "Simple Quest",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.0.19",
+        "recommendedVersion": "3.0.19",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-timekeeping",
+        "title": "Simple Timekeeping & Calendar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.1.5",
+        "recommendedVersion": "1.1.5",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-weather",
+        "title": "Simple Weather",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.2.2",
+        "recommendedVersion": "2.2.2",
+        "releaseUrl": "https://github.com/dovrosenberg/foundry-simple-weather/releases/tag/v2.2.2",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "skill-tree",
+        "title": "Skill Tree",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.3",
+        "recommendedVersion": "2.0.3",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "smarttarget",
+        "title": "Smart Target",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "3.0.1",
+        "recommendedVersion": "3.0.1",
+        "releaseUrl": "https://github.com/theripper93/Smart-Target/releases/tag/3.0.1",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "socketlib",
+        "title": "socketlib",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "v1.1.4",
+        "recommendedVersion": "v1.1.4",
+        "releaseUrl": "https://github.com/farling42/foundryvtt-socketlib/releases/tag/v1.1.4",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "tph-solarpunk",
+        "title": "Solarpunk Expedition Map Pack | TMC Sci-Fi",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.4.0",
+        "recommendedVersion": "13.4.0",
+        "releaseUrl": "https://planethoppers.themadnetwork.co.uk/downloads/Foundry/tph-solar-238ssX/tph-solarpunk.zip",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "moulinette-soundboards",
+        "title": "Soundboard & Soundpad (by Moulinette)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.2.3",
+        "recommendedVersion": "1.2.3",
+        "releaseUrl": "https://github.com/Moulinette-Craft/moulinette-audio-foundryvtt-module/releases/tag/v1.2.3",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "spell-book",
+        "title": "Spell Book",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/Sayshal/spell-book/releases/tag/release-1.4.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "splatter",
+        "title": "Splatter",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "5.0.1",
+        "recommendedVersion": "5.0.1",
+        "releaseUrl": "https://github.com/theripper93/Splatter/releases/tag/5.0.1",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "spotlight-omnisearch",
+        "title": "Spotlight Omnisearch",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "3.1.5",
+        "recommendedVersion": "3.1.5",
+        "releaseUrl": "https://github.com/theripper93/spotlight-omnisearch/releases/tag/3.1.5",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "swipe-vtt",
+        "title": "Swipe VTT",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "1.18.2",
+        "recommendedVersion": "1.18.2",
+        "releaseUrl": "https://github.com/crlngn/swipe-vtt/releases/tag/v1.18.2",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "tagger",
+        "title": "Tagger",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.5.4",
+        "recommendedVersion": "1.5.4",
+        "releaseUrl": "https://github.com/fantasycalendar/FoundryVTT-Tagger/releases/tag/1.5.4",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-picknmix9",
+        "title": "The MAD Cartographer | PicknMix 9 | Battlemap Pack",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "12.3.0",
+        "recommendedVersion": "12.3.0",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-craftycollection",
+        "title": "The MAD Cartographer | The Crafty Collection | Battlemap Pack",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "12.0.1",
+        "recommendedVersion": "12.0.1",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "the-southern-alliance",
+        "title": "The Southern Alliance",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.0",
+        "recommendedVersion": "1.1.0",
+        "releaseUrl": "https://github.com/piecesofcodecom/the-southern-alliance/releases/tag/v1.1.0",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "the-void-unofficial",
+        "title": "The Void (Unofficial) - Daggerheart",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.1.6",
+        "recommendedVersion": "1.1.6",
+        "releaseUrl": "https://codeload.github.com/brunocalado/the-void-unofficial/zip/main",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "theripper-premium-hub",
+        "title": "TheRipper93's Module Hub",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "5.0.7",
+        "recommendedVersion": "5.0.7",
+        "releaseUrl": "https://github.com/theripper93/theripper-premium-hub/releases/tag/5.0.7",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "tile-scroll",
+        "title": "Tile Scroll",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "4.0.0",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/theripper93/tile-scroll/releases/tag/4.0.0",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "times-up",
+        "title": "Times Up",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.1.8",
+        "recommendedVersion": "13.1.8",
+        "releaseUrl": "https://gitlab.com/tposney/times-up",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-attacher",
+        "title": "Token Attacher",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "v4.6.12",
+        "recommendedVersion": "v4.6.12",
+        "releaseUrl": "https://github.com/KayelGee/token-attacher/releases/tag/v4.6.12",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "tokenmagic",
+        "title": "Token Magic FX",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "0.7.6.3",
+        "recommendedVersion": "0.7.6.3",
+        "releaseUrl": "https://github.com/Feu-Secret/Tokenmagic/releases/tag/0.7.6.3",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-notes",
+        "title": "Token Notes",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.0.1",
+        "recommendedVersion": "3.0.1",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "vtta-tokenizer",
+        "title": "Tokenizer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "5.0.3",
+        "recommendedVersion": "5.0.3",
+        "releaseUrl": "https://github.com/mrprimate/tokenizer/releases/tag/5.0.3",
+        "relatedSystems": [
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "touch-vtt",
+        "title": "TouchVTT",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.3.13",
+        "recommendedVersion": "2.3.13",
+        "releaseUrl": "https://github.com/Aioros/touch-vtt/releases/tag/v2.3.13",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-pt-BR",
+        "title": "Tradução: Português Brasileiro [Daggerheart]",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system daggerheart 1.7.2 inside declared compatibility.",
+        "installedVersion": "1.2.1",
+        "recommendedVersion": "1.2.1",
+        "releaseUrl": "https://github.com/shuanz/fvtt-daggerheart-pt-BR/releases/latest/download/daggerheart-pt-BR-v1.2.1.zip",
+        "relatedSystems": [
+          "daggerheart"
+        ],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "tsamys-secret-rolls",
+        "title": "Tsamys Secret Rolls",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 0.5 is already compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1; no safe higher-confidence upgrade path is required.",
+        "installedVersion": "0.5",
+        "recommendedVersion": "0.5",
+        "releaseUrl": "https://github.com/devnagui/tsamys-secret-rolls",
+        "relatedSystems": [
+          "dnd5e",
+          "pf2e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "unfulfilled-rolls",
+        "title": "Unfulfilled Rolls",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "0.1.4",
+        "recommendedVersion": "0.1.4",
+        "releaseUrl": "https://github.com/foundryvtt/unfulfilled-rolls/releases/tag/0.1.4",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "wall-height",
+        "title": "Wall Height",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "7.0.8",
+        "recommendedVersion": "7.0.8",
+        "releaseUrl": "https://github.com/theripper93/wall-height/releases/tag/7.0.8",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ],
+        "usedInWorlds": [
+          "Curse of Strahd",
+          "Icewind Dale: Rime of the Frostmaiden",
+          "Styx: Rift"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "campaign-builder",
+        "title": "World & Campaign Builder",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "1.10.2",
+        "recommendedVersion": "1.10.2",
+        "releaseUrl": "https://github.com/dovrosenberg/fvtt-campaign-builder/releases/tag/v1.10.2",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-youtube-player",
+        "title": "Youtube Player Widget",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.1.3",
+        "recommendedVersion": "3.1.3",
+        "releaseUrl": "",
+        "relatedSystems": [],
+        "usedInWorlds": []
+      }
+    ],
+    "counts": {
+      "total": 140,
+      "blockedOrMissing": 2,
+      "update": 12,
+      "ready": 126
+    }
+  },
+  "destiny": {
+    "foundryVersion": "14.359",
+    "activeSystemId": "CoC7",
+    "selectedSystemVersion": "8.4",
+    "filters": [],
+    "search": "",
+    "rows": [
+      {
+        "kind": "system",
+        "systemId": "CoC7",
+        "status": "update",
+        "updatePath": "7.24 -> 8.4",
+        "installedVersion": "7.24",
+        "targetVersion": "8.4",
+        "targetUrl": "https://github.com/Miskatonic-Investigative-Society/CoC7-FoundryVTT/releases/tag/8.4"
+      },
+      {
+        "kind": "module",
+        "moduleId": "madv-ambushlanche",
+        "title": "Ambushes and Avalances | The MAD Cartographer",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.0",
+        "recommendedVersion": "13.0.0",
+        "releaseUrl": "https://themadcartographer.com/downloads/theme/00-adventures/madv-ambushlanche-fg35dw4d33_/madv-ambushlanche.zip",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-astral2",
+        "title": "Astral 2 Map Pack | The MAD Cartographer",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.1",
+        "recommendedVersion": "13.0.1",
+        "releaseUrl": "",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-astral",
+        "title": "Astral Map Pack | The MAD Cartographer",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.1",
+        "recommendedVersion": "13.0.1",
+        "releaseUrl": "",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "cthulhu-architect-maps-nyarlathotep-tier",
+        "title": "Cthulhu Architect Maps - Nyarlathotep Tier",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.0.89",
+        "recommendedVersion": "1.0.89",
+        "releaseUrl": "",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "lib-wrapper",
+        "title": "libWrapper",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "1.13.4.0",
+        "recommendedVersion": "1.13.4.0",
+        "releaseUrl": "https://github.com/ruipin/fvtt-lib-wrapper/releases/tag/v1.13.4.0",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "macro-runner",
+        "title": "Macro Runner",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade CoC7 8.4; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "0.0.1",
+        "recommendedVersion": "0.0.1",
+        "releaseUrl": "https://gitlab.com/sir.sly/foundryvtt-distribuition/-/releases/main",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "monks-active-tiles",
+        "title": "Monk's Active Tile Triggers",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "13.06",
+        "recommendedVersion": "13.06",
+        "releaseUrl": "https://github.com/ironmonk108/monks-active-tiles",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "moulinette",
+        "title": "Moulinette Media Search",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "2.1.1",
+        "recommendedVersion": "2.1.1",
+        "releaseUrl": "https://github.com/Moulinette-Craft/moulinette-foundryvtt-module/releases/tag/v2.1.1",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "puzzle-locks",
+        "title": "Puzzle Locks",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.1.3",
+        "recommendedVersion": "3.1.3",
+        "releaseUrl": "",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "wall-height",
+        "title": "Wall Height",
+        "status": "blocked",
+        "hasMissingDependencies": false,
+        "reason": "Compatible with current Foundry 13.351 and system upgrade dnd5e 5.3.1.",
+        "installedVersion": "7.0.8",
+        "recommendedVersion": "7.0.8",
+        "releaseUrl": "https://github.com/theripper93/wall-height/releases/tag/7.0.8",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "enhancedcombathud",
+        "title": "Argon - Combat HUD (CORE)",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "4.1.2",
+        "recommendedVersion": "5.0.0",
+        "releaseUrl": "https://github.com/theripper93/enhancedcombathud/releases/tag/5.0.0",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "betterroofs",
+        "title": "Better Roofs",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "3.0.0",
+        "recommendedVersion": "4.0.2",
+        "releaseUrl": "https://github.com/theripper93/Better-Roofs/releases/tag/4.0.2",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "crlngn-ui",
+        "title": "Carolingian UI",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "2.29.6",
+        "recommendedVersion": "3.1.1",
+        "releaseUrl": "https://github.com/crlngn/crlngn-ui/releases/tag/v3.1.1",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "levels",
+        "title": "Levels",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "6.1.0",
+        "recommendedVersion": "7.0.2",
+        "releaseUrl": "https://github.com/theripper93/Levels/releases/tag/7.0.2",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "lordudice",
+        "title": "Lordu's Custom Dice for Dice So Nice",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "0.41",
+        "recommendedVersion": "0.42",
+        "releaseUrl": "https://github.com/LorduFreeman/foundry-lordudice/releases/tag/0.42",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mobile-improvements",
+        "title": "Mobile Improvements",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from gitlab-tags.",
+        "installedVersion": "2.0.0",
+        "recommendedVersion": "v2.0.0",
+        "releaseUrl": "https://gitlab.com/fvtt-modules-lab/mobile-improvements/-/releases/v2.0.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "obs-utils",
+        "title": "OBS Utils",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "4.3.2",
+        "recommendedVersion": "4.4.0",
+        "releaseUrl": "https://github.com/FaeyUmbrea/obs-utils/releases/tag/4.4.0",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "patrol",
+        "title": "Patrol",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "3.0.3",
+        "recommendedVersion": "4.0.1",
+        "releaseUrl": "https://github.com/theripper93/Patrol/releases/tag/4.0.1",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "sequencer",
+        "title": "Sequencer",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "3.6.11",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/fantasycalendar/FoundryVTT-Sequencer/releases/tag/4.0.0",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "theripper-premium-hub",
+        "title": "TheRipper93's Module Hub",
+        "status": "update",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 14 from github-releases.",
+        "installedVersion": "5.0.7",
+        "recommendedVersion": "6.0.1",
+        "releaseUrl": "https://github.com/theripper93/theripper-premium-hub/releases/tag/6.0.1",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "enhancedcombathud-dnd5e",
+        "title": "Argon - Combat HUD (DND5E)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "5.1.5",
+        "recommendedVersion": "5.1.5",
+        "releaseUrl": "https://github.com/theripper93/enhancedcombathud-dnd5e/releases/tag/5.1.5",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "art-for-daggerheart",
+        "title": "Art for Daggerheart",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 1.0.0 is newer than the best compatible catalog candidate (0.9.6); rollback suggestions are suppressed.",
+        "installedVersion": "1.0.0",
+        "recommendedVersion": "1.0.0",
+        "releaseUrl": "https://github.com/mordachai/art-for-daggerheart/releases/latest/download/art-for-daggerheart.zip",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart",
+          "daggerheart-unofficial"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "automated-evocations",
+        "title": "Automated Evocations - Companion Manager",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "5.0.0",
+        "recommendedVersion": "5.0.0",
+        "releaseUrl": "https://github.com/theripper93/automated-evocations/releases/tag/5.0.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "wm5e",
+        "title": "Automated Masteries 5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "14.530.1",
+        "recommendedVersion": "14.530.1",
+        "releaseUrl": "https://github.com/thatlonelybugbear/wm5e/releases/tag/v14.530.1",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "babele",
+        "title": "Babele",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Installed version 2.7.9 is newer than the best compatible catalog candidate (2.7.7); rollback suggestions are suppressed.",
+        "installedVersion": "2.7.9",
+        "recommendedVersion": "2.7.9",
+        "releaseUrl": "https://gitlab.com/riccisi/foundryvtt-babele",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "bsa-dnd5e",
+        "title": "Beaver's System Adaptation dnd5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "2.1.10",
+        "recommendedVersion": "2.1.10",
+        "releaseUrl": "https://github.com/AngryBeaver/bsa-dnd5e/releases/latest/download/bsa-dnd5e.zip",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-woadvsurestone",
+        "title": "Beneath Surestone Abbey | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.0",
+        "recommendedVersion": "13.0.0",
+        "releaseUrl": "https://themadcartographer.com/downloads/theme/00-adventures/wo-surestone-88nfjdif/MAD-ATT-FVTT-WOADVSurestone.zip",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "bossbar",
+        "title": "Bossbar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "4.0.0",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/theripper93/Boss-Bar/releases/tag/4.0.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-classicdun-2",
+        "title": "Classic Dungeons 2 Map Pack | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.1",
+        "recommendedVersion": "13.0.1",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "color-picker",
+        "title": "Color Picker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.7",
+        "recommendedVersion": "1.7",
+        "releaseUrl": "https://github.com/Larkinabout/fvtt-color-picker/releases/tag/1.7",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "compact-scene-navigation",
+        "title": "Compact Scene Navigation",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.0.2",
+        "recommendedVersion": "1.0.2",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "tph-cybercity",
+        "title": "Cyber City Map Pack | The MAD Cartographer Sci-Fi",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.4.0",
+        "recommendedVersion": "13.4.0",
+        "releaseUrl": "https://planethoppers.themadnetwork.co.uk/downloads/Foundry/tph-cybercity-654fxg5/tph-cybercity.zip",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-extra-content",
+        "title": "Daggerheart - Extra Content",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.5.9",
+        "recommendedVersion": "1.5.9",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-extra-content/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-br",
+        "title": "Daggerheart - Tradução Corrigida para Brasileiro",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.4.5",
+        "recommendedVersion": "1.4.5",
+        "releaseUrl": "https://codeload.github.com/raposoel/DH-BR/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "duality-roller",
+        "title": "Daggerheart Duality Dice Roller",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.1.6",
+        "recommendedVersion": "0.1.6",
+        "releaseUrl": "https://git.geeks.gay/cosmo/DualityDiceRoller/releases/download/0.1.7/DualityDiceRoller.zip",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-gm-hud",
+        "title": "Daggerheart GM HUD",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/mordachai/daggerheart-gm-hud/releases/latest/download/daggerheart-gm-hud.zip",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-hud",
+        "title": "Daggerheart HUD",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.11.1",
+        "recommendedVersion": "1.11.1",
+        "releaseUrl": "https://github.com/mordachai/daggerheart-hud/releases/latest/download/daggerheart-hud.zip",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-plus",
+        "title": "Daggerheart Plus",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.5.0",
+        "recommendedVersion": "1.5.0",
+        "releaseUrl": "https://github.com/featureJosh/daggerheart-plus",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-death-moves",
+        "title": "Daggerheart: Death Moves",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-death-moves/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-quickactions",
+        "title": "Daggerheart: Quick Actions",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.3.2",
+        "recommendedVersion": "0.3.2",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-quickactions/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-store",
+        "title": "Daggerheart: Store",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.4.4",
+        "recommendedVersion": "0.4.4",
+        "releaseUrl": "https://codeload.github.com/brunocalado/daggerheart-store/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "df-settings-clarity",
+        "title": "DF Settings Clarity",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.0.0",
+        "recommendedVersion": "13.0.0",
+        "releaseUrl": "https://dragonflagon.cafe/mods/pak/df-settings-clarity",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "df-templates",
+        "title": "DF Template Enhancements",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.0",
+        "recommendedVersion": "2.0.0",
+        "releaseUrl": "https://dragonflagon.cafe/mods/pak/df-templates",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "dice-so-nice",
+        "title": "Dice So Nice!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "5.3.4",
+        "recommendedVersion": "5.3.4",
+        "releaseUrl": "https://gitlab.com/riccisi/foundryvtt-dice-so-nice",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "em-tile-utilities",
+        "title": "Dorman Lakely's Tile Utilities",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "https://github.com/jesshmusic/em-tile-utilities/releases/tag/v2.0.1",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-faewilds2",
+        "title": "Faewilds 2 Map Pack | The MAD Cartographer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.3.0",
+        "recommendedVersion": "13.3.0",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fear-tracker",
+        "title": "Fear Tracker for Foundry",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "0.4.09",
+        "recommendedVersion": "0.4.09",
+        "releaseUrl": "https://github.com/andrewbrick/Fear-Tracker-for-Foundry",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "follow-me-if-you-can",
+        "title": "Follow Me If You Can!",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/Frenchy-s-module/follow-me-if-you-can/releases/tag/V1.4.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "follow-the-token",
+        "title": "Follow The Token",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.2.0",
+        "recommendedVersion": "1.2.0",
+        "releaseUrl": "https://github.com/mateusrodrigo/foundryvtt-follow-the-token/releases/tag/v1.2.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "gatherer",
+        "title": "Gatherer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "4.1.9",
+        "recommendedVersion": "4.1.9",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "heartbeat",
+        "title": "Heartbeat",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.3.3",
+        "recommendedVersion": "13.3.3",
+        "releaseUrl": "https://github.com/Handyfon/heartbeat",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "hexplorer",
+        "title": "Hexplorer",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.8",
+        "recommendedVersion": "2.0.8",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "indy-dice-stats",
+        "title": "Indy Dice Stats",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.4",
+        "recommendedVersion": "1.1.4",
+        "releaseUrl": "https://github.com/jwrpalmer99/indy-dice-stats/releases/tag/v1.1.4",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "indy-downtime",
+        "title": "Indy Downtime Tracker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.6",
+        "recommendedVersion": "1.1.6",
+        "releaseUrl": "https://github.com/jwrpalmer99/indy-downtime/releases/tag/v1.1.6",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "items-with-spells-5e",
+        "title": "Items with Spells DnD5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "13.0.2",
+        "recommendedVersion": "13.0.2",
+        "releaseUrl": "https://github.com/morepurplemorebetter/fvtt-items-with-spells-5e/releases/tag/v13.0.2",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "levels-layer-effects",
+        "title": "Levels - Depth Blur",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.1",
+        "recommendedVersion": "2.0.1",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "colorsettings",
+        "title": "lib - Color Settings",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "3.0.4",
+        "recommendedVersion": "3.0.4",
+        "releaseUrl": "https://github.com/ardittristan/VTTColorSettings/releases/tag/3.0.4",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "avclient-livekit",
+        "title": "LiveKit AVClient",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "0.6.6",
+        "recommendedVersion": "0.6.6",
+        "releaseUrl": "https://github.com/bekriebel/fvtt-module-avclient-livekit/releases/tag/v0.6.6",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "macro-wheel",
+        "title": "Macro Wheel",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.1.0",
+        "recommendedVersion": "3.1.0",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mastercrafted",
+        "title": "Mastercrafted - Crafting Manager",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "4.0.6",
+        "recommendedVersion": "4.0.6",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mmm",
+        "title": "Maxwell's Manual of Malicious Maladies",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "5.0.1",
+        "recommendedVersion": "5.0.1",
+        "releaseUrl": "https://github.com/theripper93/Maxwell-s-Manual-of-Malicious-Maladies/releases/tag/5.0.1",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "mobile-companion-dnd5e",
+        "title": "Mobile Companion - Dungeons & Dragons 5th Edition",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "0.21.11-light",
+        "recommendedVersion": "0.21.11-light",
+        "releaseUrl": "https://hub.adventurer-backpack.com/api/download/module/mobile-companion-dnd5e/0.21.11-light",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "moulinette-compendiums",
+        "title": "Moulinette Compendiums (module)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Module matches Foundry compatibility, but one or more required module dependencies could not be fully satisfied.",
+        "installedVersion": "12.1.0",
+        "recommendedVersion": "12.1.0",
+        "releaseUrl": "https://github.com/SvenWerlen/moulinette-compendiums",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-paper-doll-ui",
+        "title": "Paper Doll",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.1.1",
+        "recommendedVersion": "2.1.1",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "portal-lib",
+        "title": "Portal",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "3.0.4",
+        "recommendedVersion": "3.0.4",
+        "releaseUrl": "https://github.com/theripper93/portal-lib/releases/tag/3.0.4",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "potion-crafting-and-gathering",
+        "title": "Potion Crafting & Gathering",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "4.0.0",
+        "recommendedVersion": "4.0.0",
+        "releaseUrl": "https://github.com/theripper93/potion-crafting-and-gathering/releases/tag/4.0.0",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-perf-optim",
+        "title": "Prime Performance",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "0.11.11",
+        "recommendedVersion": "0.11.11",
+        "releaseUrl": "https://github.com/Codas/foundryvtt-performance-hacks/releases/tag/v0.11.11",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "progress-countdown-tracker",
+        "title": "Progress/Countdown Tracker",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.0.23",
+        "recommendedVersion": "1.0.23",
+        "releaseUrl": "https://github.com/andrewbrick/progress-countdown-tracker-for-foundry",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "proper-pixels",
+        "title": "Proper Pixels",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "1.4.0",
+        "recommendedVersion": "1.4.0",
+        "releaseUrl": "https://github.com/Tronikart/proper-pixels/releases/latest/download/module.zip",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "ready-set-roll-5e",
+        "title": "Ready Set Roll for D&D5e",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system dnd5e 5.3.0 inside declared compatibility.",
+        "installedVersion": "3.5.0",
+        "recommendedVersion": "3.5.0",
+        "releaseUrl": "https://github.com/MangoFVTT/fvtt-ready-set-roll-5e/releases/tag/release-3.5.0",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "remote-highlight-ui",
+        "title": "Remote Highlight UI",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.3.5",
+        "recommendedVersion": "2.3.5",
+        "releaseUrl": "https://github.com/shemetz/remote-highlight-ui/releases/tag/2.3.5",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "resizable-camera-bar",
+        "title": "Resizable Camera Bar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "3.0.0",
+        "recommendedVersion": "3.0.0",
+        "releaseUrl": "https://github.com/jacksands/resizable-camera-bar",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fateroll",
+        "title": "Roll of Fate",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "14.0",
+        "recommendedVersion": "14.0",
+        "releaseUrl": "https://github.com/Handyfon/roll-of-fate",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "damage-numbers",
+        "title": "RPG Damage Numbers",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "5.0.2",
+        "recommendedVersion": "5.0.2",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "scene-preview",
+        "title": "Scene Preview",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.3.0",
+        "recommendedVersion": "3.3.0",
+        "releaseUrl": "https://github.com/saif-ellafi/foundryvtt-scene-preview/releases/tag/3.3.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "settings-markers",
+        "title": "Settings Markers",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.1.0",
+        "recommendedVersion": "2.1.0",
+        "releaseUrl": "https://github.com/reonZ/settings-markers/releases/tag/2.1.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-quest",
+        "title": "Simple Quest",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.0.19",
+        "recommendedVersion": "3.0.19",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-timekeeping",
+        "title": "Simple Timekeeping & Calendar",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.1.5",
+        "recommendedVersion": "1.1.5",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "simple-weather",
+        "title": "Simple Weather",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.2.2",
+        "recommendedVersion": "2.2.2",
+        "releaseUrl": "https://github.com/dovrosenberg/foundry-simple-weather/releases/tag/v2.2.2",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "skill-tree",
+        "title": "Skill Tree",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "2.0.3",
+        "recommendedVersion": "2.0.3",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "tph-solarpunk",
+        "title": "Solarpunk Expedition Map Pack | TMC Sci-Fi",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "13.4.0",
+        "recommendedVersion": "13.4.0",
+        "releaseUrl": "https://planethoppers.themadnetwork.co.uk/downloads/Foundry/tph-solar-238ssX/tph-solarpunk.zip",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "moulinette-soundboards",
+        "title": "Soundboard & Soundpad (by Moulinette)",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.2.3",
+        "recommendedVersion": "1.2.3",
+        "releaseUrl": "https://github.com/Moulinette-Craft/moulinette-audio-foundryvtt-module/releases/tag/v1.2.3",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "splatter",
+        "title": "Splatter",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "5.0.1",
+        "recommendedVersion": "5.0.1",
+        "releaseUrl": "https://github.com/theripper93/Splatter/releases/tag/5.0.1",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "swipe-vtt",
+        "title": "Swipe VTT",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatibility range includes current Foundry 13.351 and system upgrade dnd5e 5.3.1; treated as compatible with attention because verification metadata is older.",
+        "installedVersion": "1.18.2",
+        "recommendedVersion": "1.18.2",
+        "releaseUrl": "https://github.com/crlngn/swipe-vtt/releases/tag/v1.18.2",
+        "targetVersion": "8.4",
+        "relatedSystems": [
+          "CoC7",
+          "dnd5e"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "tagger",
+        "title": "Tagger",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.5.4",
+        "recommendedVersion": "1.5.4",
+        "releaseUrl": "https://github.com/fantasycalendar/FoundryVTT-Tagger/releases/tag/1.5.4",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-picknmix9",
+        "title": "The MAD Cartographer | PicknMix 9 | Battlemap Pack",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "12.3.0",
+        "recommendedVersion": "12.3.0",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "mad-craftycollection",
+        "title": "The MAD Cartographer | The Crafty Collection | Battlemap Pack",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "No compatible release passed the hard compatibility rules; keeping installed version.",
+        "installedVersion": "12.0.1",
+        "recommendedVersion": "12.0.1",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "the-southern-alliance",
+        "title": "The Southern Alliance",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "1.1.0",
+        "recommendedVersion": "1.1.0",
+        "releaseUrl": "https://github.com/piecesofcodecom/the-southern-alliance/releases/tag/v1.1.0",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "the-void-unofficial",
+        "title": "The Void (Unofficial) - Daggerheart",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "1.1.6",
+        "recommendedVersion": "1.1.6",
+        "releaseUrl": "https://codeload.github.com/brunocalado/the-void-unofficial/zip/main",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-attacher",
+        "title": "Token Attacher",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "v4.6.12",
+        "recommendedVersion": "v4.6.12",
+        "releaseUrl": "https://github.com/KayelGee/token-attacher/releases/tag/v4.6.12",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "token-notes",
+        "title": "Token Notes",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.0.1",
+        "recommendedVersion": "3.0.1",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "touch-vtt",
+        "title": "TouchVTT",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases.",
+        "installedVersion": "2.3.13",
+        "recommendedVersion": "2.3.13",
+        "releaseUrl": "https://github.com/Aioros/touch-vtt/releases/tag/v2.3.13",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "daggerheart-pt-BR",
+        "title": "Tradução: Português Brasileiro [Daggerheart]",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Best compatible release with verified Foundry major matching 13 from github-releases with installed system daggerheart 1.7.2 inside declared compatibility.",
+        "installedVersion": "1.2.1",
+        "recommendedVersion": "1.2.1",
+        "releaseUrl": "https://github.com/shuanz/fvtt-daggerheart-pt-BR/releases/latest/download/daggerheart-pt-BR-v1.2.1.zip",
+        "targetVersion": "-",
+        "relatedSystems": [
+          "daggerheart"
+        ]
+      },
+      {
+        "kind": "module",
+        "moduleId": "unfulfilled-rolls",
+        "title": "Unfulfilled Rolls",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "0.1.4",
+        "recommendedVersion": "0.1.4",
+        "releaseUrl": "https://github.com/foundryvtt/unfulfilled-rolls/releases/tag/0.1.4",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "campaign-builder",
+        "title": "World & Campaign Builder",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Compatible release chosen by closest verified version from github-releases.",
+        "installedVersion": "1.10.2",
+        "recommendedVersion": "1.10.2",
+        "releaseUrl": "https://github.com/dovrosenberg/fvtt-campaign-builder/releases/tag/v1.10.2",
+        "targetVersion": "-",
+        "relatedSystems": []
+      },
+      {
+        "kind": "module",
+        "moduleId": "fvtt-youtube-player",
+        "title": "Youtube Player Widget",
+        "status": "ready",
+        "hasMissingDependencies": false,
+        "reason": "Only local manifest was available, so the installed version was kept as fallback.",
+        "installedVersion": "3.1.3",
+        "recommendedVersion": "3.1.3",
+        "releaseUrl": "",
+        "targetVersion": "-",
+        "relatedSystems": []
+      }
+    ],
+    "counts": {
+      "total": 97,
+      "blockedOrMissing": 10,
+      "update": 11,
+      "ready": 76
+    }
+  }
+}

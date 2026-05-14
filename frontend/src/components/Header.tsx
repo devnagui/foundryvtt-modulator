@@ -5,6 +5,7 @@ type HeaderProps = {
   onStartScan?: () => void;
   scanDisabled?: boolean;
   scanAttention?: boolean;
+  scanMetaLabel?: string;
 };
 
 export function Header({
@@ -13,7 +14,8 @@ export function Header({
   settingsState = "warn",
   onStartScan,
   scanDisabled = true,
-  scanAttention = false
+  scanAttention = false,
+  scanMetaLabel = ""
 }: HeaderProps) {
   return (
     <header className="app-header">
@@ -23,19 +25,22 @@ export function Header({
       </div>
       <nav>
         {onStartScan ? (
-          <button
-            className={`btn secondary scan-btn ${scanAttention ? "scan-attention" : ""}`}
-            onClick={onStartScan}
-            disabled={scanDisabled}
-            title={scanDisabled ? "Configure Foundry path first" : "Run initial scan"}
-          >
-            <span className="icon-wrap" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            </span>
-            <span>Start Scan</span>
-          </button>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <button
+              className={`btn secondary scan-btn ${scanAttention ? "scan-attention" : ""}`}
+              onClick={onStartScan}
+              disabled={scanDisabled}
+              title={scanDisabled ? "Configure Foundry path first" : "Run initial scan"}
+            >
+              <span className="icon-wrap" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </span>
+              <span>Start Scan</span>
+            </button>
+            {scanMetaLabel ? <small style={{ color: "var(--muted)", fontSize: 12 }}>{scanMetaLabel}</small> : null}
+          </div>
         ) : null}
         {onOpenSettings ? (
           <button

@@ -14,6 +14,7 @@ describe("UpgradePanel", () => {
         tableBody={<tr><td>row</td><td>1.0</td><td>Ready</td><td /></tr>}
         page={1}
         totalPages={3}
+        totalItems={11}
         onPrev={() => {}}
         onNext={() => {}}
       />
@@ -22,6 +23,7 @@ describe("UpgradePanel", () => {
     expect(html).toContain("Update Path");
     expect(html).toContain("Status");
     expect(html).toContain("1 / 3");
+    expect(html).toContain("Total: 11");
     expect(html).toContain("System Filters");
     expect(html).toContain("Status Filters");
   });
@@ -37,10 +39,12 @@ describe("UpgradePanel", () => {
         actionsRow={<div>Actions Row</div>}
         search="dae"
         onSearchChange={onChange}
+        statusHeadControl={<select><option>All</option></select>}
         tableHeadAction={<button>Update All</button>}
         tableBody={<tr><td>row</td><td>1.0</td><td>Ready</td><td /></tr>}
         page={2}
         totalPages={2}
+        totalItems={2}
         onPrev={() => {}}
         onNext={() => {}}
       />
@@ -48,8 +52,9 @@ describe("UpgradePanel", () => {
     expect(html).toContain("Foundry Filters");
     expect(html).toContain("Actions Row");
     expect(html).toContain("Update All");
+    expect(html).toContain("All");
     expect(html).toContain("Planning");
     expect(html).toContain("2 / 2");
+    expect(html).toContain("Total: 2");
   });
 });
-

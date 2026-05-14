@@ -3,7 +3,15 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from ..deps import require_auth, require_csrf, require_rate_limit, runtime
-from ...services.runtime import execute_rollback, module_health, queue_action, rollback_plan, suggest_module, suggest_modules_batch
+from ...services.runtime import (
+    SuggestionProviderError,
+    execute_rollback,
+    module_health,
+    queue_action,
+    rollback_plan,
+    suggest_module,
+    suggest_modules_batch,
+)
 
 router = APIRouter(prefix="/actions")
 
@@ -103,9 +111,23 @@ def post_suggest_module(req: Request, body: dict) -> dict:
             module_id=str(body.get("moduleId") or "").strip(),
             manifest_url=str(body.get("manifestUrl") or "").strip(),
             project_url=str(body.get("projectUrl") or "").strip(),
+            force_refresh=bool(body.get("forceRefresh")),
             target_foundry_version=str(body.get("targetFoundryVersion") or "").strip(),
             installed_system_versions_override=body.get("installedSystemVersions") if isinstance(body.get("installedSystemVersions"), dict) else None,
         )
+    except SuggestionProviderError as exc:
+        payload = exc.payload if isinstance(exc.payload, dict) else {}
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": str(payload.get("errorCode") or "suggestion_provider_error"),
+                "message": str(payload.get("message") or "Could not refresh versions from provider."),
+                "hint": str(payload.get("hint") or ""),
+                "retryable": bool(payload.get("retryable")),
+                "rawError": str(payload.get("raw") or ""),
+                "moduleId": str(payload.get("moduleId") or ""),
+            },
+        ) from exc
     except ValueError as exc:
         msg = str(exc)
         code = msg if msg in {"manifest_or_project_required", "module_id_required"} else "suggestion_failed"
@@ -125,6 +147,7 @@ def post_suggest_modules_batch(req: Request, body: dict) -> dict:
         return suggest_modules_batch(
             rt,
             modules=[item for item in modules if isinstance(item, dict)],
+            force_refresh=bool(body.get("forceRefresh")),
             target_foundry_version=str(body.get("targetFoundryVersion") or "").strip(),
             installed_system_versions_override=body.get("installedSystemVersions") if isinstance(body.get("installedSystemVersions"), dict) else None,
         )

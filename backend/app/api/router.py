@@ -12,3 +12,12 @@ api_router.include_router(auth_router, tags=["auth"])
 api_router.include_router(report_router, tags=["report"])
 api_router.include_router(actions_router, tags=["actions"])
 api_router.include_router(config_router, tags=["config"])
+
+# Backward-compatible API surface without `/v1`.
+# Keeps older clients functional while the React UI uses `/api/v1/*`.
+legacy_api_router = APIRouter()
+legacy_api_router.include_router(health_router, tags=["health-legacy"])
+legacy_api_router.include_router(auth_router, tags=["auth-legacy"])
+legacy_api_router.include_router(report_router, tags=["report-legacy"])
+legacy_api_router.include_router(actions_router, tags=["actions-legacy"])
+legacy_api_router.include_router(config_router, tags=["config-legacy"])

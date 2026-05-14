@@ -206,6 +206,7 @@ def build_current_system_upgrade_view(
                         "maxSystemOnTargetFoundry": max_system_on_target_foundry,
                         "releasePublishedAt": recommendation.release_published_at,
                         "attentionFlag": False,
+                        "forcedCompatibility": _forced_compatibility_payload(module),
                     }
                 )
                 continue
@@ -260,6 +261,7 @@ def build_current_system_upgrade_view(
                         or bool(recommendation.attention_flag)
                         or forced_override_upgrade
                     ),
+                    "forcedCompatibility": _forced_compatibility_payload(module),
                 }
             )
             for dependency in recommendation.dependency_updates:
@@ -306,6 +308,7 @@ def build_current_system_upgrade_view(
                         "systemCompatibility": dependency.system_compatibility or {},
                         "releasePublishedAt": getattr(dependency, "release_published_at", None),
                         "attentionFlag": False,
+                        "forcedCompatibility": _forced_compatibility_payload(dependency_record),
                     }
                     continue
                 if (
@@ -539,6 +542,7 @@ def _evaluate_future_target(
                     "downloadUrl": None,
                     "compatibility": module.raw_manifest.get("compatibility") or {},
                     "systemCompatibility": _extract_system_compatibility_from_module(module),
+                    "forcedCompatibility": _forced_compatibility_payload(module),
                 }
             )
             continue
@@ -651,6 +655,7 @@ def _evaluate_future_target(
                     or bool(recommendation.attention_flag)
                     or forced_override_upgrade
                 ),
+                "forcedCompatibility": _forced_compatibility_payload(module),
             }
         )
 
@@ -1075,6 +1080,21 @@ def _has_forced_compatibility_override(module: ModuleRecord) -> bool:
     resolver_flags = flags.get("resolver") if isinstance(flags.get("resolver"), dict) else {}
     forced = resolver_flags.get("forcedCompatibility") if isinstance(resolver_flags.get("forcedCompatibility"), dict) else {}
     return bool(forced.get("enabled"))
+
+
+def _forced_compatibility_payload(module: ModuleRecord | None) -> dict:
+    if module is None:
+        return {}
+    flags = module.raw_manifest.get("flags") if isinstance(module.raw_manifest.get("flags"), dict) else {}
+    resolver_flags = flags.get("resolver") if isinstance(flags.get("resolver"), dict) else {}
+    forced = resolver_flags.get("forcedCompatibility") if isinstance(resolver_flags.get("forcedCompatibility"), dict) else {}
+    if not bool(forced.get("enabled")):
+        return {}
+    return {
+        "enabled": True,
+        "targetVersion": str(forced.get("targetVersion") or ""),
+        "appliedAt": str(forced.get("appliedAt") or ""),
+    }
 
 
 def _has_native_upgrade_for_forced_override(

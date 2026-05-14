@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  canForceCompatibility,
   classifyPresentationStatus,
   compatDecision,
+  isRecommendationNotFound,
   missingDependencyLabel,
+  partitionCountsForPills,
   parseMissingDependencies,
   rowPriorityForStatus,
+  scenarioReadinessPercent,
+  scenarioScore,
   versionWithin,
 } from "./reportRules";
 
@@ -23,9 +28,44 @@ describe("reportRules compatibility", () => {
     expect(versionWithin({ verified: "12.9.0" }, "13.350")).toBe(false);
   });
 
+  it("returns uncertain when verified major differs but max is open-ended", () => {
+    expect(versionWithin({ minimum: "10", verified: "13.346", maximum: "-" }, "14.359")).toBeNull();
+  });
+
   it("returns compatible when inside constraints", () => {
     expect(versionWithin({ minimum: "13.0", maximum: "13.999", verified: "13.200" }, "13.350")).toBe(true);
     expect(compatDecision({ minimum: "13.0", maximum: "13.999" }, "13.350")).toBe("compatible");
+  });
+
+  it("treats major-only min/max as major ranges", () => {
+    expect(versionWithin({ minimum: "13", maximum: "13" }, "13.350")).toBe(true);
+    expect(versionWithin({ maximum: "13" }, "14.1")).toBe(false);
+    expect(versionWithin({ minimum: "14" }, "13.999")).toBe(false);
+  });
+
+  it("accepts compatibility key aliases and loose max tokens", () => {
+    expect(versionWithin({ min: "13", max: "-" }, "13.999")).toBe(true);
+    expect(versionWithin({ minimumCoreVersion: "13", maximumCoreVersion: "13" }, "13.200")).toBe(true);
+    expect(versionWithin({ minimum_core_version: "13", maximum_core_version: "13" }, "14.0")).toBe(false);
+    expect(versionWithin({ compatibleCoreVersion: "13.250" }, "13.350")).toBe(true);
+  });
+
+  it("supports wildcard patch tokens such as 5.3.x", () => {
+    expect(versionWithin({ maximum: "5.3.x" }, "5.3.0")).toBe(true);
+    expect(versionWithin({ maximum: "5.3.x" }, "5.3.99")).toBe(true);
+    expect(versionWithin({ maximum: "5.3.x" }, "5.4.0")).toBe(false);
+    expect(versionWithin({ minimum: "5.3.x" }, "5.2.9")).toBe(false);
+    expect(versionWithin({ minimum: "5.3.x" }, "5.3.0")).toBe(true);
+  });
+
+  it("supports operator and plus notations", () => {
+    expect(versionWithin({ minimum: ">=13.200" }, "13.350")).toBe(true);
+    expect(versionWithin({ minimum: ">=13.200" }, "13.100")).toBe(false);
+    expect(versionWithin({ maximum: "<=13.350" }, "13.351")).toBe(false);
+    expect(versionWithin({ minimum: "13.200+" }, "13.350")).toBe(true);
+    expect(versionWithin({ minimum: "13.200+" }, "13.100")).toBe(false);
+    expect(versionWithin({ minimum: "^13.200" }, "13.350")).toBe(true);
+    expect(versionWithin({ minimum: "~13.200" }, "13.350")).toBe(true);
   });
 });
 
@@ -57,6 +97,20 @@ describe("reportRules presentation status", () => {
     expect(classifyPresentationStatus({ hasMissingDependencies: false, foundry: "compatible", system: "incompatible", hasUpdate: true })).toBe("blocked");
   });
 
+  it("blocks stale v13 recommendation when target foundry is v14", () => {
+    const staleFoundryCompat = { minimum: "13", verified: "13.350", maximum: "13.999" };
+    const foundryDecision = compatDecision(staleFoundryCompat, "14.361");
+    expect(foundryDecision).toBe("incompatible");
+    expect(
+      classifyPresentationStatus({
+        hasMissingDependencies: false,
+        foundry: foundryDecision,
+        system: "compatible",
+        hasUpdate: true,
+      })
+    ).toBe("blocked");
+  });
+
   it("marks update only when compatible and update exists", () => {
     expect(classifyPresentationStatus({ hasMissingDependencies: false, foundry: "compatible", system: "compatible", hasUpdate: true })).toBe("update");
   });
@@ -77,5 +131,94 @@ describe("reportRules presentation status", () => {
     expect(rowPriorityForStatus("missing")).toBeLessThan(rowPriorityForStatus("blocked"));
     expect(rowPriorityForStatus("blocked")).toBeLessThan(rowPriorityForStatus("update"));
     expect(rowPriorityForStatus("update")).toBeLessThan(rowPriorityForStatus("ready"));
+  });
+});
+
+describe("reportRules force compatibility", () => {
+  it("identifies not found reasons", () => {
+    expect(isRecommendationNotFound("HTTP Error 404: Not Found")).toBe(true);
+    expect(isRecommendationNotFound("recommendation_not_resolved")).toBe(false);
+  });
+
+  it("allows force only for current tab installed modules with compatibility failure", () => {
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: false,
+      systemCompatible: true,
+      reason: "Foundry compatibility incompatible",
+    })).toBe(true);
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: true,
+      systemCompatible: false,
+      reason: "System compatibility incompatible",
+    })).toBe(true);
+  });
+
+  it("blocks force in non-eligible scenarios", () => {
+    expect(canForceCompatibility({
+      isCurrentTab: false,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: false,
+      systemCompatible: false,
+      reason: "compat mismatch",
+    })).toBe(false);
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: false,
+      hasMissingDependencies: false,
+      foundryCompatible: false,
+      systemCompatible: false,
+      reason: "compat mismatch",
+    })).toBe(false);
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: true,
+      foundryCompatible: false,
+      systemCompatible: false,
+      reason: "missing_dependency:socketlib",
+    })).toBe(false);
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: false,
+      systemCompatible: false,
+      reason: "HTTP Error 404: Not Found",
+    })).toBe(false);
+  });
+});
+
+describe("reportRules scenario analysis", () => {
+  it("computes readiness using ready+update coverage", () => {
+    expect(scenarioReadinessPercent({ ready: 3, update: 1, blocked: 1, missing: 0 })).toBe(80);
+    expect(scenarioReadinessPercent({ ready: 0, update: 0, blocked: 0, missing: 0 })).toBe(0);
+  });
+
+  it("scores scenarios favoring ready/update and penalizing blocked/missing/force", () => {
+    const a = scenarioScore({ ready: 4, update: 1, blocked: 0, missing: 0, forceCompat: 0 });
+    const b = scenarioScore({ ready: 2, update: 1, blocked: 2, missing: 1, forceCompat: 1 });
+    expect(a).toBeGreaterThan(b);
+  });
+});
+
+describe("reportRules pills partition", () => {
+  it("partitions rows into exactly one bucket each", () => {
+    const rows = [
+      { status: "blocked" as const, system: "dnd5e" },
+      { status: "update" as const, system: "dnd5e" },
+      { status: "ready" as const, system: "dnd5e" },
+      { status: "ready" as const, system: "unused" },
+      { status: "ready" as const, system: "dnd5e", hasMissingDependencies: true },
+    ];
+    const counts = partitionCountsForPills(rows);
+    expect(counts).toEqual({ blocked: 2, update: 1, ready: 1, unused: 1 });
+    expect(counts.blocked + counts.update + counts.ready + counts.unused).toBe(rows.length);
   });
 });

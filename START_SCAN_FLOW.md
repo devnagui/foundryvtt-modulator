@@ -27,6 +27,8 @@ After `dry-run` succeeds, backend runs report enrichment before returning final 
 5. Annotate presentation fields (`presentationStatus`, `hasMissingDependencies`).
 6. Persist the enriched JSON report back to disk.
 7. Keep HTML generation out of the default scan path.
+8. Persist precomputed Planning context cache rows in DB (`resolver.db`) keyed by:
+   - `foundryVersion + systemId + systemVersion + moduleId`
 
 ## 4) Current tab rendering impact
 
@@ -54,6 +56,7 @@ After `dry-run` succeeds, backend runs report enrichment before returning final 
 - Reduces repeated client-side hydration work.
 - Keeps scan results deterministic and persisted.
 - Prevents regressions where known-source dependencies keep showing `- -> ?`.
+- Enables fast Planning lookups through precomputed context rows (`GET /api/v1/report/v3/planning-context`).
 
 ## 7) Set URL integration
 
@@ -61,3 +64,10 @@ When user saves a module source URL:
 
 - Backend resolves recommendation for that module.
 - Latest report is enriched again (JSON). HTML is generated only if export is requested explicitly.
+
+## 8) Manual row refresh integration
+
+- Current/Planning row action `Refresh` triggers suggestion refresh with `forceRefresh = true`.
+- Backend invalidates only contextual cache entries related to that module id.
+- If refresh succeeds, row recommendation/status is updated in place.
+- If refresh fails, previous recommendation remains and UI shows friendly error + retry.

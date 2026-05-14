@@ -24,29 +24,62 @@ def apply_recommendation(
     modules_dir: str,
     cache_dir: str,
 ) -> str | None:
+    return _apply_package_recommendation(
+        package_kind="module",
+        package=module,
+        recommendation=recommendation,
+        packages_dir=modules_dir,
+        cache_dir=cache_dir,
+    )
+
+
+def apply_system_recommendation(
+    system: ModuleRecord,
+    recommendation: Recommendation,
+    systems_dir: str,
+    cache_dir: str,
+) -> str | None:
+    return _apply_package_recommendation(
+        package_kind="system",
+        package=system,
+        recommendation=recommendation,
+        packages_dir=systems_dir,
+        cache_dir=cache_dir,
+    )
+
+
+def _apply_package_recommendation(
+    package_kind: str,
+    package: ModuleRecord,
+    recommendation: Recommendation,
+    packages_dir: str,
+    cache_dir: str,
+) -> str | None:
     if not recommendation.download_url:
-        raise ValueError(f"No download URL is available for {recommendation.module}.")
+        raise ValueError(f"No download URL is available for {recommendation.module} ({package_kind}).")
+    manifest_name = "module.json" if package_kind == "module" else "system.json"
     archive_path = download_to_temp(recommendation.download_url)
-    modules_root = Path(modules_dir)
-    target_dir = modules_root / module.module_id
+    packages_root = Path(packages_dir)
+    target_dir = packages_root / package.module_id
     backup_path: str | None = None
     if target_dir.exists() and target_dir.is_dir():
         backup_path = _create_foundry_style_backup(
-            module=module,
+            package_kind=package_kind,
+            module=package,
             recommendation=recommendation,
             target_dir=target_dir,
-            modules_root=modules_root,
+            packages_root=packages_root,
         )
 
     try:
-        with tempfile.TemporaryDirectory(prefix=f"{module.module_id}-upgrade-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"{package.module_id}-{package_kind}-upgrade-") as temp_dir:
             temp_root = Path(temp_dir)
             _safe_extract_archive(archive_path, temp_root)
 
-            extracted_dir = _find_module_root(temp_root, module.module_id)
+            extracted_dir = _find_package_root(temp_root, package.module_id, manifest_name)
             if extracted_dir is None:
-                raise ValueError(f"Could not locate extracted module root for {module.module_id} in {archive_path}.")
-            _validate_extracted_module_package(module, recommendation, extracted_dir)
+                raise ValueError(f"Could not locate extracted {package_kind} root for {package.module_id} in {archive_path}.")
+            _validate_extracted_package(package_kind, package, recommendation, extracted_dir)
 
             if target_dir.exists():
                 if target_dir.is_dir():
@@ -59,7 +92,7 @@ def apply_recommendation(
             Path(archive_path).unlink()
         with contextlib.suppress(OSError):
             delete_cached_zip(recommendation.download_url or "", cache_dir)
-    logging.info("Applied module %s to %s", module.module_id, target_dir)
+    logging.info("Applied %s %s to %s", package_kind, package.module_id, target_dir)
     return backup_path
 
 
@@ -72,35 +105,21 @@ def force_module_compatibility(module: ModuleRecord, modules_dir: str, target_ve
     if not module_json_path.exists():
         raise ValueError(f"module.json not found for {module.module_id}: {module_json_path}")
 
-    # Reuse Foundry-style backup format before mutating local manifest compatibility.
-    backup_stub = Recommendation(
-        module=module.module_id,
-        installed_version=module.version or "",
-        recommended_version=module.version or "",
-        reason=f"forced-compatibility-{target_version}",
-        confidence="manual",
-        verified_version=str((module.raw_manifest.get("compatibility") or {}).get("verified") or ""),
-        manifest_url=module.manifest_url,
-        download_url=None,
-        source="local",
-        checked_releases=0,
-    )
-    backup_path = _create_foundry_style_backup(
-        module=module,
-        recommendation=backup_stub,
-        target_dir=target_dir,
-        modules_root=modules_root,
-    )
-
     with module_json_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
 
     compatibility_raw = manifest.get("compatibility")
     compatibility: dict = dict(compatibility_raw) if isinstance(compatibility_raw, dict) else {}
     previous_compatibility = dict(compatibility)
-    # Forced compatibility should not claim upstream verification.
-    # Keep existing "verified" metadata untouched and only raise "maximum".
-    compatibility["maximum"] = target_version
+
+    previous_minimum = str(previous_compatibility.get("minimum") or "").strip()
+    previous_maximum = str(previous_compatibility.get("maximum") or "").strip()
+    lockstep_bounds = bool(previous_minimum and previous_maximum and previous_minimum == previous_maximum)
+
+    # Force compatibility adjusts minimum only; when min==max, keep that lockstep.
+    compatibility["minimum"] = target_version
+    if lockstep_bounds:
+        compatibility["maximum"] = target_version
     manifest["compatibility"] = compatibility
 
     flags_raw = manifest.get("flags")
@@ -120,26 +139,28 @@ def force_module_compatibility(module: ModuleRecord, modules_dir: str, target_ve
         handle.write("\n")
 
     logging.info(
-        "Forced compatibility applied for %s (maximum -> %s, verified preserved)",
+        "Forced compatibility applied for %s (minimum -> %s%s, verified preserved)",
         module.module_id,
         target_version,
+        ", maximum updated (lockstep bounds)" if lockstep_bounds else "",
     )
     return {
         "module": module.module_id,
         "manifestPath": str(module_json_path),
-        "backupPath": backup_path,
+        "backupPath": None,
         "previousCompatibility": previous_compatibility,
         "newCompatibility": compatibility,
     }
 
 
 def _create_foundry_style_backup(
+    package_kind: str,
     module: ModuleRecord,
     recommendation: Recommendation,
     target_dir: Path,
-    modules_root: Path,
+    packages_root: Path,
 ) -> str:
-    backups_modules_root = _backups_modules_root(modules_root)
+    backups_modules_root = _backups_packages_root(packages_root, package_kind)
     module_backup_dir = backups_modules_root / module.module_id
     module_backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -172,7 +193,7 @@ def _create_foundry_style_backup(
         "originalSize": int(original_size),
         "createdAt": now_ms,
         "packageId": module.module_id,
-        "type": "module",
+        "type": "module" if package_kind == "module" else "system",
         "system": manifest.get("system"),
     }
     with meta_path.open("w", encoding="utf-8") as handle:
@@ -184,9 +205,14 @@ def _create_foundry_style_backup(
 
 
 def _backups_modules_root(modules_root: Path) -> Path:
-    # modules_root is expected to be <data-root>/Data/modules
-    data_root = modules_root.parent.parent
-    return data_root / "Backups" / "modules"
+    return _backups_packages_root(modules_root, "module")
+
+
+def _backups_packages_root(packages_root: Path, package_kind: str) -> Path:
+    # packages_root is expected to be <data-root>/Data/modules or <data-root>/Data/systems
+    data_root = packages_root.parent.parent
+    folder = "modules" if package_kind == "module" else "systems"
+    return data_root / "Backups" / folder
 
 
 def _directory_file_bytes(path: Path) -> int:
@@ -202,13 +228,20 @@ def _directory_file_bytes(path: Path) -> int:
 
 
 def _find_module_root(extract_root: Path, module_id: str) -> Path | None:
+    return _find_package_root(extract_root, module_id, "module.json")
+
+
+def _find_package_root(extract_root: Path, package_id: str, manifest_name: str) -> Path | None:
     direct_module_json = extract_root / "module.json"
-    if direct_module_json.exists():
+    if manifest_name == "module.json" and direct_module_json.exists():
         return extract_root
-    for module_json in extract_root.rglob("module.json"):
+    direct_manifest = extract_root / manifest_name
+    if direct_manifest.exists():
+        return extract_root
+    for module_json in extract_root.rglob(manifest_name):
         try:
             candidate_root = module_json.parent
-            if candidate_root.name == module_id:
+            if candidate_root.name == package_id:
                 return candidate_root
         except OSError:
             continue
@@ -235,15 +268,25 @@ def _safe_extract_archive(archive_path: str, temp_root: Path) -> None:
 
 
 def _validate_extracted_module_package(module: ModuleRecord, recommendation: Recommendation, extracted_dir: Path) -> None:
-    module_json_path = extracted_dir / "module.json"
+    _validate_extracted_package("module", module, recommendation, extracted_dir)
+
+
+def _validate_extracted_package(
+    package_kind: str,
+    module: ModuleRecord,
+    recommendation: Recommendation,
+    extracted_dir: Path,
+) -> None:
+    manifest_name = "module.json" if package_kind == "module" else "system.json"
+    module_json_path = extracted_dir / manifest_name
     if not module_json_path.exists():
-        raise ValueError(f"Package validation failed for {module.module_id}: module.json not found.")
+        raise ValueError(f"Package validation failed for {module.module_id}: {manifest_name} not found.")
     try:
         manifest = json.loads(module_json_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        raise ValueError(f"Package validation failed for {module.module_id}: invalid module.json ({exc}).") from exc
+        raise ValueError(f"Package validation failed for {module.module_id}: invalid {manifest_name} ({exc}).") from exc
     if not isinstance(manifest, dict):
-        raise ValueError(f"Package validation failed for {module.module_id}: module.json root must be an object.")
+        raise ValueError(f"Package validation failed for {module.module_id}: {manifest_name} root must be an object.")
 
     manifest_id = str(manifest.get("id") or "").strip()
     if not manifest_id or not MODULE_ID_RE.match(manifest_id):

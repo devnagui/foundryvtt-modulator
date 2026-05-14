@@ -44,9 +44,7 @@ class ServiceConfig:
     request_rate_limit_per_minute: int
     max_sessions: int
     audit_file: Path
-    use_new_ui: bool = False
     ui_dist_dir: Path = field(default_factory=lambda: Path("frontend/dist"))
-    disable_legacy_report_ui: bool = False
 
 
 def _utc_now_iso() -> str:
@@ -138,9 +136,7 @@ def load_config() -> ServiceConfig:
         request_rate_limit_per_minute=_parse_int(os.environ.get("RESOLVER_REQUEST_RATE_LIMIT_PER_MINUTE"), default=120, min_value=10),
         max_sessions=_parse_int(os.environ.get("RESOLVER_MAX_SESSIONS"), default=200, min_value=1),
         audit_file=audit_file,
-        use_new_ui=(os.environ.get("USE_NEW_UI", "false").strip().lower() == "true"),
         ui_dist_dir=Path(os.environ.get("RESOLVER_UI_DIST_DIR") or (tool_root / "frontend" / "dist")),
-        disable_legacy_report_ui=(os.environ.get("RESOLVER_DISABLE_LEGACY_REPORT_UI", "false").strip().lower() == "true"),
     )
     config.reports_dir.mkdir(parents=True, exist_ok=True)
     config.state_dir.mkdir(parents=True, exist_ok=True)
@@ -181,6 +177,7 @@ class ActionJob:
     finished_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    progress_meta: dict[str, Any] = field(default_factory=dict)
 
 
 class ActionEngine:
@@ -229,12 +226,16 @@ class ActionEngine:
             if self._running_job_id == job_id:
                 self._running_job_id = None
 
-    def set_progress(self, job_id: str, progress: int) -> None:
+    def set_progress(self, job_id: str, progress: int, meta: dict[str, Any] | None = None) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
                 return
             job.progress = max(0, min(int(progress), 99))
+            if isinstance(meta, dict):
+                merged = dict(job.progress_meta or {})
+                merged.update(copy.deepcopy(meta))
+                job.progress_meta = merged
             job.updated_at = _utc_now_iso()
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
@@ -258,7 +259,20 @@ class ActionEngine:
             return {"runningJobId": self._running_job_id, "pendingCount": len(self._queue), "jobs": [self._job_to_dict(job) for job in ordered[:200]]}
 
     def _job_to_dict(self, job: ActionJob) -> dict[str, Any]:
-        return {"jobId": job.job_id, "action": job.action, "payload": copy.deepcopy(job.payload), "status": job.status, "progress": job.progress, "createdAt": job.created_at, "updatedAt": job.updated_at, "startedAt": job.started_at, "finishedAt": job.finished_at, "result": copy.deepcopy(job.result), "error": job.error}
+        return {
+            "jobId": job.job_id,
+            "action": job.action,
+            "payload": copy.deepcopy(job.payload),
+            "status": job.status,
+            "progress": job.progress,
+            "progressMeta": copy.deepcopy(job.progress_meta),
+            "createdAt": job.created_at,
+            "updatedAt": job.updated_at,
+            "startedAt": job.started_at,
+            "finishedAt": job.finished_at,
+            "result": copy.deepcopy(job.result),
+            "error": job.error,
+        }
 
 
 class RuntimeConfigStore:
@@ -633,4 +647,3 @@ def _foundry_process_probe(process_name: str, data_root: str = "") -> dict[str, 
         return {"online": False, "source": "ps-failed", "error": (result.stderr or "").strip(), "count": 0}
     count = _count_posix_process_name_occurrences(result.stdout or "", process_name)
     return {"online": bool(count > 0), "source": "ps", "processName": process_name, "count": int(count)}
-

@@ -1,162 +1,194 @@
-﻿# Classification And Compatibility Rules
+# Classification And Compatibility Rules
 
-This file is the canonical reference for module/system classification and UI behavior.
+Canonical reference for Current/Planning classification, badges, update path, and actions.
 
-## 0) Scope (global, not per-module)
+## 1) Scope
 
-All rules in this document apply to **every module row** in Current and Planning.
+- Rules apply to all module rows and system rows.
+- No module-specific hardcode is allowed.
+- Decisions must be derived from selected targets + compatibility metadata + resolved recommendation data.
 
-- No module-specific exception is allowed in classification/render logic.
-- Examples such as `dae` and `socketlib` are illustrative only.
-- Any compatibility/status/update-path decision must be derived from:
-  - selected Foundry target,
-  - selected system target,
-  - row compatibility metadata,
-  - availability of source URLs,
-  - resolved recommendation metadata.
+Inputs:
+- Foundry target
+- System target
+- Compatibility (`minimum`, `verified`, `maximum`)
+- Source availability (`manifestUrl`/`projectUrl`)
+- Recommendation resolution (contextual + hydrated + cached)
 
-## 1) Canonical status priority
+## 2) Display Ordering
 
-Priority order:
+Table ordering:
+1. Group by `system`
+2. Within each system, status order:
+   `blocked` -> `missing` -> `update` -> `ready`
+3. Then by title
 
-1. `missing`
-2. `blocked`
-3. `update`
-4. `ready`
+System rows:
+- Always shown on top of the table block (before module rows), unless filtered out by an explicit filter.
 
-## 2) Module status rules
+## 3) Status Classification
 
-### 2.1 `missing`
+### 3.1 `missing`
 
-A module is `missing` when:
-
+When:
 - `hasMissingDependencies = true`, or
-- Required dependencies are unresolved/not installed.
+- required dependency cannot be resolved.
+
+Notes:
+- The dependent module is `missing`.
+- The missing dependency module itself is not automatically `missing`.
+
+### 3.2 `blocked`
+
+When:
+- not `missing`, and
+- selected context is incompatible (`F` and/or `S` incompatible), or
+- no safe compatible recommendation exists for selected context.
+
+### 3.3 `update`
+
+When:
+- not `missing`/`blocked`, and
+- compatible recommendation exists and is newer than installed.
+
+### 3.4 `ready`
+
+When:
+- not `missing`/`blocked`, and
+- no install/update action is needed.
+
+## 4) Compatibility Semantics
+
+Supported bound formats:
+- plain versions (`13.350`, `5.3.2`)
+- major-only (`13`)
+- wildcards (`5.3.x`, `5.3.*`)
+- comparators (`>=`, `<=`, `>`, `<`, `=`)
+- suffix `+` (`13.350+` = `>=13.350`)
+
+### Open-ended max
+
+`maximum` values like `-`, `*`, `any`, `none` are treated as open-ended.
 
 Important:
+- If `verified` major differs from selected target major and max is open-ended, treat as **uncertain** (not incompatible).
+- This avoids false `FX`/`SX` for modules that are effectively open upward.
 
-- The dependent module receives `missing` (example: `dae` depends on `socketlib`).
-- The missing dependency row itself (example: `socketlib`) does not become `missing` just because another module depends on it.
+## 5) Badges
 
-### 2.2 `blocked`
+## 5.1 Foundry badge (`F`)
 
-A module is `blocked` when:
+Mutually exclusive per row:
+- `F✓` compatible
+- `F✕` incompatible
+- `F?` uncertain
+- `F↑` follow-up: verified points to a later selected target
+- `FU` open-ended/uncertain case (verified major mismatch + open max)
 
-- It is not `missing`, and
-- There is no safe compatible recommendation for the selected Foundry + system context.
+## 5.2 System badge (`S`) (modules only)
 
-### 2.3 `update`
+Mutually exclusive per row:
+- `S✓` compatible
+- `S✕` incompatible
+- `S?` uncertain
+- `S↑` follow-up: verified points to a later selected system target
+- `SU` open-ended/uncertain case (verified major mismatch + open max)
 
-A module is `update` when:
+Rules:
+- Show `S*` only if module declares system compatibility restrictions.
+- If no system restriction metadata exists, do not render `S`.
+- Tooltips for `S*` must include restricted system ids.
 
-- It is not `missing`, and
-- A compatible recommended version exists for the selected context.
-
-Additional action rule:
-
-- If `installedVersion` is empty or `"-"`, keep state as `update`, but action label must be `Install` (not `Update`).
-
-### 2.4 `ready`
-
-A module is `ready` when:
-
-- It is not `missing`, and
-- No install/update action is required for the selected context.
-
-## 3) Not-installed modules with/without source URL
-
-### 3.1 DAE scenario (not installed, source URL already set)
-
-When a module is not installed but its source is known (`manifestUrl` or `projectUrl`):
-
-- The app must resolve and persist recommendation metadata (`recommendedVersion`, URL, compatibility) when possible.
-- The row must not stay in `- -> ?` after successful resolution.
-- UI should show `- -> <recommendedVersion>` and action `Install`.
-
-### 3.2 Socketlib scenario (not installed, no source URL)
-
-When a module is not installed and no source URL is known:
-
-- Update path can be shown as `?`.
-- Recommendation remains unknown until user sets URL or source is discovered.
-
-## 4) System rows
-
-For rows marked as `(system)`:
-
-- Show Foundry badge only (`F`).
-- Do not show system badge (`S`) for system rows.
-- `Ready` action is non-clickable.
-
-## 5) Badges and tooltips
-
-### 5.1 Foundry badge (`F`)
-
-- `Fv`: compatible
-- `FX`: incompatible
-- `F?`: uncertain (insufficient metadata)
-
-Tooltip must include:
-
-- `compatible{min: x, verified: y, max: z}`
-
-### 5.2 System badge (`S`) for modules only
-
-- `Sv`: compatible
-- `SX`: incompatible
-- `S?`: uncertain
-
-Tooltip must include:
-
-- `compatible{min: x, verified: y, max: z}`
-
-### 5.3 Missing dependency badge
+## 5.3 Missing dependency badge
 
 - Icon: `!`
-- Show only when `hasMissingDependencies = true`.
 - Tooltip format: `missing dependency: <id1>, <id2>, ...`
 
-## 6) Action/update path behavior
+## 5.4 System upgrade conflict badge
 
-- Never render `- -> -`.
-- If recommendation exists: render `installed -> recommended`.
-- If recommendation is still resolving and source exists: render `Loading...`.
-- If no recommendation after resolution attempt and no source: render `?`.
+- Icon: `SC`
+- Current/Planning: shows cross-system recommendation conflict.
 
-### 6.1 Context-aware recommendation precedence (Current + Planning)
+## 6) Tooltip Contract
 
-Recommendation resolution must be contextual to selected filters.
+Compatibility badges include:
+- `compatible{min: x, verified: y, max: z}`
 
-- Primary context key: `targetFoundryVersion + installedSystemVersions + moduleId`.
-- If row baseline recommendation is incompatible with selected context, prefer contextual hydrated recommendation.
-- Fallback order (recommended/version URL):
-  1. contextual (hydrated for selected context)
-  2. module-level cached suggestion
-  3. dependency-level suggestion
-  4. baseline row value (only if still valid/usable)
-- This rule is mandatory for all modules, preventing stale scan values from overriding selected filter context.
+Follow-up tooltips:
+- `F↑`: `Update Suggested: Verified for Foundry version <verified>. ...`
+- `S↑`: `Update Suggested: Verified for system version <verified>. ... | systems: ...`
 
-## 7) Start Scan behavior (required)
+Open-ended tooltips:
+- `FU`/`SU`: explain open max + verified major mismatch as uncertain (not blocked).
 
-On `Start Scan` (`dry-run`):
+All tooltips must reflect active selected filters/context (never stale context).
 
-- Generate fresh report payload.
-- Enrich current rows with source-based recommendations.
-- Enrich unresolved dependency actions with source-based recommendations (for not-installed dependencies such as `dae`).
-- Persist enriched report to `module-resolver-latest.json`.
-- Do not generate legacy HTML by default in this flow.
+## 7) Update Path + Recommendation Selection
 
-This guarantees:
+Never show:
+- `- -> -`
+- downgrade path (e.g. `1.7 -> 1.6`)
+- placeholder target like `0.0.0` as real recommendation
 
-- If `dae` source is already configured, scan resolves recommendation and stores it.
-- If `socketlib` has no source, it remains unresolved and can show `?`.
+Path behavior:
+- If real forward recommendation exists: `installed -> recommended`
+- If recommendation unresolved and source exists: `Loading...`
+- If no source/recommendation: `?`
+- If installed and no forward recommendation: show installed only
 
-## 8) Source save behavior
+Recommendation selection must ignore:
+- empty
+- `-`
+- `0.0.0`
+- any version `<= installedVersion` for already installed modules
 
-When user sets module source (`Set URL` / `Add Module`):
+## 8) Not Installed Modules
 
-- Persist source (`manifestUrl` / `projectUrl`) in module source store.
-- Resolve recommendation immediately.
-- Re-enrich latest report (`JSON`) only.
+Source known (`manifestUrl`/`projectUrl`):
+- resolve recommendation and persist metadata
+- show installable path/action when possible
 
-If needed, HTML is exported explicitly through `POST /api/v1/report/v3/export-html`.
+No source:
+- recommendation unknown
+- update path may remain `?`
+
+## 9) Actions
+
+Install/update:
+- not installed + valid recommendation => `Install`
+- installed + newer valid recommendation => `Update`
+
+Ready:
+- non-clickable
+
+Blocked:
+- non-clickable
+
+Force Compatibility:
+- Current only
+- installed module
+- compatibility failure exists
+- not missing
+- not 404/not-found
+- minimum bound lower than target (foundry or system)
+
+## 10) Scan / Refresh Behavior
+
+Start Scan (`dry-run`):
+- rebuild report
+- enrich recommendations using source data
+- enrich unresolved dependency actions
+- persist enriched JSON report
+
+Row refresh:
+- calls suggest with `forceRefresh = true`
+- invalidates module suggestion cache for that module id
+- keeps prior row stable on provider error and shows inline error/retry state
+
+Provider errors exposed:
+- `provider_not_found`
+- `provider_rate_limited`
+- `provider_timeout`
+- `provider_forbidden`
+- `provider_malformed_response`
+- `provider_error`

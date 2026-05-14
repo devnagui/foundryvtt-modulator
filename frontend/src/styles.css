@@ -169,6 +169,51 @@ body.light-mode {
   background: color-mix(in srgb, var(--panel) 76%, var(--bg-soft) 24%);
 }
 .report-table small { color: var(--muted); }
+.planning-matrix-table th,
+.planning-matrix-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+.planning-matrix-table thead th {
+  white-space: nowrap;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.planning-matrix-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.planning-matrix-table th:first-child,
+.planning-matrix-table td:first-child {
+  text-align: left;
+  white-space: nowrap;
+  min-width: 158px;
+}
+.planning-matrix-table th:not(:first-child),
+.planning-matrix-table td:not(:first-child) {
+  width: 96px;
+  min-width: 96px;
+}
+.planning-matrix-table .btn-xs {
+  min-height: 28px;
+  line-height: 1;
+}
+.loading-block-row {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.loading-block {
+  width: 42px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  background: linear-gradient(90deg, #334155, #475569, #334155);
+  background-size: 240% 100%;
+  animation: loading-shimmer 1.15s linear infinite;
+}
 .status-pill {
   display: inline-block;
   padding: 2px 8px;
@@ -225,6 +270,10 @@ body.light-mode {
 .status-badge.neutral {
   background: #1f2937;
   color: #e5e7eb;
+}
+.status-badge.info {
+  background: #1e3a8a;
+  color: #dbeafe;
 }
 .status-badge:focus-visible {
   box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.45);
@@ -386,6 +435,10 @@ body.light-mode {
   0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
   70% { box-shadow: 0 0 0 14px rgba(245, 158, 11, 0); }
   100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+@keyframes loading-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 @media (max-width: 640px) {

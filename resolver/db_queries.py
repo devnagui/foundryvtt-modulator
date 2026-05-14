@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 
 
@@ -27,6 +28,7 @@ def load_database_summary(database_path: str) -> dict:
             "recommendations",
             "future_targets",
             "future_target_modules",
+            "planning_context_rows",
         ):
             table_counts[table] = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
         return {
@@ -147,6 +149,69 @@ def load_apply_history(database_path: str, limit: int = 20) -> list[dict]:
                 }
             )
     return rows_out
+
+
+def load_planning_context_rows(
+    database_path: str,
+    foundry_version: str,
+    system_id: str = "",
+    system_version: str = "",
+    limit: int = 5000,
+) -> dict:
+    path = Path(database_path)
+    if not path.exists():
+        return {"ok": True, "rows": [], "count": 0}
+    foundry = str(foundry_version or "").strip()
+    if not foundry:
+        raise ValueError("foundry_version_required")
+    sid = str(system_id or "").strip()
+    sver = str(system_version or "").strip()
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        start = time.perf_counter()
+        latest = connection.execute("SELECT id FROM scan_runs ORDER BY id DESC LIMIT 1").fetchone()
+        if not latest:
+            return {"ok": True, "rows": [], "count": 0}
+        scan_run_id = int(latest["id"])
+        query = """
+            SELECT context_key, foundry_version, system_id, system_version, module_id,
+                   status, has_missing_dependencies, title, installed_version, recommended_version, reason,
+                   compatibility_json, system_compatibility_json
+            FROM planning_context_rows
+            WHERE scan_run_id = ?
+              AND foundry_version = ?
+        """
+        params: list[object] = [scan_run_id, foundry]
+        if sid:
+            query += " AND system_id = ?"
+            params.append(sid)
+        if sver:
+            query += " AND system_version = ?"
+            params.append(sver)
+        query += " ORDER BY module_id LIMIT ?"
+        params.append(max(1, int(limit)))
+        rows = connection.execute(query, params).fetchall()
+        out_rows = []
+        for row in rows:
+            out_rows.append(
+                {
+                    "contextKey": str(row["context_key"] or ""),
+                    "foundryVersion": str(row["foundry_version"] or ""),
+                    "systemId": str(row["system_id"] or ""),
+                    "systemVersion": str(row["system_version"] or ""),
+                    "moduleId": str(row["module_id"] or ""),
+                    "status": str(row["status"] or ""),
+                    "hasMissingDependencies": bool(int(row["has_missing_dependencies"] or 0)),
+                    "title": str(row["title"] or ""),
+                    "installedVersion": str(row["installed_version"] or ""),
+                    "recommendedVersion": str(row["recommended_version"] or ""),
+                    "reason": str(row["reason"] or ""),
+                    "compatibility": _decode_json(row["compatibility_json"]),
+                    "systemCompatibility": _decode_json(row["system_compatibility_json"]),
+                }
+            )
+        elapsed_ms = round((time.perf_counter() - start) * 1000.0, 3)
+        return {"ok": True, "scanRunId": scan_run_id, "count": len(out_rows), "rows": out_rows, "queryMs": elapsed_ms}
 
 
 def _extract_system_compatibility(raw_manifest: dict) -> dict[str, dict]:

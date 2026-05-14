@@ -37,6 +37,7 @@ def persist_scan_snapshot(
         _upsert_release_catalog(connection, "system", installed_systems, system_histories)
         _replace_recommendations(connection, scan_run_id, payload)
         _replace_future_targets(connection, scan_run_id, payload)
+        _replace_planning_context_rows(connection, scan_run_id, payload)
         connection.commit()
         return scan_run_id
 
@@ -247,6 +248,28 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
                 REFERENCES future_targets(scan_run_id, target_foundry_version)
                 ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS planning_context_rows (
+            scan_run_id INTEGER NOT NULL,
+            context_key TEXT NOT NULL,
+            foundry_version TEXT NOT NULL,
+            system_id TEXT NOT NULL,
+            system_version TEXT NOT NULL,
+            module_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            has_missing_dependencies INTEGER NOT NULL,
+            title TEXT,
+            installed_version TEXT,
+            recommended_version TEXT,
+            reason TEXT,
+            compatibility_json TEXT NOT NULL,
+            system_compatibility_json TEXT NOT NULL,
+            PRIMARY KEY (scan_run_id, context_key, module_id),
+            FOREIGN KEY (scan_run_id) REFERENCES scan_runs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_planning_context_lookup
+            ON planning_context_rows(scan_run_id, foundry_version, system_id, system_version, status);
         """
     )
     connection.execute(
@@ -386,7 +409,8 @@ def _upsert_release_catalog(
                     _compat_value(release.compatibility, "maximum"),
                 )
             )
-            for system_id, compatibility in sorted((release.system_compatibility or {}).items()):
+            system_compatibility_map = release.system_compatibility if isinstance(release.system_compatibility, dict) else {}
+            for system_id, compatibility in sorted(system_compatibility_map.items()):
                 system_rows.append(
                     (
                         package_kind,
@@ -557,8 +581,93 @@ def _replace_future_targets(connection: sqlite3.Connection, scan_run_id: int, pa
     )
 
 
-def _compat_value(compatibility: dict | None, key: str) -> str | None:
-    if not compatibility:
+def _replace_planning_context_rows(connection: sqlite3.Connection, scan_run_id: int, payload: dict) -> None:
+    view = ((payload.get("reportViews") or {}).get("v3") or {}) if isinstance(payload.get("reportViews"), dict) else {}
+    planner = view.get("systemUpgradePlanner") if isinstance(view, dict) else {}
+    targets = planner.get("targets") if isinstance(planner, dict) else []
+    if not isinstance(targets, list):
+        return
+
+    rows: list[tuple] = []
+    bucket_defs = (
+        ("blockedModuleRows", "blocked"),
+        ("upgradableModuleRows", "update"),
+        ("compatibleModuleRows", "ready"),
+        ("unknownModuleRows", "blocked"),
+        ("localManifestManualModules", "blocked"),
+    )
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        foundry_version = str(target.get("foundryVersion") or "").strip()
+        if not foundry_version:
+            continue
+        system_rows = target.get("systemRows")
+        if not isinstance(system_rows, list):
+            continue
+        for system_row in system_rows:
+            if not isinstance(system_row, dict):
+                continue
+            system_id = str(system_row.get("systemId") or "").strip()
+            system_version = str(system_row.get("targetVersion") or "").strip()
+            if not system_id or not system_version:
+                continue
+            context_key = f"{foundry_version}::{system_id}@{system_version}"
+            for bucket_key, fallback_status in bucket_defs:
+                bucket = system_row.get(bucket_key)
+                if not isinstance(bucket, list):
+                    continue
+                for item in bucket:
+                    if not isinstance(item, dict):
+                        continue
+                    module_id = str(item.get("module") or "").strip()
+                    if not module_id:
+                        continue
+                    reason = str(item.get("reason") or "")
+                    has_missing = bool(item.get("hasMissingDependencies")) or ("missing_dependency:" in reason.lower())
+                    status = str(item.get("presentationStatus") or fallback_status).strip().lower()
+                    if has_missing:
+                        status = "missing"
+                    elif status not in {"missing", "blocked", "update", "ready"}:
+                        status = fallback_status
+                    rows.append(
+                        (
+                            scan_run_id,
+                            context_key,
+                            foundry_version,
+                            system_id,
+                            system_version,
+                            module_id,
+                            status,
+                            1 if has_missing else 0,
+                            item.get("title"),
+                            item.get("installedVersion"),
+                            item.get("recommendedVersion"),
+                            reason,
+                            json.dumps(item.get("compatibility") or {}, sort_keys=True),
+                            json.dumps(item.get("systemCompatibility") or {}, sort_keys=True),
+                        )
+                    )
+
+    if not rows:
+        return
+    connection.executemany(
+        """
+        INSERT OR REPLACE INTO planning_context_rows(
+            scan_run_id, context_key, foundry_version, system_id, system_version, module_id,
+            status, has_missing_dependencies, title, installed_version, recommended_version, reason,
+            compatibility_json, system_compatibility_json
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+
+
+def _compat_value(compatibility: object, key: str) -> str | None:
+    if isinstance(compatibility, list):
+        compatibility = next((item for item in compatibility if isinstance(item, dict)), None)
+    if not isinstance(compatibility, dict):
         return None
     value = compatibility.get(key)
     if value in (None, ""):

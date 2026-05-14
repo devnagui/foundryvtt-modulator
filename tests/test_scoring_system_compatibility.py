@@ -33,7 +33,24 @@ class ScoringSystemCompatibilityTests(unittest.TestCase):
         ok = satisfies_release_constraints(rel, "13.350", {"dnd5e": "5.3.0"})
         self.assertFalse(ok)
 
+    def test_system_compatibility_list_does_not_crash(self) -> None:
+        rel = self._release({"dnd5e": [{"minimum": "5.0.0", "verified": "5.3.0", "maximum": "5.3.9"}]})
+        ok = satisfies_release_constraints(rel, "13.350", {"dnd5e": "5.3.0"})
+        self.assertTrue(ok)
+
+    def test_release_compatibility_list_does_not_crash(self) -> None:
+        rel = ReleaseRecord(
+            version="1.2.3",
+            manifest_url=None,
+            compatibility=[{"minimum": "13.0", "verified": "13.320", "maximum": "13.999"}],
+            system_compatibility={},
+            module_requirements=[],
+            download_url=None,
+            source="test",
+        )
+        ok = satisfies_release_constraints(rel, "13.350", {"dnd5e": "5.3.0"})
+        self.assertTrue(ok)
+
 
 if __name__ == "__main__":
     unittest.main()
-

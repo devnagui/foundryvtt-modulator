@@ -41,9 +41,12 @@ export type ActionSubmitResponse = {
 };
 
 export type JobStatus = {
+  action?: string;
   jobId: string;
   status: "pending" | "running" | "success" | "failed";
   progress: number;
+  progressMeta?: Record<string, unknown>;
+  result?: Record<string, unknown>;
   error?: string;
 };
 
@@ -61,6 +64,18 @@ export type ModuleSourceRow = {
   updatedAt?: string;
 };
 
+export type ImportHistoryEntry = {
+  action?: string;
+  profile?: string;
+  generatedAt?: string;
+  appliedCount?: number;
+  skippedCount?: number;
+  failureCount?: number;
+  planPath?: string;
+  failures?: Array<Record<string, unknown>>;
+  results?: Record<string, unknown>;
+};
+
 export type SuggestModuleContext = {
   targetFoundryVersion?: string;
   installedSystemVersions?: Record<string, string>;
@@ -71,7 +86,23 @@ export type SuggestModuleBatchInput = {
   projectUrl?: string;
 };
 export type SuggestModulesBatchResponse = {
-  rows?: Array<{ moduleId?: string; suggestion?: Record<string, unknown>; error?: string }>;
+  rows?: Array<{ moduleId?: string; suggestion?: Record<string, unknown>; error?: string; errorCode?: string; hint?: string; retryable?: boolean; rawError?: string }>;
+};
+
+export type PlanningContextRow = {
+  contextKey?: string;
+  foundryVersion?: string;
+  systemId?: string;
+  systemVersion?: string;
+  moduleId?: string;
+  status?: string;
+  hasMissingDependencies?: boolean;
+  title?: string;
+  installedVersion?: string;
+  recommendedVersion?: string;
+  reason?: string;
+  compatibility?: Record<string, unknown>;
+  systemCompatibility?: Record<string, unknown>;
 };
 
 function csrfToken(): string {
@@ -96,7 +127,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await response.text();
   const payload = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+    const detail = payload?.detail || {};
+    const baseMessage = payload?.message || detail?.message || payload?.error || detail?.error || `HTTP ${response.status}`;
+    const hint = detail?.hint || payload?.hint || "";
+    const message = hint ? `${baseMessage} ${hint}` : baseMessage;
     const err = new Error(String(message)) as Error & { status?: number; payload?: unknown };
     err.status = response.status;
     err.payload = payload;
@@ -120,15 +154,21 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }),
   reportV3Model: () => request<ReportModel>("/api/v1/report/v3/model"),
-  exportSnapshot: (outputPath = "") =>
-    request<{ ok: boolean; path: string; modulesCount: number; systemsCount: number; foundryVersion: string }>(
+  exportSnapshot: (outputPath = "", includeData = false) =>
+    request<{ ok: boolean; path: string; modulesCount: number; systemsCount: number; foundryVersion: string; snapshotData?: Record<string, unknown> }>(
       "/api/v1/report/v3/export-snapshot",
       {
         method: "POST",
-        body: JSON.stringify({ outputPath }),
+        body: JSON.stringify({ outputPath, includeData }),
       }
     ),
-  submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "rollback-batch", payload: Record<string, unknown>) =>
+  importHistory: (limit = 20) =>
+    request<{ ok: boolean; items: ImportHistoryEntry[] }>(`/api/v1/report/v3/import-history?limit=${encodeURIComponent(String(limit))}`),
+  planningContext: (foundryVersion: string, systemId = "", systemVersion = "", limit = 5000) =>
+    request<{ ok: boolean; scanRunId?: number; count?: number; rows?: PlanningContextRow[] }>(
+      `/api/v1/report/v3/planning-context?foundryVersion=${encodeURIComponent(foundryVersion)}&systemId=${encodeURIComponent(systemId)}&systemVersion=${encodeURIComponent(systemVersion)}&limit=${encodeURIComponent(String(limit))}`
+    ),
+  submitAction: (action: "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "rollback-batch" | "override-from-plan", payload: Record<string, unknown>) =>
     request<ActionSubmitResponse>("/api/v1/actions/submit", {
       method: "POST",
       body: JSON.stringify({ action, payload })
@@ -164,23 +204,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ moduleId, manifestUrl, projectUrl })
     }),
-  suggestModule: (manifestUrl: string, context?: SuggestModuleContext, moduleId = "") =>
+  suggestModule: (manifestUrl: string, context?: SuggestModuleContext, moduleId = "", options?: { forceRefresh?: boolean; projectUrl?: string }) =>
     request<{ suggestion?: Record<string, unknown> }>("/api/v1/actions/suggest-module", {
       method: "POST",
       body: JSON.stringify({
         moduleId,
         manifestUrl,
+        projectUrl: options?.projectUrl || "",
+        forceRefresh: Boolean(options?.forceRefresh),
         targetFoundryVersion: context?.targetFoundryVersion || "",
         installedSystemVersions: context?.installedSystemVersions || {},
       })
     }),
-  suggestModulesBatch: async (modules: SuggestModuleBatchInput[], context?: SuggestModuleContext) => {
+  suggestModulesBatch: async (modules: SuggestModuleBatchInput[], context?: SuggestModuleContext, options?: { forceRefresh?: boolean }) => {
     const payload = await request(
       "/api/v1/actions/suggest-modules-batch",
       {
         method: "POST",
         body: JSON.stringify({
           modules,
+          forceRefresh: Boolean(options?.forceRefresh),
           targetFoundryVersion: context?.targetFoundryVersion || "",
           installedSystemVersions: context?.installedSystemVersions || {}
         })

@@ -2,25 +2,30 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import sqlite3
 import subprocess
 import threading
 import tempfile
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from resolver.db_queries import load_apply_history
+from resolver.apply import apply_recommendation, apply_system_recommendation
+from resolver.db_queries import load_apply_history, load_planning_context_rows
 from resolver.dependencies import resolve_module_recommendation
 from resolver.foundry import detect_foundry_version
-from resolver.local import load_modules, load_system_versions, modules_dir_from_data_root
-from resolver.models import ModuleRecord
+from resolver.local import load_modules, load_system_records, load_system_versions, modules_dir_from_data_root
+from resolver.models import ModuleRecord, Recommendation
 from resolver.report_v3 import render_html_report_v3
 from resolver.scoring import candidate_sort_key, satisfies_release_constraints
-from resolver.sources import fetch_release_history
+from resolver.sources import fetch_release_history, fetch_system_release_history
+from resolver.versioning import compare_versions
 
 from .core import (
     ActionEngine,
@@ -54,6 +59,26 @@ _WORKER_STARTED = False
 _WORKER_LOCK = threading.Lock()
 _REPORT_SUGGEST_CACHE: dict[str, dict[str, Any]] = {}
 _REPORT_SUGGEST_CACHE_LOCK = threading.Lock()
+_IMPORT_HISTORY_LOCK = threading.Lock()
+_IMPORT_HISTORY_MAX_ITEMS = 100
+
+
+class SuggestionProviderError(ValueError):
+    def __init__(self, payload: dict[str, Any]):
+        self.payload = payload
+        message = str(payload.get("message") or payload.get("errorCode") or "suggestion_provider_error")
+        super().__init__(message)
+
+
+def _canonical_action_name(action: str) -> str:
+    value = str(action or "").strip().lower()
+    value = re.sub(r"\s+", "-", value.replace("_", "-"))
+    compact = re.sub(r"[^a-z0-9]", "", value)
+    if value in {"override-plan", "import-plan", "import"}:
+        return "override-from-plan"
+    if compact in {"overridefromplan", "importplan", "import"}:
+        return "override-from-plan"
+    return value
 
 
 def _is_manifest_like_url(raw_url: str) -> bool:
@@ -169,12 +194,12 @@ def _ensure_worker(runtime: AppRuntime) -> None:
                 if job is None:
                     threading.Event().wait(0.25)
                     continue
-                runtime.action_engine.set_progress(job.job_id, 25)
+                runtime.action_engine.set_progress(job.job_id, 25, {"phase": "queued"})
                 _append_audit(runtime.config, "action_worker_started", {"jobId": job.job_id, "action": job.action})
                 try:
-                    runtime.action_engine.set_progress(job.job_id, 60)
-                    result = _execute_action_job(runtime, job.action, job.payload)
-                    runtime.action_engine.set_progress(job.job_id, 95)
+                    runtime.action_engine.set_progress(job.job_id, 60, {"phase": "running"})
+                    result = _execute_action_job(runtime, job.action, job.payload, job.job_id)
+                    runtime.action_engine.set_progress(job.job_id, 95, {"phase": "finalizing"})
                     runtime.action_engine.complete(job.job_id, ok=True, result=result)
                     _append_audit(runtime.config, "action_worker_success", {"jobId": job.job_id, "action": job.action})
                 except Exception as exc:
@@ -264,6 +289,66 @@ def _source_for_module_id(sources: dict[str, Any], module_id: str) -> dict[str, 
     return {}
 
 
+def _invalidate_report_suggest_cache_for_modules(module_ids: list[str]) -> int:
+    targets = {str(item or "").strip().lower() for item in module_ids if str(item or "").strip()}
+    if not targets:
+        return 0
+    removed = 0
+    with _REPORT_SUGGEST_CACHE_LOCK:
+        stale_keys = []
+        for key in list(_REPORT_SUGGEST_CACHE.keys()):
+            module_prefix = str(key).split("|", 1)[0].strip().lower()
+            if module_prefix in targets:
+                stale_keys.append(key)
+        for key in stale_keys:
+            _REPORT_SUGGEST_CACHE.pop(key, None)
+            removed += 1
+    return removed
+
+
+def _invalidate_planning_context_rows(runtime: AppRuntime, module_ids: list[str]) -> int:
+    clean_ids = sorted({str(item or "").strip() for item in module_ids if str(item or "").strip()})
+    if not clean_ids:
+        return 0
+    state_dir = getattr(runtime.config, "state_dir", None)
+    if not state_dir:
+        return 0
+    db_path = Path(str(state_dir)) / "resolver.db"
+    if not db_path.exists():
+        return 0
+    removed = 0
+    try:
+        with sqlite3.connect(db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            latest = connection.execute("SELECT id FROM scan_runs ORDER BY id DESC LIMIT 1").fetchone()
+            if not latest:
+                return 0
+            scan_run_id = int(latest["id"])
+            placeholders = ", ".join("?" for _ in clean_ids)
+            params: list[Any] = [scan_run_id]
+            params.extend(clean_ids)
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) FROM planning_context_rows
+                WHERE scan_run_id = ? AND module_id IN ({placeholders})
+                """,
+                params,
+            ).fetchone()
+            removed = int(row[0]) if row else 0
+            if removed > 0:
+                connection.execute(
+                    f"""
+                    DELETE FROM planning_context_rows
+                    WHERE scan_run_id = ? AND module_id IN ({placeholders})
+                    """,
+                    params,
+                )
+                connection.commit()
+    except Exception:
+        return 0
+    return removed
+
+
 def _resolve_suggestion_from_sources_with_caches(
     runtime: AppRuntime,
     module_id: str,
@@ -273,6 +358,7 @@ def _resolve_suggestion_from_sources_with_caches(
     installed_modules_by_id: dict[str, ModuleRecord],
     resolution_cache: dict[str, Any],
     history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+    force_refresh: bool = False,
 ) -> dict[str, Any] | None:
     clean_id = str(module_id or "").strip()
     if not clean_id:
@@ -290,9 +376,11 @@ def _resolve_suggestion_from_sources_with_caches(
         target_foundry_version=target_foundry_version,
         installed_system_versions=installed_system_versions,
     )
-    with _REPORT_SUGGEST_CACHE_LOCK:
-        cached = _REPORT_SUGGEST_CACHE.get(key)
-    suggestion: dict[str, Any] | None = cached if isinstance(cached, dict) else None
+    suggestion: dict[str, Any] | None = None
+    if not force_refresh:
+        with _REPORT_SUGGEST_CACHE_LOCK:
+            cached = _REPORT_SUGGEST_CACHE.get(key)
+        suggestion = cached if isinstance(cached, dict) else None
     if suggestion is None:
         try:
             suggestion = _suggest_best_release_for_module_with_caches(
@@ -303,6 +391,7 @@ def _resolve_suggestion_from_sources_with_caches(
                 installed_modules_by_id=installed_modules_by_id,
                 resolution_cache=resolution_cache,
                 history_cache=history_cache,
+                force_refresh=force_refresh,
             )
         except Exception:
             suggestion = None
@@ -325,6 +414,7 @@ def _enrich_current_rows_with_precomputed_suggestions(
     installed_modules_by_id: dict[str, ModuleRecord],
     resolution_cache: dict[str, Any],
     history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+    force_refresh: bool = False,
 ) -> None:
     current = view.get("currentSystemUpgrades")
     if not isinstance(current, dict):
@@ -361,6 +451,7 @@ def _enrich_current_rows_with_precomputed_suggestions(
             installed_modules_by_id=installed_modules_by_id,
             resolution_cache=resolution_cache,
             history_cache=history_cache,
+            force_refresh=force_refresh,
         )
         if not suggestion:
             continue
@@ -386,6 +477,7 @@ def _enrich_results_dependency_actions_with_precomputed_suggestions(
     installed_modules_by_id: dict[str, ModuleRecord],
     resolution_cache: dict[str, Any],
     history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+    force_refresh: bool = False,
 ) -> None:
     results = payload.get("results")
     if not isinstance(results, list) or not results:
@@ -421,6 +513,7 @@ def _enrich_results_dependency_actions_with_precomputed_suggestions(
                 installed_modules_by_id=installed_modules_by_id,
                 resolution_cache=resolution_cache,
                 history_cache=history_cache,
+                force_refresh=force_refresh,
             )
             if not suggestion:
                 continue
@@ -560,7 +653,7 @@ def read_report_model(runtime: AppRuntime) -> dict[str, Any]:
     }
 
 
-def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None:
+def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any], force_refresh_suggestions: bool = False) -> None:
     report_views = payload.get("reportViews") if isinstance(payload.get("reportViews"), dict) else {}
     view = report_views.get("v3") if isinstance(report_views.get("v3"), dict) else {}
     backup_management = view.get("backupManagement") if isinstance(view.get("backupManagement"), dict) else {}
@@ -587,6 +680,7 @@ def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None
             installed_modules_by_id=installed_modules_by_id,
             resolution_cache=resolution_cache,
             history_cache=history_cache,
+            force_refresh=force_refresh_suggestions,
         )
         _enrich_results_dependency_actions_with_precomputed_suggestions(
             runtime=runtime,
@@ -597,6 +691,7 @@ def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None
             installed_modules_by_id=installed_modules_by_id,
             resolution_cache=resolution_cache,
             history_cache=history_cache,
+            force_refresh=force_refresh_suggestions,
         )
     except Exception:
         pass
@@ -611,12 +706,12 @@ def _enrich_report_payload(runtime: AppRuntime, payload: dict[str, Any]) -> None
     payload["reportViews"] = report_views
 
 
-def _enrich_latest_report_file(runtime: AppRuntime, write_html: bool = False) -> None:
+def _enrich_latest_report_file(runtime: AppRuntime, write_html: bool = False, force_refresh_suggestions: bool = False) -> None:
     report_path = runtime.config.reports_dir / "module-resolver-latest.json"
     if not report_path.exists():
         return
     payload = json.loads(report_path.read_text(encoding="utf-8"))
-    _enrich_report_payload(runtime, payload)
+    _enrich_report_payload(runtime, payload, force_refresh_suggestions=force_refresh_suggestions)
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     if write_html:
         try:
@@ -632,7 +727,7 @@ def export_latest_report_html(runtime: AppRuntime, output_path: str = "") -> dic
     report_path = runtime.config.reports_dir / "module-resolver-latest.json"
     if not report_path.exists():
         raise FileNotFoundError("latest_report_not_found")
-    _enrich_latest_report_file(runtime, write_html=False)
+    _enrich_latest_report_file(runtime, write_html=False, force_refresh_suggestions=False)
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     html = render_html_report_v3(payload)
     target = Path(output_path).expanduser().resolve() if str(output_path or "").strip() else (runtime.config.reports_dir / "module-resolver-latest.html")
@@ -645,7 +740,7 @@ def export_latest_report_html(runtime: AppRuntime, output_path: str = "") -> dic
     }
 
 
-def export_modules_snapshot(runtime: AppRuntime, output_path: str = "") -> dict[str, Any]:
+def export_modules_snapshot(runtime: AppRuntime, output_path: str = "", include_data: bool = False) -> dict[str, Any]:
     data_root = runtime.config_store.get_data_root() or runtime.config.data_root
     ok, normalized_root, details = _validate_foundry_root_path(data_root)
     if not ok:
@@ -675,7 +770,7 @@ def export_modules_snapshot(runtime: AppRuntime, output_path: str = "") -> dict[
     target = Path(output_path).expanduser().resolve() if str(output_path or "").strip() else (runtime.config.reports_dir / "module-snapshot-latest.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {
+    response = {
         "ok": True,
         "path": str(target),
         "modulesCount": len(modules),
@@ -683,6 +778,93 @@ def export_modules_snapshot(runtime: AppRuntime, output_path: str = "") -> dict[
         "foundryVersion": foundry_version,
         "generatedAt": payload["generatedAt"],
     }
+    if include_data:
+        response["snapshotData"] = payload
+    return response
+
+
+def _import_history_path(runtime: AppRuntime) -> Path:
+    return runtime.config.state_dir / "import-history.json"
+
+
+def _read_import_history_items(runtime: AppRuntime) -> list[dict[str, Any]]:
+    path = _import_history_path(runtime)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _write_import_history_items(runtime: AppRuntime, items: list[dict[str, Any]]) -> None:
+    path = _import_history_path(runtime)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _import_history_entry(result: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "generatedAt": str(result.get("generatedAt") or _utc_now_iso()),
+        "action": str(result.get("action") or "override-from-plan"),
+        "profile": str(result.get("profile") or ""),
+        "planPath": str(result.get("planPath") or ""),
+        "appliedCount": int(result.get("appliedCount") or 0),
+        "skippedCount": int(result.get("skippedCount") or 0),
+        "failureCount": int(result.get("failureCount") or 0),
+    }
+    failures = result.get("failures")
+    if isinstance(failures, list):
+        entry["failures"] = [row for row in failures[:100] if isinstance(row, dict)]
+    details = result.get("results")
+    if isinstance(details, dict):
+        entry["results"] = details
+    refresh = result.get("reportRefresh")
+    if isinstance(refresh, dict):
+        entry["reportRefresh"] = {
+            "ok": bool(refresh.get("ok")),
+            "returncode": int(refresh.get("returncode") or 0) if str(refresh.get("returncode") or "").strip() else 0,
+            "stdout": str(refresh.get("stdout") or "")[:2000],
+            "stderr": str(refresh.get("stderr") or "")[:2000],
+        }
+    return entry
+
+
+def append_import_history(runtime: AppRuntime, result: dict[str, Any]) -> None:
+    with _IMPORT_HISTORY_LOCK:
+        items = _read_import_history_items(runtime)
+        items.insert(0, _import_history_entry(result))
+        _write_import_history_items(runtime, items[:_IMPORT_HISTORY_MAX_ITEMS])
+
+
+def read_import_history(runtime: AppRuntime, limit: int = 20) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 20), 200))
+    with _IMPORT_HISTORY_LOCK:
+        items = _read_import_history_items(runtime)
+    return {
+        "ok": True,
+        "items": items[:safe_limit],
+    }
+
+
+def read_planning_context(
+    runtime: AppRuntime,
+    foundry_version: str,
+    system_id: str = "",
+    system_version: str = "",
+    limit: int = 5000,
+) -> dict[str, Any]:
+    db_path = str(runtime.config.state_dir / "resolver.db")
+    return load_planning_context_rows(
+        database_path=db_path,
+        foundry_version=foundry_version,
+        system_id=system_id,
+        system_version=system_version,
+        limit=limit,
+    )
 
 
 def rollback_plan(runtime: AppRuntime, scan_run_id: int) -> dict[str, Any]:
@@ -773,7 +955,7 @@ def _evaluate_apply_health_gate(data_root: str, selected_modules: list[str]) -> 
 
 
 def _build_cli_args_from_action(action: str, payload: dict[str, Any]) -> tuple[list[str], bool, str]:
-    normalized_action = str(action or "").strip().lower()
+    normalized_action = _canonical_action_name(action)
     modules = _normalize_modules(payload.get("modules"))
     batch_size = max(10, int(payload.get("batchSize") or 10))
     if normalized_action == "dry-run":
@@ -815,12 +997,68 @@ def _build_cli_args_from_action(action: str, payload: dict[str, Any]) -> tuple[l
     raise ValueError("unsupported_action")
 
 
-def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> dict[str, Any]:
-    if str(action or "").strip().lower() == "rollback-batch":
+def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+    clean_action = _canonical_action_name(action)
+    if clean_action == "rollback-batch":
         scan_run_id = int(payload.get("scanRunId") or 0)
         if scan_run_id <= 0:
             raise ValueError("scan_run_id_required")
         return execute_rollback(runtime, scan_run_id)
+    if clean_action == "override-from-plan":
+        _ensure_foundry_offline(runtime)
+        lock_payload = runtime.lock_store.acquire(action="override-from-plan")
+        try:
+            plan_path = str(payload.get("planPath") or "").strip()
+            plan_content = str(payload.get("planContent") or "")
+            profile = _coerce_profile(payload.get("profile"))
+            def _import_progress(meta: dict[str, Any]) -> None:
+                if not job_id:
+                    return
+                total_items = max(int(meta.get("totalItems") or 0), 1)
+                processed_items = max(0, int(meta.get("processedItems") or 0))
+                percent = 10 + int(min(processed_items, total_items) * 80 / total_items)
+                phase = str(meta.get("phase") or "").strip().lower()
+                if phase == "counting":
+                    percent = max(percent, 8)
+                elif phase == "finalizing":
+                    percent = max(percent, 95)
+                runtime.action_engine.set_progress(job_id, max(0, min(percent, 99)), meta)
+
+            output = apply_override_from_plan(
+                runtime,
+                plan_path=plan_path,
+                plan_content=plan_content,
+                profile=profile,
+                progress_callback=_import_progress,
+            )
+            if job_id:
+                runtime.action_engine.set_progress(
+                    job_id,
+                    95,
+                    {
+                        "phase": "finalizing",
+                        "totalItems": int((output.get("targets") or {}).get("systems") or 0)
+                        + int((output.get("targets") or {}).get("modules") or 0),
+                        "processedItems": int((output.get("appliedCount") or 0))
+                        + int((output.get("skippedCount") or 0))
+                        + int((output.get("failureCount") or 0)),
+                    },
+                )
+            report_refresh = _refresh_report_after_override(runtime)
+            output["reportRefresh"] = report_refresh
+            output["lock"] = lock_payload
+            output["dataRoot"] = runtime.config_store.get_data_root() or runtime.config.data_root
+            try:
+                append_import_history(runtime, output)
+            except Exception:
+                pass
+            if not bool(report_refresh.get("ok")):
+                details = str(report_refresh.get("stderr") or "").strip()
+                short_details = details[:500] if details else "unknown error"
+                raise RuntimeError(f"Import finished, but report refresh failed: {short_details}")
+            return output
+        finally:
+            runtime.lock_store.release()
 
     effective_data_root = runtime.config_store.get_data_root() or runtime.config.data_root
     modules = _normalize_modules(payload.get("modules"))
@@ -869,7 +1107,7 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
             raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={result.returncode}")
         if action_name in {"dry-run", "apply", "force-compat"}:
             try:
-                _enrich_latest_report_file(runtime)
+                _enrich_latest_report_file(runtime, force_refresh_suggestions=(action_name == "dry-run"))
             except Exception:
                 # Keep action successful even if post-enrichment fails.
                 pass
@@ -883,6 +1121,49 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
     finally:
         if maintenance:
             runtime.lock_store.release()
+
+
+def _refresh_report_after_override(runtime: AppRuntime) -> dict[str, Any]:
+    effective_data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    cmd = [
+        runtime.config.python_bin,
+        "-m",
+        "resolver.cli",
+        "--data-root",
+        effective_data_root,
+        "--cache-dir",
+        runtime.config.cache_dir,
+        "--database-path",
+        str(runtime.config.state_dir / "resolver.db"),
+        "--skip-foundry-service-control",
+        "--json-output",
+        str(runtime.config.reports_dir / "module-resolver-latest.json"),
+        "--log-file",
+        str(runtime.config.reports_dir / "module-resolver-latest.log"),
+        "--dry-run",
+        "--batch-size",
+        "10",
+    ]
+    result = subprocess.run(cmd, cwd=str(runtime.config.tool_root), capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return {
+            "ok": False,
+            "returnCode": int(result.returncode),
+            "stderr": str(result.stderr or "")[-20000:],
+        }
+    try:
+        _enrich_latest_report_file(runtime, force_refresh_suggestions=True)
+    except Exception:
+        pass
+    generated_at = ""
+    report_path = runtime.config.reports_dir / "module-resolver-latest.json"
+    if report_path.exists():
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            generated_at = str(payload.get("generatedAt") or "")
+        except Exception:
+            generated_at = ""
+    return {"ok": True, "generatedAt": generated_at}
 
 
 def _build_candidate_module(module_id: str, manifest_url: str, project_url: str) -> ModuleRecord:
@@ -960,12 +1241,252 @@ def _normalize_source_urls(manifest_url: str, project_url: str) -> tuple[str, st
     return clean_manifest, ""
 
 
+def _is_concrete_version(raw: Any) -> bool:
+    value = str(raw or "").strip()
+    return bool(value and value != "-")
+
+
+def _version_tokens_match(left: str, right: str) -> bool:
+    a = str(left or "").strip()
+    b = str(right or "").strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return a.lstrip("vV") == b.lstrip("vV")
+
+
+def _coerce_profile(raw: Any) -> str:
+    profile = str(raw or "").strip().lower()
+    if profile in {"current", "destiny", "both"}:
+        return profile
+    return "current"
+
+
+def _extract_plan_targets(plan_payload: dict[str, Any], profile: str) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    selected_sections: list[tuple[str, dict[str, Any]]] = []
+    current = plan_payload.get("current") if isinstance(plan_payload.get("current"), dict) else {}
+    destiny = plan_payload.get("destiny") if isinstance(plan_payload.get("destiny"), dict) else {}
+    if profile == "current":
+        selected_sections = [("current", current)]
+    elif profile == "destiny":
+        selected_sections = [("destiny", destiny)]
+    else:
+        selected_sections = [("current", current), ("destiny", destiny)]
+
+    module_targets: dict[str, dict[str, Any]] = {}
+    system_targets: dict[str, dict[str, Any]] = {}
+
+    for section_name, section in selected_sections:
+        rows = section.get("rows") if isinstance(section.get("rows"), list) else []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            kind = str(row.get("kind") or "").strip().lower()
+            if kind == "module":
+                module_id = str(row.get("moduleId") or "").strip()
+                if not module_id:
+                    continue
+                preferred = str(row.get("installedVersion") or "").strip() if section_name == "current" else str(row.get("recommendedVersion") or "").strip()
+                fallback = str(row.get("recommendedVersion") or "").strip() if section_name == "current" else str(row.get("installedVersion") or "").strip()
+                target_version = preferred if _is_concrete_version(preferred) else fallback
+                if not _is_concrete_version(target_version):
+                    continue
+                source_url = str(row.get("releaseUrl") or row.get("targetUrl") or "").strip()
+                existing = module_targets.get(module_id)
+                payload = {
+                    "moduleId": module_id,
+                    "targetVersion": target_version,
+                    "sourceUrl": source_url,
+                    "title": str(row.get("title") or module_id),
+                }
+                if existing is None:
+                    module_targets[module_id] = payload
+                else:
+                    try:
+                        if compare_versions(str(payload.get("targetVersion") or ""), str(existing.get("targetVersion") or "")) > 0:
+                            module_targets[module_id] = payload
+                            continue
+                    except Exception:
+                        pass
+                    if not str(existing.get("sourceUrl") or "").strip() and source_url:
+                        existing["sourceUrl"] = source_url
+            elif kind == "system":
+                system_id = str(row.get("systemId") or "").strip()
+                if not system_id:
+                    continue
+                target_version = str(row.get("targetVersion") or row.get("recommendedVersion") or row.get("installedVersion") or "").strip()
+                if not _is_concrete_version(target_version):
+                    continue
+                source_url = str(row.get("targetUrl") or row.get("releaseUrl") or "").strip()
+                existing = system_targets.get(system_id)
+                payload = {
+                    "systemId": system_id,
+                    "targetVersion": target_version,
+                    "sourceUrl": source_url,
+                    "title": str(row.get("title") or system_id),
+                }
+                if existing is None:
+                    system_targets[system_id] = payload
+                else:
+                    try:
+                        if compare_versions(str(payload.get("targetVersion") or ""), str(existing.get("targetVersion") or "")) > 0:
+                            system_targets[system_id] = payload
+                            continue
+                    except Exception:
+                        pass
+                    if not str(existing.get("sourceUrl") or "").strip() and source_url:
+                        existing["sourceUrl"] = source_url
+
+        section_system_id = str(section.get("activeSystemId") or "").strip()
+        section_system_version = str(section.get("selectedSystemVersion") or "").strip()
+        if section_system_id and _is_concrete_version(section_system_version):
+            existing = system_targets.get(section_system_id)
+            payload = {
+                "systemId": section_system_id,
+                "targetVersion": section_system_version,
+                "sourceUrl": "",
+                "title": section_system_id,
+            }
+            if existing is None:
+                system_targets[section_system_id] = payload
+            else:
+                try:
+                    if compare_versions(str(payload.get("targetVersion") or ""), str(existing.get("targetVersion") or "")) > 0:
+                        system_targets[section_system_id] = payload
+                except Exception:
+                    pass
+
+    return module_targets, system_targets
+
+
+def _candidate_from_target(target_id: str, title: str, current_version: str, source_url: str) -> ModuleRecord:
+    source = str(source_url or "").strip()
+    manifest_url = ""
+    project_url = ""
+    if _looks_like_manifest_url(source):
+        manifest_url, project_url = _normalize_source_urls(source, "")
+    else:
+        normalized_source = source
+        parsed = urlparse(source)
+        host = str(parsed.netloc or "").lower()
+        parts = [part for part in str(parsed.path or "").split("/") if part]
+        if host in {"github.com", "www.github.com", "gitlab.com", "www.gitlab.com", "raw.githubusercontent.com"}:
+            if host == "raw.githubusercontent.com" and len(parts) >= 2:
+                normalized_source = f"{parsed.scheme}://github.com/{parts[0]}/{parts[1]}"
+            elif len(parts) >= 2:
+                normalized_source = f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/{parts[1]}"
+        manifest_url, project_url = _normalize_source_urls("", normalized_source)
+    return ModuleRecord(
+        module_id=target_id,
+        title=title or target_id,
+        version=current_version or "0.0.0",
+        manifest_url=manifest_url or None,
+        project_url=project_url or None,
+        path="",
+        raw_manifest={"id": target_id, "version": current_version or "0.0.0", "compatibility": {}},
+    )
+
+
+def _recommendation_from_release(
+    module: ModuleRecord,
+    target_version: str,
+    release: Any,
+    checked_releases: int,
+    source_url_fallback: str,
+) -> Recommendation | None:
+    release_version = str(getattr(release, "version", "") or "").strip() or str(target_version or "").strip()
+    download_url = str(getattr(release, "download_url", "") or "").strip()
+    manifest_url = str(getattr(release, "manifest_url", "") or "").strip()
+    if not download_url:
+        fallback = str(source_url_fallback or "").strip()
+        if fallback.lower().endswith(".zip"):
+            download_url = fallback
+    if not download_url:
+        return None
+    compat = getattr(release, "compatibility", {}) or {}
+    sys_compat = getattr(release, "system_compatibility", {}) or {}
+    return Recommendation(
+        module=module.module_id,
+        installed_version=module.version or "",
+        recommended_version=release_version,
+        reason="Applied from override plan.",
+        confidence="manual",
+        verified_version=str((compat or {}).get("verified") or "") or None,
+        manifest_url=manifest_url or module.manifest_url,
+        download_url=download_url,
+        source=f"override-plan-{str(getattr(release, 'source', '') or 'release-catalog')}",
+        checked_releases=max(int(checked_releases or 0), 0),
+        compatibility=compat if isinstance(compat, dict) else {},
+        system_compatibility=sys_compat if isinstance(sys_compat, dict) else {},
+    )
+
+
+def _build_override_plan_targets(
+    plan_payload: dict[str, Any],
+    profile: str,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], list[str]]:
+    module_targets, system_targets = _extract_plan_targets(plan_payload, profile)
+    warnings: list[str] = []
+    snapshot = plan_payload.get("snapshot") if isinstance(plan_payload.get("snapshot"), dict) else {}
+    inline_snapshot = snapshot.get("snapshotData") or snapshot.get("data")
+    snapshot_payload: dict[str, Any] = {}
+    if isinstance(inline_snapshot, dict):
+        snapshot_payload = inline_snapshot
+    snapshot_path = str(snapshot.get("path") or "").strip()
+    if not snapshot_payload and snapshot_path:
+        candidate_snapshot = Path(snapshot_path).expanduser()
+        if candidate_snapshot.exists() and candidate_snapshot.is_file():
+            try:
+                snapshot_payload = json.loads(candidate_snapshot.read_text(encoding="utf-8"))
+            except Exception as exc:
+                warnings.append(f"snapshot_parse_failed:{exc}")
+                snapshot_payload = {}
+        else:
+            warnings.append(f"snapshot_path_not_found:{snapshot_path}")
+    if isinstance(snapshot_payload, dict):
+        for module in snapshot_payload.get("modules") or []:
+            if not isinstance(module, dict):
+                continue
+            module_id = str(module.get("module") or "").strip()
+            version = str(module.get("version") or "").strip()
+            if not module_id or not _is_concrete_version(version):
+                continue
+            manifest_url = str(module.get("manifestUrl") or "").strip()
+            project_url = str(module.get("projectUrl") or "").strip()
+            source_url = manifest_url or project_url
+            module_targets[module_id] = {
+                "moduleId": module_id,
+                "targetVersion": version,
+                "sourceUrl": source_url,
+                "title": str(module.get("title") or module_id),
+                "fromSnapshot": True,
+            }
+        systems_from_snapshot = snapshot_payload.get("systems")
+        if isinstance(systems_from_snapshot, dict):
+            for system_id, version in systems_from_snapshot.items():
+                clean_id = str(system_id or "").strip()
+                clean_version = str(version or "").strip()
+                if not clean_id or not _is_concrete_version(clean_version):
+                    continue
+                existing = system_targets.get(clean_id) or {}
+                system_targets[clean_id] = {
+                    "systemId": clean_id,
+                    "targetVersion": clean_version,
+                    "sourceUrl": str(existing.get("sourceUrl") or "").strip(),
+                    "title": str(existing.get("title") or clean_id),
+                    "fromSnapshot": True,
+                }
+    return module_targets, system_targets, warnings
+
+
 def _suggest_best_release_for_module(
     module: ModuleRecord,
     target_foundry_version: str,
     data_root: str,
     installed_system_versions: dict[str, str],
     cache_dir: str,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     modules_dir = str(modules_dir_from_data_root(data_root))
     installed_modules = load_modules(modules_dir)
@@ -980,6 +1501,7 @@ def _suggest_best_release_for_module(
         installed_modules_by_id=installed_modules_by_id,
         resolution_cache=resolution_cache,
         history_cache=history_cache,
+        force_refresh=force_refresh,
     )
 
 
@@ -991,14 +1513,20 @@ def _suggest_best_release_for_module_with_caches(
     installed_modules_by_id: dict[str, ModuleRecord],
     resolution_cache: dict[str, Any],
     history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]],
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
 
     def _fetch_history_cached(candidate: ModuleRecord, release_limit: int):
-        key = (str(candidate.module_id or ""), int(release_limit))
+        key = (str(candidate.module_id or ""), int(release_limit), 1 if force_refresh else 0)
         cached = history_cache.get(key)
         if cached is not None:
             return cached
-        result = fetch_release_history(candidate, per_page=release_limit, cache_dir=cache_dir)
+        result = fetch_release_history(
+            candidate,
+            per_page=release_limit,
+            cache_dir=cache_dir,
+            force_refresh=force_refresh,
+        )
         history_cache[key] = result
         return result
 
@@ -1067,11 +1595,109 @@ def _suggest_best_release_for_module_with_caches(
     }
 
 
+def _suggestion_error_payload(error: Exception, manifest_url: str = "", project_url: str = "", module_id: str = "") -> dict[str, Any]:
+    raw = str(error or "").strip()
+    text = raw.lower()
+    provider = "git"
+    url = f"{manifest_url or project_url}".lower()
+    if "gitlab" in url or "gitlab" in text:
+        provider = "gitlab"
+    elif "github" in url or "github" in text:
+        provider = "github"
+    if "404" in text or "not found" in text:
+        return {
+            "errorCode": "provider_not_found",
+            "message": f"{provider.capitalize()} returned 404 for this module source.",
+            "hint": "Check project/manifest URL or select a valid release/tag.",
+            "retryable": False,
+            "raw": raw,
+            "moduleId": module_id,
+        }
+    if "403" in text or "rate limit" in text or "too many requests" in text:
+        return {
+            "errorCode": "provider_rate_limited",
+            "message": f"{provider.capitalize()} rate limit reached while loading versions.",
+            "hint": "Retry in a few minutes or configure authenticated access/token.",
+            "retryable": True,
+            "raw": raw,
+            "moduleId": module_id,
+        }
+    if "timed out" in text or "timeout" in text or "temporarily unavailable" in text:
+        return {
+            "errorCode": "provider_timeout",
+            "message": f"{provider.capitalize()} timed out while loading versions.",
+            "hint": "Retry. If it persists, verify network/proxy and source URL.",
+            "retryable": True,
+            "raw": raw,
+            "moduleId": module_id,
+        }
+    if "json" in text and ("expecting value" in text or "decode" in text or "parse" in text):
+        return {
+            "errorCode": "provider_malformed_response",
+            "message": f"{provider.capitalize()} returned an unexpected response format.",
+            "hint": "Check if URL points to a valid module release/manifest endpoint.",
+            "retryable": False,
+            "raw": raw,
+            "moduleId": module_id,
+        }
+    if "403" in text or "forbidden" in text or "unauthorized" in text:
+        return {
+            "errorCode": "provider_forbidden",
+            "message": f"Access denied by {provider.capitalize()} while loading versions.",
+            "hint": "Verify repository visibility and credentials/token.",
+            "retryable": False,
+            "raw": raw,
+            "moduleId": module_id,
+        }
+    return {
+        "errorCode": "provider_error",
+        "message": "Could not refresh module versions from provider.",
+        "hint": "Retry or review module source URL.",
+        "retryable": True,
+        "raw": raw,
+        "moduleId": module_id,
+    }
+
+
+def _audit_provider_error(runtime: AppRuntime, payload: dict[str, Any], manifest_url: str = "", project_url: str = "") -> None:
+    try:
+        _append_audit(
+            runtime.config,
+            "suggestion_provider_error",
+            {
+                "moduleId": str(payload.get("moduleId") or ""),
+                "errorCode": str(payload.get("errorCode") or "provider_error"),
+                "retryable": bool(payload.get("retryable")),
+                "provider": (
+                    "gitlab"
+                    if "gitlab" in f"{manifest_url or project_url}".lower()
+                    else ("github" if "github" in f"{manifest_url or project_url}".lower() else "git")
+                ),
+                "hasManifestUrl": bool(str(manifest_url or "").strip()),
+                "hasProjectUrl": bool(str(project_url or "").strip()),
+            },
+        )
+    except Exception:
+        pass
+
+
+def _suggestion_retry_attempts(force_refresh: bool) -> int:
+    return 3 if force_refresh else 1
+
+
+def _retryable_provider_payload(payload: dict[str, Any]) -> bool:
+    if bool(payload.get("retryable")):
+        return True
+    code = str(payload.get("errorCode") or "").strip().lower()
+    return code in {"provider_timeout", "provider_rate_limited", "provider_error"}
+
+
 def suggest_module(
     runtime: AppRuntime,
     module_id: str,
     manifest_url: str,
     project_url: str,
+    force_refresh: bool = False,
     target_foundry_version: str = "",
     installed_system_versions_override: dict[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -1102,13 +1728,46 @@ def suggest_module(
             if system_id and version:
                 clean_override[system_id] = version
     installed_system_versions = {**base_system_versions, **clean_override}
-    suggestion = _suggest_best_release_for_module(
-        module=_build_candidate_module(clean_module_id, manifest_url=clean_manifest, project_url=clean_project),
-        target_foundry_version=foundry_version,
-        data_root=normalized_root,
-        installed_system_versions=installed_system_versions,
-        cache_dir=runtime.config.cache_dir,
-    )
+    if force_refresh:
+        _invalidate_report_suggest_cache_for_modules([clean_module_id])
+        _invalidate_planning_context_rows(runtime, [clean_module_id])
+    attempts = _suggestion_retry_attempts(force_refresh)
+    last_exc: Exception | None = None
+    suggestion: dict[str, Any] | None = None
+    for index in range(attempts):
+        try:
+            suggestion = _suggest_best_release_for_module(
+                module=_build_candidate_module(clean_module_id, manifest_url=clean_manifest, project_url=clean_project),
+                target_foundry_version=foundry_version,
+                data_root=normalized_root,
+                installed_system_versions=installed_system_versions,
+                cache_dir=runtime.config.cache_dir,
+                force_refresh=force_refresh,
+            )
+            break
+        except Exception as exc:
+            last_exc = exc
+            friendly = _suggestion_error_payload(exc, clean_manifest, clean_project, clean_module_id)
+            if (index + 1) < attempts and _retryable_provider_payload(friendly):
+                time.sleep(0.2 * (index + 1))
+                continue
+            _audit_provider_error(runtime, friendly, clean_manifest, clean_project)
+            raise SuggestionProviderError(friendly) from exc
+    if suggestion is None and last_exc is not None:
+        friendly = _suggestion_error_payload(last_exc, clean_manifest, clean_project, clean_module_id)
+        _audit_provider_error(runtime, friendly, clean_manifest, clean_project)
+        raise SuggestionProviderError(friendly) from last_exc
+    if suggestion is None:
+        raise SuggestionProviderError(
+            {
+                "errorCode": "provider_error",
+                "message": "Could not refresh module versions from provider.",
+                "hint": "Retry or review module source URL.",
+                "retryable": True,
+                "raw": "",
+                "moduleId": clean_module_id,
+            }
+        )
     return {
         "ok": True,
         "moduleId": clean_module_id,
@@ -1127,6 +1786,7 @@ def suggest_module(
 def suggest_modules_batch(
     runtime: AppRuntime,
     modules: list[dict[str, Any]],
+    force_refresh: bool = False,
     target_foundry_version: str = "",
     installed_system_versions_override: dict[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -1146,6 +1806,10 @@ def suggest_modules_batch(
             if system_id and version:
                 clean_override[system_id] = version
     installed_system_versions = {**base_system_versions, **clean_override}
+    if force_refresh:
+        clean_ids = [str((item or {}).get("moduleId") or "").strip() for item in modules if isinstance(item, dict)]
+        _invalidate_report_suggest_cache_for_modules(clean_ids)
+        _invalidate_planning_context_rows(runtime, clean_ids)
 
     modules_dir = str(modules_dir_from_data_root(normalized_root))
     installed_modules = load_modules(modules_dir)
@@ -1167,19 +1831,47 @@ def suggest_modules_batch(
         if not module_id:
             rows.append({"moduleId": "", "error": "module_id_required"})
             continue
-        try:
-            suggestion = _suggest_best_release_for_module_with_caches(
-                module=_build_candidate_module(module_id, manifest_url=clean_manifest, project_url=clean_project),
-                target_foundry_version=foundry_version,
-                installed_system_versions=installed_system_versions,
-                cache_dir=runtime.config.cache_dir,
-                installed_modules_by_id=installed_modules_by_id,
-                resolution_cache=resolution_cache,
-                history_cache=history_cache,
-            )
+        attempts = _suggestion_retry_attempts(force_refresh)
+        suggestion: dict[str, Any] | None = None
+        last_friendly: dict[str, Any] | None = None
+        for index in range(attempts):
+            try:
+                suggestion = _suggest_best_release_for_module_with_caches(
+                    module=_build_candidate_module(module_id, manifest_url=clean_manifest, project_url=clean_project),
+                    target_foundry_version=foundry_version,
+                    installed_system_versions=installed_system_versions,
+                    cache_dir=runtime.config.cache_dir,
+                    installed_modules_by_id=installed_modules_by_id,
+                    resolution_cache=resolution_cache,
+                    history_cache=history_cache,
+                    force_refresh=force_refresh,
+                )
+                break
+            except Exception as exc:
+                last_friendly = _suggestion_error_payload(exc, clean_manifest, clean_project, module_id)
+                if (index + 1) < attempts and _retryable_provider_payload(last_friendly):
+                    time.sleep(0.2 * (index + 1))
+                    continue
+                break
+        if suggestion is not None:
             rows.append({"moduleId": module_id, "suggestion": suggestion})
-        except Exception as exc:
-            rows.append({"moduleId": module_id, "error": str(exc)})
+        else:
+            friendly = last_friendly or {
+                "errorCode": "provider_error",
+                "message": "Could not refresh module versions from provider.",
+                "hint": "Retry or review module source URL.",
+                "retryable": True,
+                "raw": "",
+            }
+            _audit_provider_error(runtime, friendly, clean_manifest, clean_project)
+            rows.append({
+                "moduleId": module_id,
+                "error": str(friendly.get("message") or "suggestion_failed"),
+                "errorCode": friendly.get("errorCode"),
+                "hint": friendly.get("hint"),
+                "retryable": bool(friendly.get("retryable")),
+                "rawError": friendly.get("raw"),
+            })
 
     return {
         "ok": True,
@@ -1193,6 +1885,373 @@ def suggest_modules_batch(
             "detectedFoundryVersion": detected_foundry_version,
             "installedSystemVersions": installed_system_versions,
         },
+    }
+
+
+def apply_override_from_plan(
+    runtime: AppRuntime,
+    plan_path: str = "",
+    plan_content: str = "",
+    profile: str = "current",
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    clean_content = str(plan_content or "").strip()
+    clean_path = str(plan_path or "").strip()
+    path: Path | None = None
+    source_label = "<uploaded-plan>"
+    if clean_content:
+        try:
+            payload = json.loads(clean_content)
+        except Exception as exc:
+            raise ValueError(f"plan_parse_failed:{exc}") from exc
+    else:
+        if not clean_path:
+            raise ValueError("plan_path_required")
+        path = Path(clean_path).expanduser().resolve()
+        if not path.exists() or not path.is_file():
+            raise ValueError("plan_path_not_found")
+        source_label = str(path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"plan_parse_failed:{exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("plan_invalid_payload")
+
+    selected_profile = _coerce_profile(profile)
+    module_targets, system_targets, parsing_warnings = _build_override_plan_targets(payload, selected_profile)
+    if not module_targets and not system_targets:
+        raise ValueError("plan_no_targets")
+    total_items = len(system_targets) + len(module_targets)
+    processed_items = 0
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "phase": "counting",
+                "totalItems": total_items,
+                "processedItems": 0,
+                "currentItemKind": "",
+                "currentItemId": "",
+            }
+        )
+
+    data_root = runtime.config_store.get_data_root() or runtime.config.data_root
+    ok, normalized_root, details = _validate_foundry_root_path(data_root)
+    if not ok:
+        raise ValueError(details.get("message") or "Invalid Foundry root.")
+    modules_dir = modules_dir_from_data_root(normalized_root)
+    systems_dir = Path(normalized_root) / "Data" / "systems"
+
+    installed_modules = load_modules(str(modules_dir))
+    installed_modules_by_id = {item.module_id: item for item in installed_modules}
+    installed_systems = load_system_records(normalized_root)
+    installed_systems_by_id = {item.module_id: item for item in installed_systems}
+    installed_system_versions = load_system_versions(normalized_root)
+    target_foundry_version, _target_foundry_source = detect_foundry_version(normalized_root)
+    resolution_cache: dict[str, Any] = {}
+    history_cache: dict[tuple[str, int], tuple[list[Any], list[str]]] = {}
+    module_sources = runtime.module_source_store.list_sources()
+
+    results: dict[str, list[dict[str, Any]]] = {"systems": [], "modules": []}
+    failures: list[dict[str, Any]] = []
+    applied_count = 0
+    skipped_count = 0
+
+    for system_id in sorted(system_targets.keys()):
+        target = system_targets.get(system_id) or {}
+        target_version = str(target.get("targetVersion") or "").strip()
+        source_url = str(target.get("sourceUrl") or "").strip()
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "phase": "resolving",
+                    "totalItems": total_items,
+                    "processedItems": processed_items,
+                    "currentItemKind": "system",
+                    "currentItemId": system_id,
+                }
+            )
+        if not _is_concrete_version(target_version):
+            skipped_count += 1
+            results["systems"].append({"systemId": system_id, "status": "skipped", "reason": "missing_target_version"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            continue
+
+        installed = installed_systems_by_id.get(system_id)
+        installed_version = str(installed.version if installed else "").strip()
+        if installed and _version_tokens_match(installed_version, target_version):
+            skipped_count += 1
+            results["systems"].append({"systemId": system_id, "status": "already", "installedVersion": installed_version, "targetVersion": target_version})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            continue
+        if not installed and not source_url:
+            failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": "source_url_missing"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            continue
+
+        candidate = installed or _candidate_from_target(system_id, str(target.get("title") or system_id), installed_version or "0.0.0", source_url)
+        if source_url and not (candidate.manifest_url or candidate.project_url):
+            candidate = _candidate_from_target(system_id, str(target.get("title") or system_id), candidate.version or "0.0.0", source_url)
+
+        chosen_release = None
+        release_count = 0
+        releases: list[Any] = []
+        if candidate.project_url or candidate.manifest_url:
+            try:
+                releases, _warnings = fetch_system_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir)
+                release_count = len(releases)
+                for release in releases:
+                    if _version_tokens_match(str(getattr(release, "version", "") or ""), target_version):
+                        chosen_release = release
+                        break
+            except Exception:
+                chosen_release = None
+        recommendation = _recommendation_from_release(candidate, target_version, chosen_release, release_count, source_url) if chosen_release is not None else None
+        if recommendation is None and source_url.lower().endswith(".zip"):
+            recommendation = Recommendation(
+                module=system_id,
+                installed_version=installed_version or "",
+                recommended_version=target_version,
+                reason="Applied from override plan direct ZIP URL.",
+                confidence="manual",
+                verified_version=None,
+                manifest_url=candidate.manifest_url,
+                download_url=source_url,
+                source="override-plan-direct-zip",
+                checked_releases=0,
+            )
+        if recommendation is None and release_count > 0:
+            try:
+                compatible_releases = [
+                    release
+                    for release in releases
+                    if satisfies_release_constraints(release, target_foundry_version, installed_system_versions)
+                ]
+                if compatible_releases:
+                    chosen_release = max(
+                        compatible_releases,
+                        key=lambda release: candidate_sort_key(release, target_foundry_version, installed_system_versions),
+                    )
+                    recommendation = _recommendation_from_release(
+                        candidate,
+                        str(getattr(chosen_release, "version", "") or target_version),
+                        chosen_release,
+                        release_count,
+                        source_url,
+                    )
+                    if recommendation is not None:
+                        recommendation.reason = "Applied from override plan fallback using best compatible system release."
+                        recommendation.source = "override-plan-fallback-system-release"
+            except Exception:
+                recommendation = recommendation
+        if recommendation is None:
+            failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": "recommendation_not_resolved"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            continue
+        try:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "phase": "applying",
+                        "totalItems": total_items,
+                        "processedItems": processed_items,
+                        "currentItemKind": "system",
+                        "currentItemId": system_id,
+                    }
+                )
+            backup_path = apply_system_recommendation(candidate, recommendation, str(systems_dir), runtime.config.cache_dir)
+            applied_count += 1
+            results["systems"].append({
+                "systemId": system_id,
+                "status": "applied",
+                "fromVersion": installed_version or "-",
+                "requestedVersion": target_version,
+                "toVersion": recommendation.recommended_version,
+                "backupPath": backup_path,
+            })
+        except Exception as exc:
+            failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": str(exc)})
+        processed_items += 1
+        if progress_callback is not None:
+            progress_callback({"phase": "applying", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+
+    for module_id in sorted(module_targets.keys()):
+        target = module_targets.get(module_id) or {}
+        target_version = str(target.get("targetVersion") or "").strip()
+        source_url = str(target.get("sourceUrl") or "").strip()
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "phase": "resolving",
+                    "totalItems": total_items,
+                    "processedItems": processed_items,
+                    "currentItemKind": "module",
+                    "currentItemId": module_id,
+                }
+            )
+        if not _is_concrete_version(target_version):
+            skipped_count += 1
+            results["modules"].append({"moduleId": module_id, "status": "skipped", "reason": "missing_target_version"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            continue
+
+        installed = installed_modules_by_id.get(module_id)
+        installed_version = str(installed.version if installed else "").strip()
+        if installed and _version_tokens_match(installed_version, target_version):
+            skipped_count += 1
+            results["modules"].append({"moduleId": module_id, "status": "already", "installedVersion": installed_version, "targetVersion": target_version})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            continue
+
+        if not source_url:
+            source = _source_for_module_id(module_sources, module_id)
+            source_url = str((source or {}).get("manifestUrl") or (source or {}).get("projectUrl") or "").strip()
+        if not installed and not source_url:
+            failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": "source_url_missing"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            continue
+        candidate = installed or _candidate_from_target(module_id, str(target.get("title") or module_id), installed_version or "0.0.0", source_url)
+        if source_url and not (candidate.manifest_url or candidate.project_url):
+            candidate = _candidate_from_target(module_id, str(target.get("title") or module_id), candidate.version or "0.0.0", source_url)
+
+        chosen_release = None
+        release_count = 0
+        if candidate.project_url or candidate.manifest_url:
+            try:
+                releases, _warnings = fetch_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir)
+                release_count = len(releases)
+                for release in releases:
+                    if _version_tokens_match(str(getattr(release, "version", "") or ""), target_version):
+                        chosen_release = release
+                        break
+            except Exception:
+                chosen_release = None
+        recommendation = _recommendation_from_release(candidate, target_version, chosen_release, release_count, source_url) if chosen_release is not None else None
+        if recommendation is None and source_url.lower().endswith(".zip"):
+            recommendation = Recommendation(
+                module=module_id,
+                installed_version=installed_version or "",
+                recommended_version=target_version,
+                reason="Applied from override plan direct ZIP URL.",
+                confidence="manual",
+                verified_version=None,
+                manifest_url=candidate.manifest_url,
+                download_url=source_url,
+                source="override-plan-direct-zip",
+                checked_releases=0,
+            )
+        if recommendation is None:
+            try:
+                fallback_suggestion = _suggest_best_release_for_module_with_caches(
+                    module=candidate,
+                    target_foundry_version=target_foundry_version,
+                    installed_system_versions=installed_system_versions,
+                    cache_dir=runtime.config.cache_dir,
+                    installed_modules_by_id=installed_modules_by_id,
+                    resolution_cache=resolution_cache,
+                    history_cache=history_cache,
+                )
+                fallback_version = str(fallback_suggestion.get("recommendedVersion") or "").strip()
+                fallback_download = str(fallback_suggestion.get("downloadUrl") or "").strip()
+                fallback_manifest = str(fallback_suggestion.get("manifestUrl") or candidate.manifest_url or "").strip()
+                fallback_compat = fallback_suggestion.get("compatibility") if isinstance(fallback_suggestion.get("compatibility"), dict) else {}
+                fallback_sys_compat = fallback_suggestion.get("systemCompatibility") if isinstance(fallback_suggestion.get("systemCompatibility"), dict) else {}
+                if _is_concrete_version(fallback_version) and fallback_download:
+                    recommendation = Recommendation(
+                        module=module_id,
+                        installed_version=installed_version or "",
+                        recommended_version=fallback_version,
+                        reason="Applied from override plan fallback using best compatible module release.",
+                        confidence=str(fallback_suggestion.get("confidence") or "manual"),
+                        verified_version=str((fallback_compat or {}).get("verified") or "") or None,
+                        manifest_url=fallback_manifest or None,
+                        download_url=fallback_download,
+                        source="override-plan-fallback-module-release",
+                        checked_releases=max(int(fallback_suggestion.get("checkedReleases") or 0), 0),
+                        compatibility=fallback_compat,
+                        system_compatibility=fallback_sys_compat,
+                    )
+            except Exception:
+                recommendation = recommendation
+        if recommendation is None:
+            failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": "recommendation_not_resolved"})
+            processed_items += 1
+            if progress_callback is not None:
+                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            continue
+        try:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "phase": "applying",
+                        "totalItems": total_items,
+                        "processedItems": processed_items,
+                        "currentItemKind": "module",
+                        "currentItemId": module_id,
+                    }
+                )
+            backup_path = apply_recommendation(candidate, recommendation, str(modules_dir), runtime.config.cache_dir)
+            applied_count += 1
+            results["modules"].append({
+                "moduleId": module_id,
+                "status": "applied",
+                "fromVersion": installed_version or "-",
+                "requestedVersion": target_version,
+                "toVersion": recommendation.recommended_version,
+                "backupPath": backup_path,
+            })
+        except Exception as exc:
+            failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": str(exc)})
+        processed_items += 1
+        if progress_callback is not None:
+            progress_callback({"phase": "applying", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "phase": "finalizing",
+                "totalItems": total_items,
+                "processedItems": processed_items,
+                "currentItemKind": "",
+                "currentItemId": "",
+            }
+        )
+
+    return {
+        "ok": len(failures) == 0,
+        "action": "override-from-plan",
+        "profile": selected_profile,
+        "planPath": source_label,
+        "targets": {
+            "systems": len(system_targets),
+            "modules": len(module_targets),
+        },
+        "appliedCount": applied_count,
+        "skippedCount": skipped_count,
+        "failureCount": len(failures),
+        "failures": failures,
+        "warnings": parsing_warnings,
+        "results": results,
+        "progressSummary": {
+            "totalItems": total_items,
+            "processedItems": processed_items,
+            "phase": "finalizing",
+        },
+        "generatedAt": _utc_now_iso(),
     }
 
 
@@ -1214,6 +2273,7 @@ def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, p
         cache_dir=runtime.config.cache_dir,
     )
     saved = runtime.module_source_store.upsert_source(module_id=clean_module_id, manifest_url=clean_manifest, project_url=clean_project)
+    _invalidate_planning_context_rows(runtime, [clean_module_id])
     try:
         _enrich_latest_report_file(runtime)
     except Exception:
@@ -1233,12 +2293,38 @@ def set_foundry_root(runtime: AppRuntime, path: str) -> dict[str, Any]:
 
 
 def queue_action(runtime: AppRuntime, action: str, payload: dict[str, Any]) -> dict[str, Any]:
-    clean_action = str(action or "").strip().lower()
-    if clean_action not in {"dry-run", "apply", "force-compat", "cleanup-backups", "rollback-batch"}:
+    clean_action = _canonical_action_name(action)
+    has_plan_payload = False
+    if isinstance(payload, dict):
+        has_plan_payload = bool(
+            str(payload.get("planContent") or "").strip() or str(payload.get("planPath") or "").strip()
+        )
+    if has_plan_payload and clean_action != "override-from-plan":
+        # Be permissive for import actions coming from older or mismatched frontends.
+        clean_action = "override-from-plan"
+    if clean_action not in {"dry-run", "apply", "force-compat", "cleanup-backups", "rollback-batch", "override-from-plan"}:
+        try:
+            _append_audit(
+                runtime.config,
+                "action_rejected_unsupported",
+                {
+                    "requestedAction": str(action or ""),
+                    "normalizedAction": clean_action,
+                    "payloadKeys": sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+                },
+            )
+        except Exception:
+            pass
         raise ValueError("unsupported_action")
     body = payload if isinstance(payload, dict) else {}
     if clean_action == "apply":
         _ = _normalize_modules(body.get("modules"))
+    if clean_action == "override-from-plan":
+        plan_path = str(body.get("planPath") or "").strip()
+        plan_content = str(body.get("planContent") or "").strip()
+        if not plan_path and not plan_content:
+            raise ValueError("plan_path_required")
+        _ = _coerce_profile(body.get("profile"))
     job = runtime.action_engine.enqueue(action=clean_action, payload=body)
     _append_audit(runtime.config, "action_enqueued", {"jobId": job.job_id, "action": clean_action})
     return {"ok": True, "jobId": job.job_id, "status": job.status, "action": clean_action}

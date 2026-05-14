@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .api.router import api_router
+from .api.router import api_router, legacy_api_router
 
 
 def create_app() -> FastAPI:
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=exc.status_code, content={"error": str(exc.detail)})
 
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(legacy_api_router, prefix="/api")
 
     repo_root = Path(__file__).resolve().parents[2]
     ui_dist_dir = repo_root / "frontend" / "dist"

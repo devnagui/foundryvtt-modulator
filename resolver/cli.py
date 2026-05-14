@@ -77,13 +77,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help=(
             "Module id to force compatibility metadata in module.json "
-            "(sets compatibility.maximum only). Repeat for multiple modules."
+            "(sets compatibility.minimum; if minimum==maximum, sets both). Repeat for multiple modules."
         ),
     )
     parser.add_argument(
         "--force-compat-version",
         help=(
-            "Foundry version to apply to compatibility.maximum when using --force-compat-module. "
+            "Foundry version to apply to compatibility.minimum when using --force-compat-module. "
             "Defaults to detected current Foundry version."
         ),
     )
@@ -311,12 +311,11 @@ def _print_force_compat_summary(
 ) -> None:
     modules = [str(action.get("module") or "").strip() for action in actions if str(action.get("module") or "").strip()]
     module_label = ", ".join(modules) if modules else "-"
-    backups = [str(action.get("backupPath") or "").strip() for action in actions if str(action.get("backupPath") or "").strip()]
     print(
         f"Forced compatibility completed | Target Foundry: {target_version} | "
         f"Modules updated: {len(modules)} | Modules: {module_label}"
     )
-    print(f"Backups created: {len(backups)}")
+    print("Backups created: 0")
     if refreshed:
         print("Report refresh: completed (latest/public updated)")
     elif refresh_failed:

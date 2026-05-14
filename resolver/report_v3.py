@@ -3086,7 +3086,7 @@ document.addEventListener("click", async (event) => {
       if (!Array.isArray(modules) || modules.length === 0) return;
       updateAllBtn.disabled = true;
       const csrfToken = (document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("mm_csrf=")) || "").split("=", 2)[1] || "";
-      await fetch("/api/actions/submit", {
+      await fetch("/api/v1/actions/submit", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrfToken) },
@@ -3389,7 +3389,7 @@ _SERVICE_GATEWAY_SCRIPT = r"""
       try {
         suggestBtn.disabled = true;
         if (suggestStatus) suggestStatus.textContent = "Resolving best compatible version...";
-        const payload = await api("/api/actions/suggest-module", "POST", { manifestUrl: manifestUrl });
+        const payload = await api("/api/v1/actions/suggest-module", "POST", { manifestUrl: manifestUrl });
         const suggestion = payload.suggestion || {};
         const msg = ["Recommended: " + String(suggestion.recommendedVersion || "-"), "Compatible: " + String(!!suggestion.isCompatible), "Checked releases: " + String(suggestion.checkedReleases || 0)].join(" | ");
         if (suggestStatus) suggestStatus.textContent = msg;
