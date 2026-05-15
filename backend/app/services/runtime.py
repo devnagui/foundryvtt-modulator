@@ -11,13 +11,15 @@ import tempfile
 import time
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from resolver.apply import apply_recommendation, apply_system_recommendation
-from resolver.db_queries import load_apply_history, load_planning_context_rows
+from resolver.db_queries import load_apply_history, load_planning_context_rows, load_scan_run_payload
 from resolver.dependencies import resolve_module_recommendation
 from resolver.foundry import detect_foundry_version
 from resolver.local import load_modules, load_system_records, load_system_versions, modules_dir_from_data_root
@@ -850,6 +852,394 @@ def read_import_history(runtime: AppRuntime, limit: int = 20) -> dict[str, Any]:
     }
 
 
+def _update_artifacts_dir(runtime: AppRuntime) -> Path:
+    return runtime.config.state_dir / "update-artifacts"
+
+
+def _safe_plan_id(raw: Any) -> str:
+    value = str(raw or "").strip()
+    return re.sub(r"[^a-zA-Z0-9._-]", "", value)
+
+
+def _artifact_json_path(runtime: AppRuntime, plan_id: str) -> Path:
+    safe_id = _safe_plan_id(plan_id)
+    if not safe_id:
+        raise ValueError("plan_id_required")
+    return _update_artifacts_dir(runtime) / f"{safe_id}.json"
+
+
+def _artifact_bundle_path(runtime: AppRuntime, plan_id: str) -> Path:
+    safe_id = _safe_plan_id(plan_id)
+    if not safe_id:
+        raise ValueError("plan_id_required")
+    return _update_artifacts_dir(runtime) / f"{safe_id}.zip"
+
+
+def _new_plan_id() -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    nonce = f"{int(time.time_ns()) % 1_000_000_000:09d}"
+    return f"plan-{stamp}-{nonce}"
+
+
+def _hash_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _normalize_version_token(raw: Any) -> str:
+    value = str(raw or "").strip()
+    return value if value else "-"
+
+
+def _collect_backup_entries(backup_paths: list[str]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for raw in backup_paths:
+        path_value = str(raw or "").strip()
+        if not path_value:
+            continue
+        candidate = Path(path_value)
+        exists = candidate.exists() and candidate.is_file()
+        size_bytes = int(candidate.stat().st_size) if exists else 0
+        digest = _hash_file(candidate) if exists else ""
+        entries.append(
+            {
+                "path": str(candidate),
+                "exists": bool(exists),
+                "sizeBytes": size_bytes,
+                "sha256": digest,
+            }
+        )
+    return entries
+
+
+def _extract_foundry_target_from_override_payload(payload: dict[str, Any], profile: str, default_target: str) -> str:
+    plan_content = str(payload.get("planContent") or "").strip()
+    plan_path = str(payload.get("planPath") or "").strip()
+    plan_payload: dict[str, Any] = {}
+    try:
+        if plan_content:
+            parsed = json.loads(plan_content)
+            if isinstance(parsed, dict):
+                plan_payload = parsed
+        elif plan_path:
+            candidate = Path(plan_path).expanduser().resolve()
+            if candidate.exists() and candidate.is_file():
+                parsed = json.loads(candidate.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    plan_payload = parsed
+    except Exception:
+        plan_payload = {}
+    if not plan_payload:
+        return default_target
+    sections: list[str]
+    if profile == "current":
+        sections = ["current"]
+    elif profile == "destiny":
+        sections = ["destiny"]
+    else:
+        sections = ["destiny", "current"]
+    for section_name in sections:
+        section = plan_payload.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        foundry_version = str(section.get("foundryVersion") or "").strip()
+        if foundry_version:
+            return foundry_version
+    return default_target
+
+
+def _artifact_summary(artifact: dict[str, Any]) -> dict[str, Any]:
+    modules = artifact.get("modules") if isinstance(artifact.get("modules"), list) else []
+    systems = artifact.get("systems") if isinstance(artifact.get("systems"), list) else []
+    backups = artifact.get("backups") if isinstance(artifact.get("backups"), list) else []
+    backup_total_bytes = sum(int((item or {}).get("sizeBytes") or 0) for item in backups if isinstance(item, dict))
+    return {
+        "planId": str(artifact.get("planId") or ""),
+        "scanRunId": int(artifact.get("scanRunId") or 0) if str(artifact.get("scanRunId") or "").strip() else 0,
+        "createdAt": str(artifact.get("createdAt") or ""),
+        "action": str(artifact.get("action") or ""),
+        "foundryCurrentVersion": str(artifact.get("foundryCurrentVersion") or ""),
+        "foundryTargetVersion": str(artifact.get("foundryTargetVersion") or ""),
+        "systemsCount": len(systems),
+        "modulesCount": len(modules),
+        "backupsCount": len(backups),
+        "backupTotalBytes": backup_total_bytes,
+        "failureCount": int((artifact.get("summary") or {}).get("failed") or 0) if isinstance(artifact.get("summary"), dict) else 0,
+        "appliedCount": int((artifact.get("summary") or {}).get("applied") or 0) if isinstance(artifact.get("summary"), dict) else 0,
+    }
+
+
+def _write_update_artifact(runtime: AppRuntime, artifact: dict[str, Any]) -> dict[str, Any]:
+    plan_id = str(artifact.get("planId") or "").strip()
+    if not plan_id:
+        raise ValueError("plan_id_required")
+    root = _update_artifacts_dir(runtime)
+    root.mkdir(parents=True, exist_ok=True)
+    target = _artifact_json_path(runtime, plan_id)
+    target.write_text(json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    summary = _artifact_summary(artifact)
+    summary["path"] = str(target)
+    return summary
+
+
+def _build_update_artifact_from_override(
+    runtime: AppRuntime,
+    output: dict[str, Any],
+    payload: dict[str, Any],
+    effective_data_root: str,
+) -> dict[str, Any] | None:
+    if not isinstance(output, dict):
+        return None
+    results = output.get("results") if isinstance(output.get("results"), dict) else {}
+    modules_raw = results.get("modules") if isinstance(results, dict) and isinstance(results.get("modules"), list) else []
+    systems_raw = results.get("systems") if isinstance(results, dict) and isinstance(results.get("systems"), list) else []
+    profile = str(output.get("profile") or "current")
+    foundry_current, _ = detect_foundry_version(effective_data_root)
+    foundry_target = _extract_foundry_target_from_override_payload(payload, profile, foundry_current)
+    modules: list[dict[str, Any]] = []
+    systems: list[dict[str, Any]] = []
+    backup_paths: list[str] = []
+    applied_count = 0
+    skipped_count = 0
+    failed_count = int(output.get("failureCount") or 0)
+    for row in systems_raw:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "").strip() or "unknown"
+        if status == "applied":
+            applied_count += 1
+        elif status in {"already", "skipped"}:
+            skipped_count += 1
+        backup_path = str(row.get("backupPath") or "").strip()
+        if backup_path:
+            backup_paths.append(backup_path)
+        systems.append(
+            {
+                "name": str(row.get("systemId") or "").strip(),
+                "currentVersion": _normalize_version_token(row.get("fromVersion") or row.get("installedVersion")),
+                "targetVersion": _normalize_version_token(row.get("toVersion") or row.get("targetVersion") or row.get("requestedVersion")),
+                "status": status,
+                "backupPath": backup_path,
+            }
+        )
+    for row in modules_raw:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "").strip() or "unknown"
+        if status == "applied":
+            applied_count += 1
+        elif status in {"already", "skipped"}:
+            skipped_count += 1
+        backup_path = str(row.get("backupPath") or "").strip()
+        if backup_path:
+            backup_paths.append(backup_path)
+        modules.append(
+            {
+                "name": str(row.get("moduleId") or "").strip(),
+                "currentVersion": _normalize_version_token(row.get("fromVersion") or row.get("installedVersion")),
+                "targetVersion": _normalize_version_token(row.get("toVersion") or row.get("targetVersion") or row.get("requestedVersion")),
+                "status": status,
+                "backupPath": backup_path,
+            }
+        )
+    if not modules and not systems:
+        return None
+    backups = _collect_backup_entries(backup_paths)
+    artifact: dict[str, Any] = {
+        "schemaVersion": "1.0.0",
+        "planId": _new_plan_id(),
+        "createdAt": _utc_now_iso(),
+        "action": "override-from-plan",
+        "profile": profile,
+        "foundryCurrentVersion": str(foundry_current or ""),
+        "foundryTargetVersion": str(foundry_target or foundry_current or ""),
+        "systems": systems,
+        "modules": modules,
+        "backups": backups,
+        "summary": {
+            "applied": applied_count,
+            "skipped": skipped_count,
+            "failed": failed_count,
+        },
+        "source": {
+            "planPath": str(output.get("planPath") or ""),
+            "dataRoot": effective_data_root,
+        },
+    }
+    return artifact
+
+
+def _load_latest_apply_scan_row(runtime: AppRuntime) -> dict[str, Any] | None:
+    history = load_apply_history(str(runtime.config.state_dir / "resolver.db"), limit=1)
+    if not history:
+        return None
+    row = history[0] if isinstance(history[0], dict) else None
+    if not row:
+        return None
+    scan_id = int(row.get("scanRunId") or 0)
+    if scan_id <= 0:
+        return None
+    payload = load_scan_run_payload(str(runtime.config.state_dir / "resolver.db"), scan_id)
+    if not isinstance(payload, dict):
+        return None
+    row["scanPayload"] = payload
+    return row
+
+
+def _build_update_artifact_from_apply_scan(
+    runtime: AppRuntime,
+    apply_row: dict[str, Any],
+    effective_data_root: str,
+) -> dict[str, Any] | None:
+    payload = apply_row.get("scanPayload") if isinstance(apply_row.get("scanPayload"), dict) else {}
+    if not payload:
+        return None
+    target_foundry = str(payload.get("targetVersion") or "").strip()
+    foundry_current, _ = detect_foundry_version(effective_data_root)
+    installed_system_versions = payload.get("installedSystemVersions") if isinstance(payload.get("installedSystemVersions"), dict) else {}
+    systems: list[dict[str, Any]] = []
+    for system_id, system_version in sorted(installed_system_versions.items()):
+        systems.append(
+            {
+                "name": str(system_id),
+                "currentVersion": _normalize_version_token(system_version),
+                "targetVersion": _normalize_version_token(system_version),
+                "status": "ready",
+                "backupPath": "",
+            }
+        )
+
+    results_rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+    titles: dict[str, str] = {}
+    for row in results_rows:
+        if not isinstance(row, dict):
+            continue
+        module_id = str(row.get("module") or "").strip()
+        if not module_id:
+            continue
+        title = str(row.get("title") or "").strip()
+        titles[module_id] = title or module_id
+    apply_actions = payload.get("dependencyApplyActions") if isinstance(payload.get("dependencyApplyActions"), list) else []
+    modules: list[dict[str, Any]] = []
+    backup_paths: list[str] = []
+    applied_count = 0
+    for row in apply_actions:
+        if not isinstance(row, dict):
+            continue
+        module_id = str(row.get("module") or "").strip()
+        if not module_id:
+            continue
+        from_version = _normalize_version_token(row.get("fromVersion"))
+        to_version = _normalize_version_token(row.get("toVersion"))
+        backup_path = str(row.get("backupPath") or "").strip()
+        if backup_path:
+            backup_paths.append(backup_path)
+        status = "applied" if from_version != to_version else "ready"
+        if status == "applied":
+            applied_count += 1
+        modules.append(
+            {
+                "name": titles.get(module_id) or module_id,
+                "moduleId": module_id,
+                "currentVersion": from_version,
+                "targetVersion": to_version,
+                "status": status,
+                "backupPath": backup_path,
+            }
+        )
+    if not modules and not systems:
+        return None
+    backups = _collect_backup_entries(backup_paths)
+    skipped_count = max(int(apply_row.get("modulesChangedCount") or 0) - applied_count, 0)
+    artifact: dict[str, Any] = {
+        "schemaVersion": "1.0.0",
+        "planId": _new_plan_id(),
+        "createdAt": str(payload.get("generatedAt") or _utc_now_iso()),
+        "action": "apply",
+        "scanRunId": int(apply_row.get("scanRunId") or 0),
+        "foundryCurrentVersion": str(foundry_current or target_foundry or ""),
+        "foundryTargetVersion": str(target_foundry or foundry_current or ""),
+        "systems": systems,
+        "modules": modules,
+        "backups": backups,
+        "summary": {
+            "applied": applied_count,
+            "skipped": skipped_count,
+            "failed": 0,
+        },
+        "source": {
+            "dataRoot": effective_data_root,
+        },
+    }
+    return artifact
+
+
+def list_update_artifacts(runtime: AppRuntime, limit: int = 50) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 50), 200))
+    root = _update_artifacts_dir(runtime)
+    if not root.exists():
+        return {"ok": True, "items": []}
+    items: list[dict[str, Any]] = []
+    for file_path in sorted(root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        summary = _artifact_summary(payload)
+        summary["filePath"] = str(file_path)
+        summary["fileBytes"] = int(file_path.stat().st_size)
+        items.append(summary)
+        if len(items) >= safe_limit:
+            break
+    return {"ok": True, "items": items}
+
+
+def get_update_artifact(runtime: AppRuntime, plan_id: str) -> dict[str, Any]:
+    path = _artifact_json_path(runtime, plan_id)
+    if not path.exists():
+        raise FileNotFoundError("update_artifact_not_found")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("update_artifact_invalid")
+    return {"ok": True, "artifact": payload}
+
+
+def build_update_artifact_bundle(runtime: AppRuntime, plan_id: str, include_backup_data: bool = True) -> dict[str, Any]:
+    artifact_response = get_update_artifact(runtime, plan_id)
+    artifact = artifact_response.get("artifact") if isinstance(artifact_response.get("artifact"), dict) else {}
+    if not artifact:
+        raise FileNotFoundError("update_artifact_not_found")
+    bundle_path = _artifact_bundle_path(runtime, plan_id)
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_entries = artifact.get("backups") if isinstance(artifact.get("backups"), list) else []
+    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(f"{_safe_plan_id(plan_id)}.json", json.dumps(artifact, ensure_ascii=False, indent=2) + "\n")
+        if include_backup_data:
+            for index, entry in enumerate(backup_entries):
+                if not isinstance(entry, dict):
+                    continue
+                source_path = Path(str(entry.get("path") or "").strip())
+                if not source_path.exists() or not source_path.is_file():
+                    continue
+                archive_name = f"backups/{index:03d}-{source_path.name}"
+                archive.write(source_path, arcname=archive_name)
+    return {
+        "ok": True,
+        "planId": str(artifact.get("planId") or plan_id),
+        "path": str(bundle_path),
+        "fileName": f"{_safe_plan_id(plan_id)}.zip",
+        "generatedAt": _utc_now_iso(),
+    }
+
+
 def read_planning_context(
     runtime: AppRuntime,
     foundry_version: str,
@@ -968,6 +1358,36 @@ def _evaluate_apply_health_gate(data_root: str, selected_modules: list[str]) -> 
     return {"ok": True, "blocked": len(blocking_rows) > 0, "reason": "module_health_gate_failed" if blocking_rows else "module_health_gate_ok", "count": len(scoped), "rows": blocking_rows}
 
 
+def _filter_apply_modules_by_health_gate(selected_modules: list[str], preflight_gate: dict[str, Any] | None) -> tuple[list[str], list[str]]:
+    requested = [str(item).strip() for item in (selected_modules or []) if str(item).strip()]
+    if not requested:
+        return [], []
+    gate = preflight_gate or {}
+    blocked_rows = gate.get("rows") if isinstance(gate, dict) else []
+    blocked_ids = {
+        str((row or {}).get("module") or "").strip().lower()
+        for row in (blocked_rows if isinstance(blocked_rows, list) else [])
+        if str((row or {}).get("module") or "").strip()
+    }
+    if not blocked_ids:
+        return requested, []
+    allowed: list[str] = []
+    skipped: list[str] = []
+    seen_allowed: set[str] = set()
+    seen_skipped: set[str] = set()
+    for module_id in requested:
+        key = module_id.lower()
+        if key in blocked_ids:
+            if key not in seen_skipped:
+                skipped.append(module_id)
+                seen_skipped.add(key)
+            continue
+        if key not in seen_allowed:
+            allowed.append(module_id)
+            seen_allowed.add(key)
+    return allowed, skipped
+
+
 def _build_cli_args_from_action(action: str, payload: dict[str, Any]) -> tuple[list[str], bool, str]:
     normalized_action = _canonical_action_name(action)
     modules = _normalize_modules(payload.get("modules"))
@@ -1066,6 +1486,17 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
                 append_import_history(runtime, output)
             except Exception:
                 pass
+            try:
+                artifact_payload = _build_update_artifact_from_override(
+                    runtime=runtime,
+                    output=output,
+                    payload=payload,
+                    effective_data_root=(runtime.config_store.get_data_root() or runtime.config.data_root),
+                )
+                if artifact_payload:
+                    output["updateArtifact"] = _write_update_artifact(runtime, artifact_payload)
+            except Exception:
+                pass
             if not bool(report_refresh.get("ok")):
                 details = str(report_refresh.get("stderr") or "").strip()
                 short_details = details[:500] if details else "unknown error"
@@ -1075,19 +1506,44 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
             runtime.lock_store.release()
 
     effective_data_root = runtime.config_store.get_data_root() or runtime.config.data_root
-    modules = _normalize_modules(payload.get("modules"))
-    extra_args, maintenance, action_name = _build_cli_args_from_action(action, payload)
+    effective_payload: dict[str, Any] = dict(payload)
+    modules = _normalize_modules(effective_payload.get("modules"))
+    lock_action_name = _canonical_action_name(action)
+    if lock_action_name not in {"dry-run", "apply", "force-compat", "cleanup-backups"}:
+        lock_action_name = "apply" if lock_action_name == "override-from-plan" else lock_action_name
+    maintenance = lock_action_name in {"apply", "force-compat", "cleanup-backups"}
     lock_payload: dict[str, Any] | None = None
     if maintenance:
-        lock_payload = runtime.lock_store.acquire(action=action_name)
+        lock_payload = runtime.lock_store.acquire(action=lock_action_name)
     try:
         preflight_gate: dict[str, Any] | None = None
-        if action_name == "apply":
-            preflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
-            if preflight_gate.get("blocked"):
-                sample = (preflight_gate.get("rows") or [])[:5]
-                details = ", ".join(str((item or {}).get("module") or "?") for item in sample)
-                raise RuntimeError(f"Apply blocked by module health gate. Fix invalid/missing dependencies first. Affected: {details or 'unknown'}")
+        if _canonical_action_name(action) == "apply":
+            # Legacy clients may submit unscoped apply payloads (no explicit modules list).
+            # In that case, avoid hard preflight blocking based on the full module inventory.
+            if modules:
+                preflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+                if preflight_gate.get("blocked"):
+                    filtered_modules, skipped_modules = _filter_apply_modules_by_health_gate(modules, preflight_gate)
+                    preflight_gate["skippedModules"] = skipped_modules
+                    if filtered_modules:
+                        modules = filtered_modules
+                        effective_payload = dict(effective_payload)
+                        effective_payload["modules"] = filtered_modules
+                    else:
+                        # If a scoped apply request only contains blocked modules, do not fail hard.
+                        # Return a successful no-op with explicit skip details so UI can inform the user.
+                        return {
+                            "ok": True,
+                            "returnCode": 0,
+                            "action": "apply",
+                            "generatedAt": _utc_now_iso(),
+                            "dataRoot": effective_data_root,
+                            "lock": lock_payload,
+                            "preflight": preflight_gate,
+                            "skippedModules": skipped_modules,
+                            "message": "All selected modules were skipped by module health gate.",
+                        }
+        extra_args, _, action_name = _build_cli_args_from_action(action, effective_payload)
         cmd = [
             runtime.config.python_bin,
             "-m",
@@ -1126,11 +1582,24 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
                 # Keep action successful even if post-enrichment fails.
                 pass
         if action_name == "apply":
-            postflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
-            output["postflight"] = postflight_gate
-            if postflight_gate.get("blocked"):
-                output["ok"] = False
-                raise RuntimeError("Apply finished but post-check found invalid modules or missing dependencies.")
+            if modules:
+                postflight_gate = _evaluate_apply_health_gate(effective_data_root, modules)
+                output["postflight"] = postflight_gate
+                if postflight_gate.get("blocked"):
+                    output["ok"] = False
+                    raise RuntimeError("Apply finished but post-check found invalid modules or missing dependencies.")
+            try:
+                latest_apply = _load_latest_apply_scan_row(runtime)
+                if latest_apply:
+                    artifact_payload = _build_update_artifact_from_apply_scan(
+                        runtime=runtime,
+                        apply_row=latest_apply,
+                        effective_data_root=effective_data_root,
+                    )
+                    if artifact_payload:
+                        output["updateArtifact"] = _write_update_artifact(runtime, artifact_payload)
+            except Exception:
+                pass
         return output
     finally:
         if maintenance:
@@ -1630,7 +2099,28 @@ def _suggest_best_release_for_module_with_caches(
             force_refresh=force_refresh,
         )
         history_cache[key] = result
-        return result
+    return result
+
+
+def export_latest_debug_log(runtime: AppRuntime, max_bytes: int = 2 * 1024 * 1024) -> dict[str, Any]:
+    log_path = runtime.config.reports_dir / "module-resolver-latest.log"
+    if not log_path.exists():
+        raise FileNotFoundError("latest_log_not_found")
+    raw = log_path.read_bytes()
+    truncated = False
+    if max_bytes > 0 and len(raw) > max_bytes:
+        raw = raw[-max_bytes:]
+        truncated = True
+    text = raw.decode("utf-8", errors="replace")
+    return {
+        "ok": True,
+        "fileName": f"modulator-debug-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.log",
+        "content": text,
+        "truncated": truncated,
+        "sizeBytes": len(raw),
+        "sourcePath": str(log_path),
+        "generatedAt": _utc_now_iso(),
+    }
 
     def _load_module_for_relationship(relationship):
         installed = installed_modules_by_id.get(str(relationship.module_id or ""))

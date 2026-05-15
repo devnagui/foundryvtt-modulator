@@ -105,6 +105,23 @@ export type PlanningContextRow = {
   systemCompatibility?: Record<string, unknown>;
 };
 
+export type UpdateArtifactSummary = {
+  planId: string;
+  scanRunId?: number;
+  createdAt?: string;
+  action?: string;
+  foundryCurrentVersion?: string;
+  foundryTargetVersion?: string;
+  systemsCount?: number;
+  modulesCount?: number;
+  backupsCount?: number;
+  backupTotalBytes?: number;
+  failureCount?: number;
+  appliedCount?: number;
+  filePath?: string;
+  fileBytes?: number;
+};
+
 function csrfToken(): string {
   const token = document.cookie
     .split(";")
@@ -162,8 +179,56 @@ export const api = {
         body: JSON.stringify({ outputPath, includeData }),
       }
     ),
+  exportDebugLog: (maxBytes = 2 * 1024 * 1024) =>
+    request<{ ok: boolean; fileName: string; content: string; truncated?: boolean; sizeBytes?: number; sourcePath?: string; generatedAt?: string }>(
+      "/api/v1/report/v3/export-log",
+      {
+        method: "POST",
+        body: JSON.stringify({ maxBytes }),
+      }
+    ),
   importHistory: (limit = 20) =>
     request<{ ok: boolean; items: ImportHistoryEntry[] }>(`/api/v1/report/v3/import-history?limit=${encodeURIComponent(String(limit))}`),
+  updateArtifacts: (limit = 50) =>
+    request<{ ok: boolean; items: UpdateArtifactSummary[] }>(`/api/v1/report/v3/update-artifacts?limit=${encodeURIComponent(String(limit))}`),
+  updateArtifactById: (planId: string) =>
+    request<{ ok: boolean; artifact: Record<string, unknown> }>(`/api/v1/report/v3/update-artifacts/${encodeURIComponent(planId)}`),
+  downloadUpdateArtifactBundle: async (planId: string, includeBackupData = true) => {
+    const response = await fetch(
+      `/api/v1/report/v3/update-artifacts/${encodeURIComponent(planId)}/download?includeBackupData=${includeBackupData ? "true" : "false"}`,
+      {
+        credentials: "include",
+        headers: {
+          "X-CSRF-Token": csrfToken(),
+        },
+      }
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      let payload: unknown = {};
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        payload = {};
+      }
+      const detail = (payload as Record<string, unknown>)?.detail as Record<string, unknown> | undefined;
+      const baseMessage =
+        String((payload as Record<string, unknown>)?.message || "") ||
+        String(detail?.message || "") ||
+        String((payload as Record<string, unknown>)?.error || "") ||
+        String(detail?.error || "") ||
+        `HTTP ${response.status}`;
+      const err = new Error(baseMessage) as Error & { status?: number; payload?: unknown };
+      err.status = response.status;
+      err.payload = payload;
+      throw err;
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    const fileName = match?.[1] || `${planId}.zip`;
+    return { blob, fileName };
+  },
   planningContext: (foundryVersion: string, systemId = "", systemVersion = "", limit = 5000) =>
     request<{ ok: boolean; scanRunId?: number; count?: number; rows?: PlanningContextRow[] }>(
       `/api/v1/report/v3/planning-context?foundryVersion=${encodeURIComponent(foundryVersion)}&systemId=${encodeURIComponent(systemId)}&systemVersion=${encodeURIComponent(systemVersion)}&limit=${encodeURIComponent(String(limit))}`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import zipfile
@@ -72,7 +73,7 @@ class ApplyValidationTests(unittest.TestCase):
                 apply_mod.download_to_temp = original_download
                 apply_mod.delete_cached_zip = original_delete
 
-    def test_apply_rejects_legacy_core_fields(self) -> None:
+    def test_apply_accepts_legacy_core_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             modules_dir = root / "Data" / "modules"
@@ -93,13 +94,15 @@ class ApplyValidationTests(unittest.TestCase):
             apply_mod.download_to_temp = lambda _url: str(archive_path)
             apply_mod.delete_cached_zip = lambda _url, _cache: True
             try:
-                with self.assertRaisesRegex(ValueError, "legacy core compatibility fields detected"):
-                    apply_mod.apply_recommendation(
-                        module=self._module(),
-                        recommendation=self._recommendation(),
-                        modules_dir=str(modules_dir),
-                        cache_dir=str(root / ".cache"),
-                    )
+                backup = apply_mod.apply_recommendation(
+                    module=self._module(),
+                    recommendation=self._recommendation(),
+                    modules_dir=str(modules_dir),
+                    cache_dir=str(root / ".cache"),
+                )
+                self.assertIsNotNone(backup)
+                applied_manifest = json.loads((modules_dir / "sample-module" / "module.json").read_text(encoding="utf-8"))
+                self.assertEqual("1.1.0", str(applied_manifest.get("version")))
             finally:
                 apply_mod.download_to_temp = original_download
                 apply_mod.delete_cached_zip = original_delete

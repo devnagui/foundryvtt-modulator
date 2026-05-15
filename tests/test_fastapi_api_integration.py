@@ -175,6 +175,60 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertIn("modules", snapshot)
         self.assertTrue(any(str(row.get("module")) == "snapmod" for row in (snapshot.get("modules") or [])))
 
+    def test_report_export_log_endpoint_returns_latest_log_content(self) -> None:
+        self.client.post(
+            "/api/v1/auth/setup",
+            json={"username": "tester.user", "password": "Strong!Pass123", "confirmPassword": "Strong!Pass123"},
+        )
+        reports_dir = Path(os.environ["RESOLVER_REPORTS_DIR"])
+        log_path = reports_dir / "module-resolver-latest.log"
+        log_path.write_text("line-1\nline-2\n", encoding="utf-8")
+        csrf = self.client.cookies.get("mm_csrf") or ""
+        response = self.client.post("/api/v1/report/v3/export-log", json={}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(bool(payload.get("ok")))
+        self.assertIn("line-1", str(payload.get("content") or ""))
+        self.assertTrue(str(payload.get("fileName") or "").endswith(".log"))
+
+    def test_report_update_artifacts_endpoints_list_detail_download(self) -> None:
+        self.client.post(
+            "/api/v1/auth/setup",
+            json={"username": "tester.user", "password": "Strong!Pass123", "confirmPassword": "Strong!Pass123"},
+        )
+        artifacts_dir = Path(os.environ["RESOLVER_STATE_DIR"]) / "update-artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "schemaVersion": "1.0.0",
+            "planId": "plan-test-001",
+            "createdAt": "2026-05-15T10:00:00Z",
+            "action": "apply",
+            "foundryCurrentVersion": "13.351",
+            "foundryTargetVersion": "13.351",
+            "systems": [{"name": "dnd5e", "currentVersion": "5.3.0", "targetVersion": "5.3.0"}],
+            "modules": [{"name": "dae", "currentVersion": "12.0.0", "targetVersion": "13.0.0"}],
+            "backups": [],
+            "summary": {"applied": 1, "skipped": 0, "failed": 0},
+        }
+        (artifacts_dir / "plan-test-001.json").write_text(json.dumps(artifact), encoding="utf-8")
+
+        list_resp = self.client.get("/api/v1/report/v3/update-artifacts?limit=10")
+        self.assertEqual(200, list_resp.status_code)
+        list_payload = list_resp.json()
+        self.assertTrue(bool(list_payload.get("ok")))
+        self.assertTrue(any(str(item.get("planId") or "") == "plan-test-001" for item in (list_payload.get("items") or [])))
+
+        detail_resp = self.client.get("/api/v1/report/v3/update-artifacts/plan-test-001")
+        self.assertEqual(200, detail_resp.status_code)
+        detail_payload = detail_resp.json()
+        self.assertTrue(bool(detail_payload.get("ok")))
+        self.assertEqual("plan-test-001", str((detail_payload.get("artifact") or {}).get("planId") or ""))
+
+        dl_resp = self.client.get("/api/v1/report/v3/update-artifacts/plan-test-001/download?includeBackupData=false")
+        self.assertEqual(200, dl_resp.status_code)
+        self.assertIn("application/zip", str(dl_resp.headers.get("content-type") or ""))
+        self.assertGreater(len(dl_resp.content), 0)
+
     def test_submit_import_alias_queues_override_from_plan(self) -> None:
         self.client.post(
             "/api/v1/auth/setup",

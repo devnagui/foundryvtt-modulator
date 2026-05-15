@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { AppLoader } from "../components/AppLoader";
 import { UpdatePathWithRefresh } from "../components/UpdatePathWithRefresh";
 import { UpgradePanel } from "../components/UpgradePanel";
-import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel } from "../services/api";
+import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel, type UpdateArtifactSummary } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
 import { canForceCompatibility, partitionCountsForPills } from "./reportRules";
 import { buildRelatedSystems } from "./systemKeying";
@@ -28,6 +28,14 @@ type RollbackPlanView = {
   modules: string[];
   backupPaths: string[];
   notes?: string;
+};
+type ModulesViewModal = {
+  title: string;
+  modules: string[];
+};
+type UpdateArtifactModal = {
+  planId: string;
+  payload: Record<string, unknown>;
 };
 type CurrentFilter = "blocked" | "update" | "ready" | "unused";
 
@@ -825,6 +833,18 @@ function relativeFromNow(raw?: string): string {
   return `${Math.floor(sec / 86400)}d ago`;
 }
 
+function formatTableDate(raw?: string): string {
+  if (!raw) return "-";
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return String(raw);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mi = String(dt.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}-${hh}:${mi}`;
+}
+
 function formatBytesCompact(value: number): string {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -870,6 +890,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([]);
   const [importHistoryLoading, setImportHistoryLoading] = useState(false);
+  const [updateArtifacts, setUpdateArtifacts] = useState<UpdateArtifactSummary[]>([]);
+  const [updateArtifactsLoading, setUpdateArtifactsLoading] = useState(false);
+  const [updateArtifactsError, setUpdateArtifactsError] = useState("");
   const [importProfile, setImportProfile] = useState<"current" | "destiny">("current");
   const [uiBusyMessage, setUiBusyMessage] = useState("");
   const [hydrationBusy, setHydrationBusy] = useState(false);
@@ -884,6 +907,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [conflictDetail, setConflictDetail] = useState<ConflictDetail | null>(null);
   const [statusLegendOpen, setStatusLegendOpen] = useState(false);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkUpdateRunning, setBulkUpdateRunning] = useState(false);
+  const [bulkUpdateStatusText, setBulkUpdateStatusText] = useState("");
+  const [bulkUpdateProgressPct, setBulkUpdateProgressPct] = useState(0);
   const [bulkUpdateScope, setBulkUpdateScope] = useState<BulkUpdateScope>("current");
   const [bulkUpdateOptions, setBulkUpdateOptions] = useState<BulkUpdateOptions>({
     includeUnused: false,
@@ -896,6 +922,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [rollbackPlanLoading, setRollbackPlanLoading] = useState(false);
   const [rollbackPlanError, setRollbackPlanError] = useState("");
   const [rollbackPlanData, setRollbackPlanData] = useState<RollbackPlanView | null>(null);
+  const [modulesViewModal, setModulesViewModal] = useState<ModulesViewModal | null>(null);
+  const [updateArtifactModal, setUpdateArtifactModal] = useState<UpdateArtifactModal | null>(null);
   const hydrationRunRef = useRef(0);
   const importPlanInputRef = useRef<HTMLInputElement | null>(null);
   const foundryConfigured = Boolean(foundryRoot?.valid);
@@ -963,8 +991,59 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     }
   };
 
+  const loadUpdateArtifacts = async () => {
+    setUpdateArtifactsLoading(true);
+    setUpdateArtifactsError("");
+    try {
+      const payload = await api.updateArtifacts(100);
+      setUpdateArtifacts(Array.isArray(payload.items) ? payload.items : []);
+    } catch (err) {
+      setUpdateArtifacts([]);
+      setUpdateArtifactsError(err instanceof Error ? err.message : "Could not load update artifacts.");
+    } finally {
+      setUpdateArtifactsLoading(false);
+    }
+  };
+
+  const viewUpdateArtifact = async (planId: string) => {
+    const clean = asString(planId).trim();
+    if (!clean) return;
+    try {
+      setUiBusyMessage("Loading update artifact...");
+      const payload = await api.updateArtifactById(clean);
+      setUpdateArtifactModal({ planId: clean, payload: (payload.artifact || {}) as Record<string, unknown> });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load update artifact.");
+    } finally {
+      setUiBusyMessage("");
+    }
+  };
+
+  const downloadUpdateArtifact = async (planId: string, includeBackupData = true) => {
+    const clean = asString(planId).trim();
+    if (!clean) return;
+    try {
+      setUiBusyMessage("Preparing artifact download...");
+      const payload = await api.downloadUpdateArtifactBundle(clean, includeBackupData);
+      const objectUrl = window.URL.createObjectURL(payload.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = payload.fileName || `${clean}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(objectUrl);
+      setSuggestResult(`Downloaded artifact bundle: ${payload.fileName || `${clean}.zip`}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not download artifact bundle.");
+    } finally {
+      setUiBusyMessage("");
+    }
+  };
+
   useEffect(() => { void loadModel(); void loadFoundryConfig(); void loadModuleSources(); }, []);
   useEffect(() => { if (tab === "import") void loadImportHistory(); }, [tab]);
+  useEffect(() => { if (tab === "backups") void loadUpdateArtifacts(); }, [tab]);
 
   const logout = async () => { await api.logout(); onLoggedOut(); };
 
@@ -1012,7 +1091,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             const runId = Number((result || {}).scanRunId || 0);
             setSuggestResult(`Rollback executed for #${runId || "?"}: restored=${restoredCount}`);
           }
+          if (actionName === "apply") {
+            const preflight = (result || {}).preflight as Record<string, unknown> | undefined;
+            const skippedModules = Array.isArray(preflight?.skippedModules)
+              ? preflight?.skippedModules.map((item) => asString(item)).filter(Boolean)
+              : [];
+            if (skippedModules.length > 0) {
+              setSuggestResult(`Apply finished with skipped modules due health gate: ${skippedModules.join(", ")}`);
+            }
+          }
           await loadModel();
+          if (actionName === "apply" || actionName === "override-from-plan") {
+            void loadUpdateArtifacts();
+          }
           setJob(null);
           setActionBusy(false);
           setUiBusyMessage("");
@@ -1031,7 +1122,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningTargets = asArray(view.systemUpgradePlanner?.targets);
   const planningTargetsByFoundry = (view.systemUpgradePlanner?.targetsByFoundry as Record<string, unknown> | undefined) || {};
   const backupRows = asArray(view.backupManagement?.rows);
-  const applyHistoryRows = asArray(view.backupManagement?.applyHistory);
   const unusedRows = asArray(view.unusedModules?.rows);
   const worldUsage = asArray(model?.worldUsage);
   const currentFoundryVersion = asString(model?.targetVersion).trim();
@@ -2579,6 +2669,23 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     );
   }, [backupRows, search]);
 
+  const filteredUpdateArtifacts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return updateArtifacts;
+    return updateArtifacts.filter((item) => {
+      const haystack = [
+        asString(item.planId),
+        asString(item.action),
+        asString(item.createdAt),
+        asString(item.foundryCurrentVersion),
+        asString(item.foundryTargetVersion),
+        String(item.modulesCount || ""),
+        String(item.systemsCount || ""),
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [updateArtifacts, search]);
+
   const currentTableRows = useMemo<CurrentTableRow[]>(() => {
     const systemRows: Extract<CurrentTableRow, { kind: "system" }>[] = [];
     const includeCurrentSystemRow = (status: "update" | "ready"): boolean => {
@@ -3134,6 +3241,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       backupPreviousCurrentVersions: true,
       backupCurrentModulesData: false,
     });
+    setBulkUpdateRunning(false);
+    setBulkUpdateStatusText("");
+    setBulkUpdateProgressPct(0);
     setBulkUpdateOpen(true);
   };
 
@@ -3148,7 +3258,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       setError("No actionable modules for selected filters/options.");
       return;
     }
-    setBulkUpdateOpen(false);
+    setBulkUpdateRunning(true);
+    setActionBusy(true);
+    setBulkUpdateProgressPct(0);
+    setBulkUpdateStatusText("Preparing update queue...");
     setSuggestResult(`Update All started: apply=${applyModules.length}${bulkUpdateOptions.forceCompatibility ? ` | force-compat=${forceCompatModules.length}` : ""}`);
     const payloadBase: Record<string, unknown> = {
       batchSize: 10,
@@ -3156,22 +3269,129 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       backupPreviousCurrentVersions: bulkUpdateOptions.backupPreviousCurrentVersions,
       backupCurrentModulesData: bulkUpdateOptions.backupCurrentModulesData,
     };
+    const buildPlanningOverridePayload = (moduleIds: string[]): Record<string, unknown> => {
+      const wanted = new Set(moduleIds.map((item) => asString(item).trim().toLowerCase()).filter(Boolean));
+      const rows: Array<Record<string, unknown>> = [];
+      const seen = new Set<string>();
+      for (const row of filteredPlanning) {
+        const moduleId = asString(row.module).trim();
+        const key = moduleId.toLowerCase();
+        if (!moduleId || !wanted.has(key) || seen.has(key)) continue;
+        const source = sourceForRow(moduleSources, moduleId, row.title);
+        const fallback = sourceFromReleaseUrl(asString(row.releaseUrl));
+        const releaseUrl = preferredUpdateUrlFromCandidates(
+          asString(row.releaseUrl),
+          asString(source.projectUrl),
+          asString(source.manifestUrl),
+          fallback.projectUrl,
+          fallback.manifestUrl
+        );
+        const targetVersion = asString(row.recommendedVersion).trim() || asString(row.targetVersion).trim();
+        if (!hasConcreteValue(targetVersion)) continue;
+        rows.push({
+          kind: "module",
+          moduleId,
+          title: row.title || moduleId,
+          installedVersion: row.installedVersion || "-",
+          recommendedVersion: targetVersion,
+          releaseUrl: releaseUrl || "",
+        });
+        seen.add(key);
+      }
+      return {
+        profile: "destiny",
+        planContent: JSON.stringify({
+          destiny: {
+            foundryVersion: planningFoundryFilter || "",
+            activeSystemId: activePlanningSystemId || "",
+            selectedSystemVersion: activePlanningSystemId
+              ? (planningVersionBySystem[activePlanningSystemId] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || "")
+              : "",
+            rows,
+          },
+        }),
+      };
+    };
+    const steps: Array<{ action: ActionKind; payload: Record<string, unknown>; label: string }> = [];
     if (applyModules.length > 0) {
-      setUiBusyMessage("Updating selected modules...");
-      await submitAndWatch("apply", {
-        ...payloadBase,
-        modules: applyModules,
-      });
+      if (bulkUpdateScope === "planning") {
+        steps.push({
+          action: "override-from-plan",
+          payload: buildPlanningOverridePayload(applyModules),
+          label: "Applying Planning target versions",
+        });
+      } else {
+        steps.push({
+          action: "apply",
+          payload: {
+            ...payloadBase,
+            modules: applyModules,
+          },
+          label: "Applying module updates",
+        });
+      }
     }
     if (bulkUpdateOptions.forceCompatibility && forceCompatModules.length > 0) {
       const targetVersion = bulkUpdateScope === "planning" ? planningFoundryFilter : currentFoundryVersion;
       if (targetVersion) {
-        setUiBusyMessage("Applying force compatibility...");
-        await submitAndWatch("force-compat", {
-          modules: forceCompatModules,
-          targetVersion,
+        steps.push({
+          action: "force-compat",
+          payload: {
+            modules: forceCompatModules,
+            targetVersion,
+          },
+          label: "Applying force compatibility",
         });
       }
+    }
+
+    const runStep = async (step: { action: ActionKind; payload: Record<string, unknown>; label: string }, index: number, total: number): Promise<boolean> => {
+      setBulkUpdateStatusText(`Step ${index}/${total}: ${step.label} (submitting...)`);
+      const submitted = await api.submitAction(step.action, step.payload);
+      while (true) {
+        const status = await api.jobStatus(submitted.jobId);
+        const progress = Math.max(0, Math.min(100, Number(status.progress || 0)));
+        const phase = asString((status.progressMeta as Record<string, unknown> | undefined)?.phase);
+        setBulkUpdateProgressPct(progress);
+        setBulkUpdateStatusText(`Step ${index}/${total}: ${step.label} - ${status.status}${phase ? ` (${phase})` : ""} - ${progress}%`);
+        if (status.status === "success") {
+          return true;
+        }
+        if (status.status === "failed") {
+          setError(status.error || `${step.label} failed.`);
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    };
+
+    let allOk = true;
+    try {
+      for (let i = 0; i < steps.length; i += 1) {
+        const ok = await runStep(steps[i], i + 1, steps.length);
+        if (!ok) {
+          allOk = false;
+          break;
+        }
+        setBulkUpdateStatusText(`Step ${i + 1}/${steps.length} completed. Recalculating table...`);
+        await loadModel();
+        setBulkUpdateStatusText(`Step ${i + 1}/${steps.length} completed. Table recalculated.`);
+      }
+      if (allOk) {
+        setBulkUpdateStatusText("Update All completed successfully.");
+        setBulkUpdateProgressPct(100);
+      } else {
+        await loadModel();
+        setBulkUpdateStatusText("Update All finished with errors.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update All failed.");
+      await loadModel();
+      setBulkUpdateStatusText("Update All failed.");
+    } finally {
+      setBulkUpdateRunning(false);
+      setActionBusy(false);
+      setUiBusyMessage("");
     }
   };
 
@@ -3358,6 +3578,28 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       setSuggestResult(`Update plan exported. Snapshot modules: ${Number(snapshot.modulesCount || 0)}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not export update plan.");
+    } finally {
+      setUiBusyMessage("");
+    }
+  };
+
+  const exportDebugLogFromSettings = async () => {
+    try {
+      setUiBusyMessage("Exporting debug log...");
+      const payload = await api.exportDebugLog();
+      const fileName = asString(payload.fileName) || `modulator-debug-${Date.now()}.log`;
+      const blob = new Blob([String(payload.content || "")], { type: "text/plain;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setSuggestResult(`Debug log exported: ${fileName}${payload.truncated ? " (truncated)" : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export debug log.");
     } finally {
       setUiBusyMessage("");
     }
@@ -4198,7 +4440,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <tbody>
                 {importHistory.map((row, idx) => (
                   <tr key={`import-history-${idx}`}>
-                    <td>{asString(row.generatedAt) || "-"}</td>
+                    <td>{formatTableDate(asString(row.generatedAt) || "-")}</td>
                     <td>{asString(row.profile) || "-"}</td>
                     <td>{String(Number(row.appliedCount || 0))}</td>
                     <td>{String(Number(row.skippedCount || 0))}</td>
@@ -4287,48 +4529,89 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             <article className="panel">
               <h3>Backups</h3>
               <input type="search" placeholder="Search backups..." value={showSearch ? search : ""} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><button className="btn" disabled={backupModules.length === 0 || actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("cleanup-backups", { modules: backupModules })}>Cleanup Listed Backups</button></div>
-              <div className="metrics-row" style={{ marginBottom: 8 }}>
-                <div className="metric-card static"><span>Apply History</span><strong>{applyHistoryRows.length}</strong></div>
-              </div>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <button
+                  className="btn"
+                  disabled={backupModules.length === 0 || actionBusy || !foundryConfigured}
+                  onClick={() => void submitAndWatch("cleanup-backups", { modules: backupModules })}
+                >
+                  Cleanup Listed Backups
+                </button>
+                <button
                   className="btn secondary"
-                  onClick={async () => {
-                    try {
-                      const health = await api.moduleHealth();
-                      setSuggestResult(`Module Health: total=${health.count || 0}, invalid=${health.invalidCount || 0}, warnings=${health.warningCount || 0}`);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Could not run module health check.");
-                    }
+                  disabled={filteredBackups.length === 0}
+                  onClick={() => {
+                    const modules = filteredBackups
+                      .map((row) => {
+                        const moduleId = asString(row.module).trim();
+                        const title = asString(row.title).trim();
+                        return title && moduleId && title !== moduleId ? `${title} (${moduleId})` : (title || moduleId);
+                      })
+                      .filter(Boolean);
+                    setModulesViewModal({ title: "Backups Modules", modules });
                   }}
                 >
-                  Run Module Health Check
+                  View Modules
+                </button>
+                <button
+                  className="btn secondary"
+                  disabled={updateArtifactsLoading}
+                  onClick={() => void loadUpdateArtifacts()}
+                >
+                  Refresh Artifacts
                 </button>
               </div>
-              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>Run</th><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead><tbody>
-                {applyHistoryRows.length === 0 ? <tr><td colSpan={7}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => {
-                  const scanRunId = Number(row.scanRunId || 0);
-                  return (
-                    <tr key={`apply-${idx}`}>
-                      <td>{scanRunId > 0 ? `#${scanRunId}` : "-"}</td>
-                      <td>{asString(row.generatedAt) || "-"}</td>
-                      <td>{asString(row.targetVersion) || "-"}</td>
-                      <td>{String(row.modulesChangedCount || 0)}</td>
-                      <td>{String(row.backupsCreatedCount || 0)}</td>
-                      <td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", gap: 6 }}>
-                          <button className="btn secondary btn-xs" disabled={scanRunId <= 0 || actionBusy} onClick={() => openRollbackModal(scanRunId)}>Rollback</button>
-                        </div>
-                      </td>
+              {updateArtifactsLoading ? (
+                <AppLoader label="Loading update artifacts..." detail="Reading local backup plans" />
+              ) : null}
+              {updateArtifactsError ? (
+                <p className="error" style={{ marginTop: 0 }}>{updateArtifactsError}</p>
+              ) : null}
+              {!updateArtifactsLoading ? (
+                <table className="report-table" style={{ marginBottom: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Plan</th>
+                      <th>When</th>
+                      <th>Foundry</th>
+                      <th>Systems</th>
+                      <th>Modules</th>
+                      <th>Backups</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right" }}>Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody></table>
-              <table className="report-table"><thead><tr><th>Module</th><th>Backups</th><th>Size Bytes</th><th>Newest</th></tr></thead><tbody>
-                {filteredBackups.map((row) => <tr key={asString(row.module)}><td>{asString(row.title) || asString(row.module)}</td><td>{String(row.backupCount || 0)}</td><td>{String(row.backupSizeBytes || 0)}</td><td>{asString(row.newestBackupAt) || "-"}</td></tr>)}
-              </tbody></table>
+                  </thead>
+                  <tbody>
+                    {filteredUpdateArtifacts.length === 0 ? (
+                      <tr><td colSpan={8}>No update artifacts yet.</td></tr>
+                    ) : filteredUpdateArtifacts.map((item) => {
+                      const planId = asString(item.planId);
+                      const scanRunId = Number(item.scanRunId || 0);
+                      const failures = Number(item.failureCount || 0);
+                      const statusLabel = failures > 0 ? `Partial (${failures} failed)` : "Success";
+                      return (
+                        <tr key={`artifact-${planId}`}>
+                          <td>{planId}</td>
+                          <td>{formatTableDate(asString(item.createdAt) || "-")}</td>
+                          <td>{`${asString(item.foundryCurrentVersion) || "-"} -> ${asString(item.foundryTargetVersion) || "-"}`}</td>
+                          <td>{String(Number(item.systemsCount || 0))}</td>
+                          <td>{String(Number(item.modulesCount || 0))}</td>
+                          <td>{`${Number(item.backupsCount || 0)} (${formatBytesCompact(Number(item.backupTotalBytes || 0))})`}</td>
+                          <td>{statusLabel}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: 6 }}>
+                              <button className="btn secondary btn-xs" onClick={() => void viewUpdateArtifact(planId)}>View</button>
+                              <button className="btn secondary btn-xs" onClick={() => void downloadUpdateArtifact(planId, true)}>Download Bundle</button>
+                              <button className="btn secondary btn-xs" onClick={() => void downloadUpdateArtifact(planId, false)}>JSON Only</button>
+                              <button className="btn secondary btn-xs" disabled={scanRunId <= 0 || actionBusy} onClick={() => openRollbackModal(scanRunId)}>Rollback</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
             </article>
           ) : null}
 
@@ -4395,8 +4678,71 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         </div>
       ) : null}
 
+      {modulesViewModal ? (
+        <div className="modal-backdrop" onClick={() => setModulesViewModal(null)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>{modulesViewModal.title}</h3>
+            {modulesViewModal.modules.length === 0 ? (
+              <p style={{ marginTop: 0, marginBottom: 10 }}>No modules in this run.</p>
+            ) : (
+              <table className="report-table" style={{ marginBottom: 10 }}>
+                <thead>
+                  <tr><th>Module ID</th></tr>
+                </thead>
+                <tbody>
+                  {modulesViewModal.modules.map((moduleId) => (
+                    <tr key={`run-module-${moduleId}`}>
+                      <td>{moduleId}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setModulesViewModal(null)}>Close</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {updateArtifactModal ? (
+        <div className="modal-backdrop" onClick={() => setUpdateArtifactModal(null)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Update Artifact {updateArtifactModal.planId}</h3>
+            <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>
+              Foundry: {asString(updateArtifactModal.payload.foundryCurrentVersion) || "-"}{" -> "}{asString(updateArtifactModal.payload.foundryTargetVersion) || "-"}
+            </p>
+            <table className="report-table" style={{ marginBottom: 10 }}>
+              <thead>
+                <tr><th>Type</th><th>Name</th><th>Current</th><th>Target</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {[
+                  ...asArray(updateArtifactModal.payload.systems).map((row) => ({ type: "system", row })),
+                  ...asArray(updateArtifactModal.payload.modules).map((row) => ({ type: "module", row })),
+                ].map((entry, idx) => (
+                  <tr key={`artifact-entry-${idx}`}>
+                    <td>{entry.type}</td>
+                    <td>{asString(entry.row.name) || asString(entry.row.moduleId) || "-"}</td>
+                    <td>{asString(entry.row.currentVersion) || "-"}</td>
+                    <td>{asString(entry.row.targetVersion) || "-"}</td>
+                    <td>{asString(entry.row.status) || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>
+              Backups entries: {String(asArray(updateArtifactModal.payload.backups).length)}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setUpdateArtifactModal(null)}>Close</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {bulkUpdateOpen ? (
-        <div className="modal-backdrop" onClick={() => setBulkUpdateOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!bulkUpdateRunning) setBulkUpdateOpen(false); }}>
           <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>
               Update All ({bulkUpdateScope === "current" ? "Current" : "Planning"})
@@ -4404,11 +4750,26 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             <p style={{ marginTop: 0, color: "var(--muted)" }}>
               Apply updates/install recommendations for modules currently matching the selected filters.
             </p>
+            {bulkUpdateRunning ? (
+              <div style={{ marginBottom: 10 }}>
+                <AppLoader
+                  label={`Running update (${Math.max(0, Math.min(100, bulkUpdateProgressPct))}%)`}
+                  detail="Please wait while Update All executes"
+                />
+                <p style={{ marginTop: 8, marginBottom: 6, color: "var(--muted)" }}>
+                  {bulkUpdateStatusText || "Running update..."}
+                </p>
+                <div style={{ height: 8, borderRadius: 999, background: "#1f2937" }}>
+                  <div style={{ height: 8, borderRadius: 999, width: `${Math.max(0, Math.min(100, bulkUpdateProgressPct))}%`, background: "#3b82f6", transition: "width .2s" }} />
+                </div>
+              </div>
+            ) : null}
             <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <input
                   type="checkbox"
                   checked={bulkUpdateOptions.includeUnused}
+                  disabled={bulkUpdateRunning}
                   onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, includeUnused: event.target.checked }))}
                 />
                 <span>Include Unused</span>
@@ -4417,6 +4778,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 <input
                   type="checkbox"
                   checked={bulkUpdateOptions.forceCompatibility}
+                  disabled={bulkUpdateRunning}
                   onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, forceCompatibility: event.target.checked }))}
                 />
                 <span>Force Compatibility</span>
@@ -4425,14 +4787,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 <input
                   type="checkbox"
                   checked={bulkUpdateOptions.backupPreviousCurrentVersions}
+                  disabled={bulkUpdateRunning}
                   onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, backupPreviousCurrentVersions: event.target.checked }))}
                 />
-                <span>Backup Previous Current Versions</span>
+                <span>Backup Update Plan</span>
               </label>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <input
                   type="checkbox"
                   checked={bulkUpdateOptions.backupCurrentModulesData}
+                  disabled={bulkUpdateRunning}
                   onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, backupCurrentModulesData: event.target.checked }))}
                 />
                 <span>Backup Current Modules Data</span>
@@ -4456,11 +4820,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button className="btn secondary" onClick={() => setBulkUpdateOpen(false)}>Cancel</button>
+              <button className="btn secondary" disabled={bulkUpdateRunning} onClick={() => setBulkUpdateOpen(false)}>Cancel</button>
               <button
                 className="btn secondary"
                 style={{ background: "#3b82f6", color: "#fff" }}
-                disabled={actionBusy || !foundryConfigured || (activeBulkCandidates.apply.length === 0 && (!bulkUpdateOptions.forceCompatibility || activeBulkCandidates.forceCompat.length === 0))}
+                disabled={bulkUpdateRunning || actionBusy || !foundryConfigured || (activeBulkCandidates.apply.length === 0 && (!bulkUpdateOptions.forceCompatibility || activeBulkCandidates.forceCompat.length === 0))}
                 onClick={() => void runBulkUpdate()}
               >
                 Start Update
@@ -4480,6 +4844,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <button className="btn secondary" onClick={() => void pickFoundryPath()}>Select Folder</button>
               <button className="btn" onClick={() => void applyFoundryPath()}>Validate & Save</button>
               <button className="btn secondary" onClick={() => void resetFoundryPath()}>Reset</button>
+              <button className="btn secondary" onClick={() => void exportDebugLogFromSettings()}>Export Log</button>
               <button className="btn secondary" onClick={() => setSettingsOpen(false)}>Close</button>
             </div>
           </section>
@@ -4595,7 +4960,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         </div>
       ) : null}
 
-      {(actionBusy || Boolean(uiBusyMessage)) ? (
+      {(actionBusy || Boolean(uiBusyMessage)) && !bulkUpdateOpen ? (
         <div className="modal-backdrop">
           <section className="panel modal-card" style={{ width: "min(420px, 92%)" }}>
             <h3>Please wait</h3>

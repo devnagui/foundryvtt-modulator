@@ -305,12 +305,22 @@ def _validate_extracted_package(
             f"Package validation failed for {module.module_id}: manifest version {version} does not match recommended {expected_version}."
         )
 
-    if manifest.get("minimumCoreVersion") is not None or manifest.get("compatibleCoreVersion") is not None:
-        raise ValueError(
-            f"Package validation failed for {module.module_id}: legacy core compatibility fields detected."
+    compatibility_raw = manifest.get("compatibility")
+    compatibility: dict = dict(compatibility_raw) if isinstance(compatibility_raw, dict) else {}
+    legacy_minimum = str(manifest.get("minimumCoreVersion") or "").strip()
+    legacy_verified = str(manifest.get("compatibleCoreVersion") or "").strip()
+    if legacy_minimum or legacy_verified:
+        # Accept legacy compatibility fields from older packages (ex: lib-wrapper),
+        # normalizing them into compatibility in-memory for validation purposes.
+        if legacy_minimum and not str(compatibility.get("minimum") or "").strip():
+            compatibility["minimum"] = legacy_minimum
+        if legacy_verified and not str(compatibility.get("verified") or "").strip():
+            compatibility["verified"] = legacy_verified
+        logging.warning(
+            "Package %s uses legacy core compatibility fields; normalized for validation.",
+            module.module_id,
         )
-    compatibility = manifest.get("compatibility")
-    if not isinstance(compatibility, dict):
+    if not compatibility:
         raise ValueError(f"Package validation failed for {module.module_id}: compatibility object is required.")
 
     missing_files: list[str] = []
