@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AppLoader } from "../components/AppLoader";
 import { api } from "../services/api";
 
 type LoginMode = "setup" | "login";
@@ -112,7 +113,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
         </div>
         <h1>FoundryVTT Modulator</h1>
         <p>{mode === "setup" ? "Create your admin account" : "Sign in to continue"}</p>
-        {loading ? <p>Loading...</p> : null}
+        {loading ? <AppLoader inline label="Loading" detail="Checking authentication status" /> : null}
         {!loading ? (
           <form
             onSubmit={(event) => {

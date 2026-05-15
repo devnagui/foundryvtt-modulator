@@ -143,6 +143,55 @@ body.light-mode {
   height: 18px;
   display: block;
 }
+.app-loader {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text);
+}
+.app-loader.inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.app-loader-label {
+  font-weight: 700;
+}
+.app-loader-detail {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.app-loader.inline .app-loader-label {
+  font-weight: 600;
+}
+.app-loader.inline .app-loader-detail {
+  font-size: 0.82rem;
+}
+.app-loader-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-loader-dots > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #fbbf24;
+  opacity: 0.35;
+  animation: loader-dot-bounce 1s ease-in-out infinite;
+}
+.app-loader-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.app-loader-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.refresh-icon-spinning {
+  animation: refresh-spin 0.8s linear infinite;
+}
 
 .report-table {
   width: 100%;
@@ -481,6 +530,20 @@ body.light-mode {
 @keyframes loading-shimmer {
   0% { background-position: 0% 50%; }
   100% { background-position: 100% 50%; }
+}
+@keyframes loader-dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+@keyframes refresh-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 @media (max-width: 640px) {

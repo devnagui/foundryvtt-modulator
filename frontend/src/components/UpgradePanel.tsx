@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AppLoader } from "./AppLoader";
 
 type UpgradePanelProps = {
   title: string;
@@ -80,8 +81,6 @@ export function UpgradePanel({
         </table>
         {tableLoading ? (
           <div
-            role="status"
-            aria-live="polite"
             style={{
               position: "absolute",
               inset: 0,
@@ -93,10 +92,7 @@ export function UpgradePanel({
               borderRadius: 10,
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ color: "var(--fg)", fontWeight: 700 }}>Calculating compatibility</span>
-              <span style={{ color: "var(--fg)" }}>{tableLoadingText}</span>
-            </div>
+            <AppLoader label="Calculating compatibility" detail={tableLoadingText} />
           </div>
         ) : null}
       </div>

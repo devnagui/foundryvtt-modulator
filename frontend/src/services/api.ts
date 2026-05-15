@@ -175,7 +175,7 @@ export const api = {
     }),
   jobStatus: (jobId: string) => request<JobStatus>(`/api/v1/actions/jobs/${encodeURIComponent(jobId)}`),
   rollbackPlan: (scanRunId: number) =>
-    request<{ ok: boolean; scanRunId: number; modules?: string[]; backupPaths?: string[]; notes?: string }>(
+    request<{ ok: boolean; scanRunId: number; generatedAt?: string; targetVersion?: string; modules?: string[]; backupPaths?: string[]; notes?: string }>(
       `/api/v1/actions/rollback-plan?scanRunId=${encodeURIComponent(String(scanRunId))}`
     ),
   moduleHealth: () =>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import { Header } from "../components/Header";
+import { AppLoader } from "../components/AppLoader";
 import { UpdatePathWithRefresh } from "../components/UpdatePathWithRefresh";
 import { UpgradePanel } from "../components/UpgradePanel";
 import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel } from "../services/api";
@@ -10,7 +11,24 @@ import { buildRelatedSystems } from "./systemKeying";
 
 type ReportPageProps = { onLoggedOut: () => void };
 type TabId = "current" | "planning" | "backups" | "import";
-type ActionKind = "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "override-from-plan";
+type ActionKind = "dry-run" | "apply" | "force-compat" | "cleanup-backups" | "rollback-batch" | "override-from-plan";
+type BulkUpdateScope = "current" | "planning";
+type BulkUpdateOptions = {
+  includeUnused: boolean;
+  forceCompatibility: boolean;
+  backupPreviousCurrentVersions: boolean;
+  backupCurrentModulesData: boolean;
+};
+type BulkCandidates = { apply: string[]; forceCompat: string[] };
+type BulkBackupEstimate = { estimatedBytes: number; knownModules: number; totalModules: number };
+type RollbackPlanView = {
+  scanRunId: number;
+  generatedAt?: string;
+  targetVersion?: string;
+  modules: string[];
+  backupPaths: string[];
+  notes?: string;
+};
 type CurrentFilter = "blocked" | "update" | "ready" | "unused";
 
 type ModuleRow = {
@@ -721,7 +739,7 @@ function bestReleaseUrl(row: Record<string, unknown>): string {
 }
 function hasConcreteValue(value: string): boolean {
   const v = asString(value).trim();
-  return Boolean(v && v !== "-");
+  return Boolean(v && v !== "-" && v !== "0.0.0");
 }
 function isPlaceholderVersion(value: string): boolean {
   const v = asString(value).trim();
@@ -781,7 +799,7 @@ function extractSystemTargetVersions(system: Record<string, unknown>): string[] 
   ];
   for (const list of candidateLists) {
     for (const item of list) {
-      const value = asString(item) || asString(item.version) || asString(item.targetVersion) || asString(item.recommendedVersion) || asString(item.label) || asString(item.id);
+      const value = asString(item) || asString(item.version) || asString(item.targetVersion) || asString(item.recommendedVersion);
       const clean = value.trim();
       if (clean) versions.add(clean);
     }
@@ -805,6 +823,20 @@ function relativeFromNow(raw?: string): string {
   if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
   if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
   return `${Math.floor(sec / 86400)}d ago`;
+}
+
+function formatBytesCompact(value: number): string {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let idx = 0;
+  while (size >= 1024 && idx < units.length - 1) {
+    size /= 1024;
+    idx += 1;
+  }
+  const precision = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+  return `${size.toFixed(precision)} ${units[idx]}`;
 }
 
 export function ReportPage({ onLoggedOut }: ReportPageProps) {
@@ -851,6 +883,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [planningHydrationProgress, setPlanningHydrationProgress] = useState<{ total: number; done: number }>({ total: 0, done: 0 });
   const [conflictDetail, setConflictDetail] = useState<ConflictDetail | null>(null);
   const [statusLegendOpen, setStatusLegendOpen] = useState(false);
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkUpdateScope, setBulkUpdateScope] = useState<BulkUpdateScope>("current");
+  const [bulkUpdateOptions, setBulkUpdateOptions] = useState<BulkUpdateOptions>({
+    includeUnused: false,
+    forceCompatibility: false,
+    backupPreviousCurrentVersions: true,
+    backupCurrentModulesData: false,
+  });
+  const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
+  const [rollbackTargetScanRunId, setRollbackTargetScanRunId] = useState<number>(0);
+  const [rollbackPlanLoading, setRollbackPlanLoading] = useState(false);
+  const [rollbackPlanError, setRollbackPlanError] = useState("");
+  const [rollbackPlanData, setRollbackPlanData] = useState<RollbackPlanView | null>(null);
   const hydrationRunRef = useRef(0);
   const importPlanInputRef = useRef<HTMLInputElement | null>(null);
   const foundryConfigured = Boolean(foundryRoot?.valid);
@@ -962,13 +1007,18 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               `Import finished: applied=${Number(report.appliedCount || 0)} | skipped=${Number(report.skippedCount || 0)} | failed=${Number(report.failureCount || 0)}`
             );
           }
+          if (actionName === "rollback-batch") {
+            const restoredCount = Number((result || {}).restoredCount || 0);
+            const runId = Number((result || {}).scanRunId || 0);
+            setSuggestResult(`Rollback executed for #${runId || "?"}: restored=${restoredCount}`);
+          }
           await loadModel();
           setJob(null);
           setActionBusy(false);
           setUiBusyMessage("");
           return;
         }
-        if (status.status === "failed") { setError(status.error || "Action failed."); setActionBusy(false); setUiBusyMessage(""); return; }
+        if (status.status === "failed") { setError(status.error || "Action failed."); setJob(null); setActionBusy(false); setUiBusyMessage(""); return; }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     };
@@ -1264,6 +1314,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       bucket.add(s);
       systemsByVersion.set(v, bucket);
     };
+    const registerUpgradeable = (version: string, systemId: string) => {
+      const v = version.trim();
+      const s = systemId.trim();
+      if (!v || !s) return;
+      const installed = asString(currentSystemVersionById[s]).trim();
+      if (!installed) return;
+      if (compareVersionAsc(v, installed) < 0) return;
+      register(v, s);
+    };
     for (const [systemId, installedVersion] of Object.entries(currentSystemVersionById)) {
       register(installedVersion, systemId);
     }
@@ -1271,7 +1330,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const systemId = asString(system.systemId).trim();
       if (!systemId || !currentSystemVersionById[systemId]) continue;
       const candidateVersions = extractSystemTargetVersions(system);
-      for (const version of candidateVersions) register(version, systemId);
+      for (const version of candidateVersions) registerUpgradeable(version, systemId);
     }
     for (const target of planningTargets) {
       const targetFoundryVersion = asString(target.foundryVersion).trim();
@@ -1281,7 +1340,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const systemId = asString(system.systemId).trim();
         if (!systemId || !currentSystemVersionById[systemId]) continue;
         const targetVersions = extractSystemTargetVersions(system);
-        for (const targetVersion of targetVersions) register(targetVersion, systemId);
+        for (const targetVersion of targetVersions) registerUpgradeable(targetVersion, systemId);
       }
     }
 
@@ -1600,9 +1659,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {};
     const contextKey = `${selectedCurrentSuggestContextKey}::${moduleKey}`;
     const hydratedRecommended = resolvedSourceByContext[contextKey]?.recommendedVersion || "";
+    const hydratedResolvedUrl = asString(resolvedSourceByContext[contextKey]?.resolvedUrl);
     const dependencyRecommended = asString(depSuggestion.recommendedVersion);
+    const dependencyUrl = asString(depSuggestion.releaseUrl);
     const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
+    const moduleUrl = asString(moduleSuggestion.resolvedUrl);
     const contextualRecommended = row.recommendedVersion || "-";
+    const contextualUrl = asString(row.releaseUrl);
     const activeSystem = activeCurrentSystemId || row.relatedSystems[0] || "";
     const systemTarget = activeSystem
       ? (currentVersionBySystem[activeSystem] || currentSystemFilter || selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "")
@@ -1614,8 +1677,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const hasCompatFailure = foundryOk === false || systemOk === false;
     const recommendedCandidates = [contextualRecommended, hydratedRecommended, moduleRecommended, dependencyRecommended];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
+    const effectiveUrl = preferredUpdateUrlFromCandidates(hydratedResolvedUrl, moduleUrl, dependencyUrl, contextualUrl);
     const hasInstalled = Boolean(asString(row.installedVersion).trim() && asString(row.installedVersion).trim() !== "-");
     if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
+    if (!hasInstalled && !effectiveRecommended && !effectiveUrl && String(row.system || "").trim().toLowerCase() !== "unused") return "blocked";
     if (!hasInstalled && effectiveRecommended) return "update";
     if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) return "update";
     return "ready";
@@ -1673,9 +1738,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const contextKey = `${selectedPlanningSuggestContextKey}::${moduleKey}`;
     const hydratedContext = resolvedSourceByContext[contextKey] || {};
     const hydratedRecommended = asString(hydratedContext.recommendedVersion);
+    const hydratedResolvedUrl = asString(hydratedContext.resolvedUrl);
     const rowRecommended = asString(row.recommendedVersion);
+    const rowUrl = asString(row.releaseUrl);
     const dependencyRecommended = asString(depSuggestion.recommendedVersion);
+    const dependencyUrl = asString(depSuggestion.releaseUrl);
     const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
+    const moduleUrl = asString(moduleSuggestion.resolvedUrl);
     const hydratedCompatibility = hydratedContext.compatibility as Record<string, unknown> | undefined;
     const hydratedSystemCompatibility = hydratedContext.systemCompatibility as Record<string, unknown> | undefined;
     const effectiveCompatibility: Record<string, unknown> = hasCompatibilityMetadata(hydratedCompatibility)
@@ -1696,8 +1765,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
     const recommendedCandidates = [hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
+    const effectiveUrl = preferredUpdateUrlFromCandidates(hydratedResolvedUrl, moduleUrl, dependencyUrl, rowUrl);
     const hasInstalled = hasConcreteValue(row.installedVersion);
     if (!hasInstalled && hasConcreteValue(effectiveRecommended)) return "update";
+    if (!hasInstalled && !hasConcreteValue(effectiveRecommended) && !effectiveUrl && String(row.system || "").trim().toLowerCase() !== "unused") return "blocked";
     if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) return "update";
     const contextHasDepUpdates = Boolean(hydratedContext.hasDependencyUpdates);
     if (contextHasDepUpdates) return "update";
@@ -1747,71 +1818,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       }))
     );
   }, [selectedCurrentRows, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
-
-  const fixModules = useMemo(() => {
-    const ids = new Set<string>();
-    for (const row of filteredCurrent) {
-      const moduleKey = asString(row.module).trim();
-      if (!moduleKey) continue;
-      const titleKey = asString(row.title).trim();
-      const source = sourceForRow(moduleSources, moduleKey, titleKey);
-      const depSuggestion = dependencySuggestionByModule[moduleKey]
-        || dependencySuggestionByModule[moduleKey.toLowerCase()]
-        || dependencySuggestionByModule[titleKey]
-        || dependencySuggestionByModule[titleKey.toLowerCase()]
-        || {};
-      const moduleSuggestion = resolvedSourceByModule[moduleKey]
-        || resolvedSourceByModule[moduleKey.toLowerCase()]
-        || resolvedSourceByModule[titleKey]
-        || resolvedSourceByModule[titleKey.toLowerCase()]
-        || {};
-      const contextKey = `${selectedCurrentSuggestContextKey}::${moduleKey}`;
-      const hydratedRecommended = resolvedSourceByContext[contextKey]?.recommendedVersion || "";
-      const hydratedUrl = resolvedSourceByContext[contextKey]?.resolvedUrl || "";
-      const dependencyRecommended = asString(depSuggestion.recommendedVersion);
-      const dependencyUrl = asString(depSuggestion.releaseUrl);
-      const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
-      const moduleUrl = asString(moduleSuggestion.resolvedUrl);
-      const contextualRecommended = row.recommendedVersion || "-";
-      const contextualUrl = row.releaseUrl || "";
-      const activeSystem = activeCurrentSystemId || row.relatedSystems[0] || "";
-      const systemTarget = activeSystem
-        ? (currentVersionBySystem[activeSystem] || currentSystemFilter || selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "")
-        : (currentSystemFilter || selectedCurrentVersionBucket?.key || "");
-      const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
-      const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
-      const foundryOk = versionWithin(row.compatibility, currentFoundryVersion);
-      const systemOk = versionWithin(sysCompat, systemTarget);
-      const staleContextValue = foundryOk === false || systemOk === false;
-      const recommendedCandidates = staleContextValue
-        ? [hydratedRecommended, moduleRecommended, dependencyRecommended, contextualRecommended]
-        : [contextualRecommended, hydratedRecommended, moduleRecommended, dependencyRecommended];
-      const urlCandidates = staleContextValue
-        ? [hydratedUrl, moduleUrl, dependencyUrl, contextualUrl, asString(source.projectUrl), asString(source.manifestUrl)]
-        : [contextualUrl, hydratedUrl, moduleUrl, dependencyUrl, asString(source.projectUrl), asString(source.manifestUrl)];
-      const rawRecommended = recommendedCandidates.find((v) => asString(v).trim() && asString(v).trim() !== "-") || "";
-      const effectiveRecommended = rawRecommended && rawRecommended !== "-" ? rawRecommended : "";
-      const effectiveUrl = preferredUpdateUrlFromCandidates(...urlCandidates);
-      const hasInstalled = Boolean(asString(row.installedVersion).trim() && asString(row.installedVersion).trim() !== "-");
-      const canInstall = !hasInstalled && Boolean(effectiveUrl || effectiveRecommended);
-      const canUpdate = hasInstalled && row.state === "update";
-      if (canInstall || canUpdate) ids.add(moduleKey);
-    }
-    return Array.from(ids);
-  }, [
-    filteredCurrent,
-    moduleSources,
-    dependencySuggestionByModule,
-    resolvedSourceByModule,
-    selectedCurrentSuggestContextKey,
-    resolvedSourceByContext,
-    activeCurrentSystemId,
-    currentVersionBySystem,
-    currentSystemFilter,
-    selectedCurrentVersionBucket,
-    currentSystemVersionById,
-    currentFoundryVersion,
-  ]);
 
   const planningRowsByFoundry = useMemo<Record<string, PlanningRow[]>>(() => {
     const byFoundry: Record<string, PlanningRow[]> = {};
@@ -2590,7 +2596,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const installedVersion = asString(sys.installedVersion) || asString((model?.installedSystemVersions || {})[systemId]);
         const targetVersion = selectedCurrentVersionBucket.key;
         const targetUrl = preferredUpdateUrlFromCandidates(asString(sys.targetUrl), asString(sys.releaseUrl), asString(sys.manifestUrl));
-        const status: "update" | "ready" = selectedCurrentVersionBucket.isCurrent || targetVersion === installedVersion ? "ready" : "update";
+        const status: "update" | "ready" = selectedCurrentVersionBucket.isCurrent
+          || !hasConcreteValue(installedVersion)
+          || compareVersionAsc(targetVersion, installedVersion) <= 0
+          ? "ready"
+          : "update";
         if (!includeCurrentSystemRow(status)) continue;
         systemRows.push({
           kind: "system",
@@ -2699,6 +2709,167 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     planningSystemIds,
     planningVersionBySystem,
   ]);
+  const backupSizeByModule = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of backupRows) {
+      const moduleId = asString(row.module || row.moduleId).trim().toLowerCase();
+      if (!moduleId) continue;
+      const size = Number(row.backupSizeBytes || 0);
+      if (Number.isFinite(size) && size >= 0) map.set(moduleId, size);
+    }
+    return map;
+  }, [backupRows]);
+
+  const estimateBackupForModules = (moduleIds: string[]): BulkBackupEstimate => {
+    let estimatedBytes = 0;
+    let knownModules = 0;
+    for (const moduleId of moduleIds) {
+      const key = asString(moduleId).trim().toLowerCase();
+      if (!key) continue;
+      if (backupSizeByModule.has(key)) {
+        knownModules += 1;
+        estimatedBytes += Number(backupSizeByModule.get(key) || 0);
+      }
+    }
+    return {
+      estimatedBytes,
+      knownModules,
+      totalModules: moduleIds.length,
+    };
+  };
+
+  const collectCurrentBulkCandidates = (includeUnused: boolean): BulkCandidates => {
+    const applySet = new Set<string>();
+    const forceSet = new Set<string>();
+    for (const row of filteredCurrent) {
+      if (!includeUnused && String(row.system || "").trim().toLowerCase() === "unused") continue;
+      const moduleId = asString(row.module).trim();
+      if (!moduleId) continue;
+      const effectiveState = deriveCurrentEffectiveState(row);
+      if (effectiveState === "update") applySet.add(moduleId);
+
+      const hasInstalled = Boolean(asString(row.installedVersion).trim() && asString(row.installedVersion).trim() !== "-");
+      const activeSystem = activeCurrentSystemId || row.relatedSystems[0] || "";
+      const systemTarget = activeSystem
+        ? (currentVersionBySystem[activeSystem] || currentSystemFilter || selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "")
+        : (currentSystemFilter || selectedCurrentVersionBucket?.key || "");
+      const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
+      const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+      const foundryOk = versionWithin(row.compatibility, currentFoundryVersion);
+      const systemOk = versionWithin(sysCompat, systemTarget);
+      const foundryFollowUpOnly = hasVerifiedLaterThanTarget(row.compatibility, currentFoundryVersion);
+      const systemFollowUpOnly = hasVerifiedLaterThanTarget(sysCompat, systemTarget);
+      const canForce = canForceCompatibility({
+        isCurrentTab: true,
+        hasInstalledVersion: hasInstalled,
+        hasMissingDependencies: row.hasMissingDependencies,
+        foundryCompatible: foundryOk,
+        systemCompatible: systemOk,
+        foundryFollowUpOnly,
+        systemFollowUpOnly,
+        allowSystemScopedCheck: Boolean(activeCurrentSystemId),
+        reason: row.reason || "",
+      });
+      const foundryMinLowerThanTarget = hasMinimumLowerThanTarget(row.compatibility, currentFoundryVersion);
+      const systemMinLowerThanTarget = hasMinimumLowerThanTarget(sysCompat, systemTarget);
+      if (canForce && (foundryMinLowerThanTarget || systemMinLowerThanTarget)) {
+        forceSet.add(moduleId);
+      }
+    }
+    return {
+      apply: Array.from(applySet).sort((a, b) => a.localeCompare(b)),
+      forceCompat: Array.from(forceSet).sort((a, b) => a.localeCompare(b)),
+    };
+  };
+
+  const currentBulkDefaultCandidates = useMemo<BulkCandidates>(() => collectCurrentBulkCandidates(false), [
+    filteredCurrent,
+    dependencySuggestionByModule,
+    resolvedSourceByModule,
+    selectedCurrentSuggestContextKey,
+    resolvedSourceByContext,
+    activeCurrentSystemId,
+    currentVersionBySystem,
+    currentSystemFilter,
+    selectedCurrentVersionBucket,
+    currentSystemVersionById,
+    currentFoundryVersion,
+  ]);
+
+  const currentBulkWithUnusedCandidates = useMemo<BulkCandidates>(() => collectCurrentBulkCandidates(true), [
+    filteredCurrent,
+    dependencySuggestionByModule,
+    resolvedSourceByModule,
+    selectedCurrentSuggestContextKey,
+    resolvedSourceByContext,
+    activeCurrentSystemId,
+    currentVersionBySystem,
+    currentSystemFilter,
+    selectedCurrentVersionBucket,
+    currentSystemVersionById,
+    currentFoundryVersion,
+  ]);
+
+  const collectPlanningBulkCandidates = (includeUnused: boolean): BulkCandidates => {
+    const applySet = new Set<string>();
+    for (const row of filteredPlanning) {
+      if (!includeUnused && String(row.system || "").trim().toLowerCase() === "unused") continue;
+      const moduleId = asString(row.module).trim();
+      if (!moduleId) continue;
+      if (derivePlanningEffectiveState(row) === "update") applySet.add(moduleId);
+    }
+    return {
+      apply: Array.from(applySet).sort((a, b) => a.localeCompare(b)),
+      forceCompat: [],
+    };
+  };
+
+  const planningBulkDefaultCandidates = useMemo<BulkCandidates>(() => collectPlanningBulkCandidates(false), [
+    filteredPlanning,
+    dependencySuggestionByModule,
+    resolvedSourceByModule,
+    selectedPlanningSuggestContextKey,
+    resolvedSourceByContext,
+    activePlanningSystemId,
+    planningVersionBySystem,
+    planningSystemVersionFilter,
+    selectedPlanningVersionBucket,
+    planningFoundryFilter,
+    planningContextRowsByModule,
+  ]);
+
+  const planningBulkWithUnusedCandidates = useMemo<BulkCandidates>(() => collectPlanningBulkCandidates(true), [
+    filteredPlanning,
+    dependencySuggestionByModule,
+    resolvedSourceByModule,
+    selectedPlanningSuggestContextKey,
+    resolvedSourceByContext,
+    activePlanningSystemId,
+    planningVersionBySystem,
+    planningSystemVersionFilter,
+    selectedPlanningVersionBucket,
+    planningFoundryFilter,
+    planningContextRowsByModule,
+  ]);
+
+  const activeBulkCandidates = useMemo<BulkCandidates>(() => {
+    if (bulkUpdateScope === "planning") {
+      return bulkUpdateOptions.includeUnused ? planningBulkWithUnusedCandidates : planningBulkDefaultCandidates;
+    }
+    return bulkUpdateOptions.includeUnused ? currentBulkWithUnusedCandidates : currentBulkDefaultCandidates;
+  }, [
+    bulkUpdateScope,
+    bulkUpdateOptions.includeUnused,
+    planningBulkDefaultCandidates,
+    planningBulkWithUnusedCandidates,
+    currentBulkDefaultCandidates,
+    currentBulkWithUnusedCandidates,
+  ]);
+
+  const activeBulkBackupEstimate = useMemo<BulkBackupEstimate>(
+    () => estimateBackupForModules(activeBulkCandidates.apply),
+    [activeBulkCandidates.apply, backupSizeByModule]
+  );
   const planningPage = paginate(planningTableRows, page, 12);
 
   const applyFoundryPath = async () => {
@@ -2842,6 +3013,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       return next;
     });
     setRefreshingModuleById((prev) => ({ ...prev, [moduleId]: true, [moduleId.toLowerCase()]: true }));
+    const spinnerStartedAt = Date.now();
+    const minSpinnerMs = 350;
     try {
       const context = scope === "planning" ? selectedPlanningSuggestContext : selectedCurrentSuggestContext;
       const contextKeyBase = scope === "planning" ? selectedPlanningSuggestContextKey : selectedCurrentSuggestContextKey;
@@ -2873,17 +3046,21 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         asString(suggestion.projectUrl),
         asString(suggestion.manifestUrl),
       );
-      if (!recommendedVersion && !resolvedUrl) {
-        setSuggestResult(`No new compatible release found for ${moduleId}.`);
-      setModuleRefreshStatusById((prev) => ({
-        ...prev,
-        [moduleId]: { kind: "ok", message: "No new compatible release found.", retryable: true },
-        [moduleId.toLowerCase()]: { kind: "ok", message: "No new compatible release found.", retryable: true },
-      }));
-      return;
-    }
+      const hasSuggestedVersion = hasConcreteValue(recommendedVersion);
+      const hasInstalledVersion = hasConcreteValue(row.installedVersion);
+      const noNewerVersion = !hasSuggestedVersion
+        || (hasInstalledVersion && compareVersionAsc(recommendedVersion, row.installedVersion) <= 0);
+      if (noNewerVersion && !resolvedUrl) {
+        setSuggestResult(`No Newer Versions for ${moduleId}.`);
+        setModuleRefreshStatusById((prev) => ({
+          ...prev,
+          [moduleId]: { kind: "ok", message: "No Newer Versions", retryable: true },
+          [moduleId.toLowerCase()]: { kind: "ok", message: "No Newer Versions", retryable: true },
+        }));
+        return;
+      }
       const update: SuggestedResolution = {
-        recommendedVersion: recommendedVersion || undefined,
+        recommendedVersion: hasSuggestedVersion ? recommendedVersion : undefined,
         resolvedUrl: resolvedUrl || undefined,
         compatibility: (suggestion.compatibility as Record<string, unknown> | undefined) || undefined,
         systemCompatibility: (suggestion.systemCompatibility as Record<string, unknown> | undefined) || undefined,
@@ -2897,11 +3074,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         [moduleId]: update,
         [moduleId.toLowerCase()]: update,
       }));
-      setSuggestResult(`Refreshed versions for ${moduleId}. Suggested: ${recommendedVersion || "?"}`);
+      if (noNewerVersion) {
+        setSuggestResult(`No Newer Versions for ${moduleId}.`);
+      } else {
+        setSuggestResult(`Refreshed versions for ${moduleId}. Suggested: ${recommendedVersion}`);
+      }
       setModuleRefreshStatusById((prev) => ({
         ...prev,
-        [moduleId]: { kind: "ok", message: `Suggested ${recommendedVersion || "?"}`, retryable: true },
-        [moduleId.toLowerCase()]: { kind: "ok", message: `Suggested ${recommendedVersion || "?"}`, retryable: true },
+        [moduleId]: { kind: "ok", message: noNewerVersion ? "No Newer Versions" : `Suggested ${recommendedVersion}`, retryable: true },
+        [moduleId.toLowerCase()]: { kind: "ok", message: noNewerVersion ? "No Newer Versions" : `Suggested ${recommendedVersion}`, retryable: true },
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : `Could not refresh versions for ${moduleId}.`;
@@ -2912,6 +3093,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         [moduleId.toLowerCase()]: { kind: "error", message, retryable: true },
       }));
     } finally {
+      const elapsed = Date.now() - spinnerStartedAt;
+      if (elapsed < minSpinnerMs) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, minSpinnerMs - elapsed);
+        });
+      }
       setRefreshingModuleById((prev) => {
         const next = { ...prev };
         delete next[moduleId];
@@ -2935,6 +3122,108 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       forceRefresh: true,
       refreshTarget: { kind: "system", id: cleanId },
     });
+  };
+
+  const openBulkUpdateModal = (scope: BulkUpdateScope) => {
+    const base = scope === "planning" ? planningBulkDefaultCandidates : currentBulkDefaultCandidates;
+    const forceOnly = base.apply.length === 0 && base.forceCompat.length > 0;
+    setBulkUpdateScope(scope);
+    setBulkUpdateOptions({
+      includeUnused: false,
+      forceCompatibility: forceOnly,
+      backupPreviousCurrentVersions: true,
+      backupCurrentModulesData: false,
+    });
+    setBulkUpdateOpen(true);
+  };
+
+  const runBulkUpdate = async () => {
+    if (!foundryConfigured) {
+      setError("Configure Foundry path first.");
+      return;
+    }
+    const applyModules = activeBulkCandidates.apply;
+    const forceCompatModules = activeBulkCandidates.forceCompat;
+    if (applyModules.length === 0 && (!bulkUpdateOptions.forceCompatibility || forceCompatModules.length === 0)) {
+      setError("No actionable modules for selected filters/options.");
+      return;
+    }
+    setBulkUpdateOpen(false);
+    setSuggestResult(`Update All started: apply=${applyModules.length}${bulkUpdateOptions.forceCompatibility ? ` | force-compat=${forceCompatModules.length}` : ""}`);
+    const payloadBase: Record<string, unknown> = {
+      batchSize: 10,
+      includeUnused: bulkUpdateOptions.includeUnused,
+      backupPreviousCurrentVersions: bulkUpdateOptions.backupPreviousCurrentVersions,
+      backupCurrentModulesData: bulkUpdateOptions.backupCurrentModulesData,
+    };
+    if (applyModules.length > 0) {
+      setUiBusyMessage("Updating selected modules...");
+      await submitAndWatch("apply", {
+        ...payloadBase,
+        modules: applyModules,
+      });
+    }
+    if (bulkUpdateOptions.forceCompatibility && forceCompatModules.length > 0) {
+      const targetVersion = bulkUpdateScope === "planning" ? planningFoundryFilter : currentFoundryVersion;
+      if (targetVersion) {
+        setUiBusyMessage("Applying force compatibility...");
+        await submitAndWatch("force-compat", {
+          modules: forceCompatModules,
+          targetVersion,
+        });
+      }
+    }
+  };
+
+  const loadRollbackPlanForRun = async (scanRunId: number) => {
+    const cleanId = Number(scanRunId || 0);
+    if (!Number.isFinite(cleanId) || cleanId <= 0) {
+      setRollbackPlanError("Invalid scan run id.");
+      setRollbackPlanData(null);
+      return;
+    }
+    setRollbackPlanLoading(true);
+    setRollbackPlanError("");
+    try {
+      const plan = await api.rollbackPlan(cleanId);
+      setRollbackPlanData({
+        scanRunId: Number(plan.scanRunId || cleanId),
+        generatedAt: asString(plan.generatedAt),
+        targetVersion: asString(plan.targetVersion),
+        modules: Array.isArray(plan.modules) ? plan.modules.map((item) => asString(item)).filter(Boolean) : [],
+        backupPaths: Array.isArray(plan.backupPaths) ? plan.backupPaths.map((item) => asString(item)).filter(Boolean) : [],
+        notes: asString(plan.notes),
+      });
+    } catch (err) {
+      setRollbackPlanData(null);
+      setRollbackPlanError(err instanceof Error ? err.message : "Could not load rollback plan.");
+    } finally {
+      setRollbackPlanLoading(false);
+    }
+  };
+
+  const openRollbackModal = (scanRunId: number) => {
+    const cleanId = Number(scanRunId || 0);
+    if (!Number.isFinite(cleanId) || cleanId <= 0) {
+      setError("This history row does not have a valid scan run id.");
+      return;
+    }
+    setRollbackTargetScanRunId(cleanId);
+    setRollbackModalOpen(true);
+    setRollbackPlanData(null);
+    setRollbackPlanError("");
+    void loadRollbackPlanForRun(cleanId);
+  };
+
+  const executeRollbackForRun = async () => {
+    const scanRunId = Number(rollbackTargetScanRunId || 0);
+    if (!Number.isFinite(scanRunId) || scanRunId <= 0) {
+      setRollbackPlanError("Invalid scan run id.");
+      return;
+    }
+    setRollbackModalOpen(false);
+    setSuggestResult(`Executing rollback for run #${scanRunId}...`);
+    await submitAndWatch("rollback-batch", { scanRunId });
   };
 
   const openImportPlanPicker = () => {
@@ -3250,7 +3539,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ? Boolean(effectiveRecommended || effectiveUrl)
       : Boolean(effectiveRecommended && compareVersionAsc(effectiveRecommended, item.row.installedVersion) > 0);
     const updatePathCore: ReactNode = (!showArrow || (effectiveState === "ready" && !item.row.hasMissingDependencies))
-      ? (item.row.installedVersion || "-")
+      ? ((!hasInstalled && unresolvedPath) ? "?" : (item.row.installedVersion || "-"))
       : (unresolvedPath ? (pendingResolve ? "Loading..." : "?") : <>{(item.row.installedVersion || "-")} {" \u2192 "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{effectiveRecommended || "?"}</a> : (effectiveRecommended || "?")}</>);
     const updatePathCell = (
       <UpdatePathWithRefresh
@@ -3299,7 +3588,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         ) : effectiveState === "blocked" ? (
           <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
         ) : isUnusedRow ? (
-          <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Ready</span>
+          <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Unused</span>
         ) : (
           <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>
         )}
@@ -3392,7 +3681,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ? Boolean(effectiveRecommended || effectiveUrl)
       : Boolean(effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0);
     const updatePathCore: ReactNode = (!showArrow || (effectiveState === "ready" && !row.hasMissingDependencies))
-      ? (row.installedVersion || "-")
+      ? ((!hasInstalled && unresolvedPath) ? "?" : (row.installedVersion || "-"))
       : (unresolvedPath ? (pendingResolve ? "Loading..." : "?") : <>{(row.installedVersion || "-")} {" \u2192 "} {effectiveUrl ? <a href={effectiveUrl} target="_blank" rel="noreferrer">{(effectiveRecommended || "?")}</a> : (effectiveRecommended || "?")}</>);
     const updatePathCell = (
       <UpdatePathWithRefresh
@@ -3411,7 +3700,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           : effectiveState === "update"
             ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
             : isUnusedRow
-              ? <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Ready</span>
+              ? <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Unused</span>
               : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
       </div>
     );
@@ -3797,7 +4086,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         </div>
       </section>
 
-      {loading ? <section className="panel"><p>Loading data...</p></section> : null}
+      {loading ? (
+        <section className="panel">
+          <AppLoader label="Loading data" detail="Preparing report and compatibility context" />
+        </section>
+      ) : null}
       {error ? <section className="panel"><p className="error">{error}</p></section> : null}
 
       {job ? (
@@ -3891,7 +4184,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             <p style={{ marginTop: 0, marginBottom: 10 }}>No import run selected yet.</p>
           )}
           <h4 style={{ marginTop: 0 }}>History</h4>
-          {importHistoryLoading ? <p style={{ marginTop: 0, marginBottom: 0 }}>Loading import history...</p> : null}
+          {importHistoryLoading ? (
+            <div style={{ marginTop: 0, marginBottom: 0 }}>
+              <AppLoader inline label="Loading import history" />
+            </div>
+          ) : null}
           {!importHistoryLoading && importHistory.length === 0 ? <p style={{ marginTop: 0, marginBottom: 0 }}>No import history yet.</p> : null}
           {!importHistoryLoading && importHistory.length > 0 ? (
             <table className="report-table">
@@ -3933,7 +4230,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               search={showSearch ? search : ""}
               onSearchChange={(value) => { setSearch(value); setPage(1); }}
               statusHeadControl={statusLegendControl}
-              tableHeadAction={<button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured || fixModules.length === 0} onClick={() => void submitAndWatch("apply", { modules: fixModules, batchSize: 10 })}>Update All ({fixModules.length})</button>}
+              tableHeadAction={
+                <button
+                  className="btn secondary btn-xs"
+                  style={{ background: "#3b82f6", color: "#fff" }}
+                  disabled={actionBusy || !foundryConfigured}
+                  onClick={() => openBulkUpdateModal("current")}
+                >
+                  Update All
+                </button>
+              }
               tableBody={currentPage.rows.map((item) => item.kind === "system" ? renderSystemTableRow(item) : renderCurrentModuleRow(item))}
               page={currentPage.page}
               totalPages={currentPage.totalPages}
@@ -3954,6 +4260,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               search={showSearch ? search : ""}
               onSearchChange={(value) => { setSearch(value); setPage(1); }}
               statusHeadControl={statusLegendControl}
+              tableHeadAction={
+                <button
+                  className="btn secondary btn-xs"
+                  style={{ background: "#3b82f6", color: "#fff" }}
+                  disabled={actionBusy || !foundryConfigured}
+                  onClick={() => openBulkUpdateModal("planning")}
+                >
+                  Update All
+                </button>
+              }
               tableLoading={hydrationBusy}
               tableLoadingText={planningHydrationProgress.total > 0
                 ? `Resolving modules for selected context: ${planningHydrationProgress.done}/${planningHydrationProgress.total}`
@@ -3989,44 +4305,26 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 >
                   Run Module Health Check
                 </button>
-                <button
-                  className="btn secondary"
-                  disabled={applyHistoryRows.length === 0}
-                  onClick={async () => {
-                    const latest = applyHistoryRows[0];
-                    const scanRunId = Number(latest?.scanRunId || 0);
-                    if (!scanRunId) return;
-                    try {
-                      const plan = await api.rollbackPlan(scanRunId);
-                      setSuggestResult(`Rollback plan for #${scanRunId}: modules=${(plan.modules || []).join(", ") || "-"} | backups=${(plan.backupPaths || []).length}`);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Could not load rollback plan.");
-                    }
-                  }}
-                >
-                  Show Rollback Plan (Latest)
-                </button>
-                <button
-                  className="btn"
-                  style={{ background: "#ef4444", color: "#fff" }}
-                  disabled={applyHistoryRows.length === 0 || actionBusy || !foundryConfigured}
-                  onClick={async () => {
-                    const latest = applyHistoryRows[0];
-                    const scanRunId = Number(latest?.scanRunId || 0);
-                    if (!scanRunId) return;
-                    try {
-                      const result = await api.rollbackExecute(scanRunId);
-                      setSuggestResult(`Rollback executed for #${scanRunId}: restored=${Number(result.restoredCount || 0)}`);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Could not execute rollback.");
-                    }
-                  }}
-                >
-                  Execute Rollback (Latest)
-                </button>
               </div>
-              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th></tr></thead><tbody>
-                {applyHistoryRows.length === 0 ? <tr><td colSpan={5}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => <tr key={`apply-${idx}`}><td>{asString(row.generatedAt) || "-"}</td><td>{asString(row.targetVersion) || "-"}</td><td>{String(row.modulesChangedCount || 0)}</td><td>{String(row.backupsCreatedCount || 0)}</td><td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td></tr>)}
+              <table className="report-table" style={{ marginBottom: 12 }}><thead><tr><th>Run</th><th>When</th><th>Foundry</th><th>Modules Changed</th><th>Backups Created</th><th>Changed IDs</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead><tbody>
+                {applyHistoryRows.length === 0 ? <tr><td colSpan={7}>No apply history yet.</td></tr> : applyHistoryRows.map((row, idx) => {
+                  const scanRunId = Number(row.scanRunId || 0);
+                  return (
+                    <tr key={`apply-${idx}`}>
+                      <td>{scanRunId > 0 ? `#${scanRunId}` : "-"}</td>
+                      <td>{asString(row.generatedAt) || "-"}</td>
+                      <td>{asString(row.targetVersion) || "-"}</td>
+                      <td>{String(row.modulesChangedCount || 0)}</td>
+                      <td>{String(row.backupsCreatedCount || 0)}</td>
+                      <td>{asArray(row.modulesChanged).map((x) => asString(x.module || x)).filter(Boolean).join(", ") || "-"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: 6 }}>
+                          <button className="btn secondary btn-xs" disabled={scanRunId <= 0 || actionBusy} onClick={() => openRollbackModal(scanRunId)}>Rollback</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody></table>
               <table className="report-table"><thead><tr><th>Module</th><th>Backups</th><th>Size Bytes</th><th>Newest</th></tr></thead><tbody>
                 {filteredBackups.map((row) => <tr key={asString(row.module)}><td>{asString(row.title) || asString(row.module)}</td><td>{String(row.backupCount || 0)}</td><td>{String(row.backupSizeBytes || 0)}</td><td>{asString(row.newestBackupAt) || "-"}</td></tr>)}
@@ -4036,6 +4334,140 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
           
         </section>
+      ) : null}
+
+      {rollbackModalOpen ? (
+        <div className="modal-backdrop" onClick={() => setRollbackModalOpen(false)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>
+              Rollback Run #{rollbackTargetScanRunId || "?"}
+            </h3>
+            <p style={{ marginTop: 0, color: "var(--muted)" }}>
+              Restore module backups created in this apply execution.
+            </p>
+            {rollbackPlanLoading ? (
+              <AppLoader label="Loading rollback plan..." detail="Reading backup metadata" />
+            ) : rollbackPlanError ? (
+              <p style={{ color: "#fca5a5", marginTop: 0 }}>{rollbackPlanError}</p>
+            ) : (
+              <div style={{ border: "1px solid #334155", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <p style={{ marginTop: 0, marginBottom: 6 }}>
+                  Foundry target: <strong>{rollbackPlanData?.targetVersion || "-"}</strong>
+                </p>
+                <p style={{ marginTop: 0, marginBottom: 6 }}>
+                  Modules in run: <strong>{rollbackPlanData?.modules.length || 0}</strong>
+                  {" | "}
+                  Backups found: <strong>{rollbackPlanData?.backupPaths.length || 0}</strong>
+                </p>
+                <p style={{ marginTop: 0, marginBottom: 6 }}>
+                  Generated at: <strong>{rollbackPlanData?.generatedAt || "-"}</strong>
+                </p>
+                {rollbackPlanData?.notes ? (
+                  <p style={{ marginTop: 0, marginBottom: 0, color: "var(--muted)" }}>{rollbackPlanData.notes}</p>
+                ) : null}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setRollbackModalOpen(false)}>Cancel</button>
+              <button
+                className="btn secondary"
+                onClick={() => void loadRollbackPlanForRun(rollbackTargetScanRunId)}
+                disabled={rollbackPlanLoading || actionBusy || rollbackTargetScanRunId <= 0}
+              >
+                Refresh Plan
+              </button>
+              <button
+                className="btn"
+                style={{ background: "#ef4444", color: "#fff" }}
+                disabled={
+                  rollbackPlanLoading
+                  || actionBusy
+                  || !foundryConfigured
+                  || rollbackTargetScanRunId <= 0
+                  || Number(rollbackPlanData?.backupPaths.length || 0) <= 0
+                }
+                onClick={() => void executeRollbackForRun()}
+              >
+                Execute Rollback
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {bulkUpdateOpen ? (
+        <div className="modal-backdrop" onClick={() => setBulkUpdateOpen(false)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>
+              Update All ({bulkUpdateScope === "current" ? "Current" : "Planning"})
+            </h3>
+            <p style={{ marginTop: 0, color: "var(--muted)" }}>
+              Apply updates/install recommendations for modules currently matching the selected filters.
+            </p>
+            <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={bulkUpdateOptions.includeUnused}
+                  onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, includeUnused: event.target.checked }))}
+                />
+                <span>Include Unused</span>
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={bulkUpdateOptions.forceCompatibility}
+                  onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, forceCompatibility: event.target.checked }))}
+                />
+                <span>Force Compatibility</span>
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={bulkUpdateOptions.backupPreviousCurrentVersions}
+                  onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, backupPreviousCurrentVersions: event.target.checked }))}
+                />
+                <span>Backup Previous Current Versions</span>
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={bulkUpdateOptions.backupCurrentModulesData}
+                  onChange={(event) => setBulkUpdateOptions((prev) => ({ ...prev, backupCurrentModulesData: event.target.checked }))}
+                />
+                <span>Backup Current Modules Data</span>
+              </label>
+            </div>
+            <div style={{ border: "1px solid #334155", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+              <p style={{ marginTop: 0, marginBottom: 6 }}>
+                Apply modules: <strong>{activeBulkCandidates.apply.length}</strong>
+                {bulkUpdateOptions.forceCompatibility ? <> | Force-compat modules: <strong>{activeBulkCandidates.forceCompat.length}</strong></> : null}
+              </p>
+              {(activeBulkCandidates.apply.length === 0 && (!bulkUpdateOptions.forceCompatibility || activeBulkCandidates.forceCompat.length === 0)) ? (
+                <p style={{ marginTop: 0, marginBottom: 6, color: "#fbbf24" }}>
+                  No actionable modules for current filters/options.
+                </p>
+              ) : null}
+              <p style={{ marginTop: 0, marginBottom: 0, color: "var(--muted)" }}>
+                Estimated backup size: <strong>{formatBytesCompact(activeBulkBackupEstimate.estimatedBytes)}</strong>
+                {activeBulkBackupEstimate.totalModules > 0
+                  ? ` (known for ${activeBulkBackupEstimate.knownModules}/${activeBulkBackupEstimate.totalModules} modules)`
+                  : ""}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setBulkUpdateOpen(false)}>Cancel</button>
+              <button
+                className="btn secondary"
+                style={{ background: "#3b82f6", color: "#fff" }}
+                disabled={actionBusy || !foundryConfigured || (activeBulkCandidates.apply.length === 0 && (!bulkUpdateOptions.forceCompatibility || activeBulkCandidates.forceCompat.length === 0))}
+                onClick={() => void runBulkUpdate()}
+              >
+                Start Update
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {settingsOpen ? (
@@ -4167,10 +4599,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         <div className="modal-backdrop">
           <section className="panel modal-card" style={{ width: "min(420px, 92%)" }}>
             <h3>Please wait</h3>
-            <p>{uiBusyMessage || "Working..."}</p>
-            <div style={{ height: 10, borderRadius: 999, background: "#1f2937" }}>
-              <div style={{ height: 10, borderRadius: 999, width: "70%", background: "#fbbf24", animation: "pulse-scan 1.2s ease-in-out infinite" }} />
-            </div>
+            <AppLoader label={uiBusyMessage || "Working"} detail="Please keep this window open" />
           </section>
         </div>
       ) : null}

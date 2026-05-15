@@ -16,4 +16,17 @@ describe("UpdatePathWithRefresh", () => {
     expect(html).toContain("<svg");
     expect(html).not.toContain(">Refresh<");
   });
+
+  it("shows loading state while refreshing", () => {
+    const html = renderToStaticMarkup(
+      <UpdatePathWithRefresh
+        content={<span>1.0.0</span>}
+        refreshing
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(html).toContain("aria-label=\"Refreshing module versions\"");
+    expect(html).toContain("aria-busy=\"true\"");
+    expect(html).toContain("refresh-icon-spinning");
+  });
 });

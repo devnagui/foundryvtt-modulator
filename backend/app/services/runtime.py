@@ -945,11 +945,25 @@ def _evaluate_apply_health_gate(data_root: str, selected_modules: list[str]) -> 
     selected_set = {str(item).strip().lower() for item in (selected_modules or []) if str(item).strip()}
     scoped = [row for row in rows if not selected_set or str((row or {}).get("module") or "").strip().lower() in selected_set]
     blocking_rows: list[dict[str, Any]] = []
+    def _is_blocking_issue(issue: str) -> bool:
+        token = str(issue or "").strip().lower()
+        if not token:
+            return False
+        # Missing static assets are noisy in legacy modules and should not block updates.
+        if token.startswith("missing_file:"):
+            return False
+        # Keep malformed/unreadable manifests as hard blockers.
+        if token.startswith("manifest_read_error:"):
+            return True
+        # Unknown issue types remain blocking by default.
+        return True
+
     for row in scoped:
-        issues = row.get("issues") or []
+        issues = [str(item) for item in (row.get("issues") or [])]
         warnings = row.get("warnings") or []
         has_missing_dependency = any(str(item).startswith("missing_dependency:") for item in warnings)
-        if issues or has_missing_dependency:
+        has_blocking_issue = any(_is_blocking_issue(issue) for issue in issues)
+        if has_blocking_issue or has_missing_dependency:
             blocking_rows.append({"module": row.get("module"), "title": row.get("title"), "issues": issues if isinstance(issues, list) else [], "warnings": warnings if isinstance(warnings, list) else []})
     return {"ok": True, "blocked": len(blocking_rows) > 0, "reason": "module_health_gate_failed" if blocking_rows else "module_health_gate_ok", "count": len(scoped), "rows": blocking_rows}
 
@@ -1225,9 +1239,97 @@ def _normalize_manifest_fetch_url(url: str) -> str:
     return clean
 
 
+def _looks_like_foundry_package_url(url: str) -> bool:
+    value = str(url or "").strip()
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    host = str(parsed.netloc or "").lower()
+    path = str(parsed.path or "")
+    return host.endswith("foundryvtt.com") and path.startswith("/packages/")
+
+
+def _project_url_from_manifest_url(url: str) -> str:
+    clean = str(url or "").strip()
+    if not clean:
+        return ""
+    try:
+        parsed = urlparse(clean)
+    except ValueError:
+        return ""
+    host = str(parsed.netloc or "").lower()
+    path = str(parsed.path or "")
+    parts = [part for part in path.split("/") if part]
+    if host == "raw.githubusercontent.com" and len(parts) >= 2:
+        owner, repo = parts[0], parts[1]
+        if owner and repo:
+            return f"https://github.com/{owner}/{repo}"
+    if host in {"github.com", "www.github.com"} and len(parts) >= 2:
+        owner, repo = parts[0], parts[1]
+        if owner and repo:
+            return f"https://github.com/{owner}/{repo}"
+    if host == "gitlab.com" and len(parts) >= 2:
+        owner, repo = parts[0], parts[1]
+        if owner and repo:
+            return f"https://gitlab.com/{owner}/{repo}"
+    return ""
+
+
+def _resolve_foundry_package_source(package_url: str) -> tuple[str, str]:
+    clean = str(package_url or "").strip()
+    if not _looks_like_foundry_package_url(clean):
+        return "", ""
+    try:
+        req = Request(clean, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=12) as response:
+            payload = response.read()
+    except Exception:
+        return "", ""
+    try:
+        html = payload.decode("utf-8", errors="ignore")
+    except Exception:
+        return "", ""
+    if not html:
+        return "", ""
+
+    manifest_candidates = re.findall(r"https?://[^\"'\s<>]+/(?:module|system|manifest)\.json(?:\?[^\"'\s<>]*)?", html, flags=re.IGNORECASE)
+    project_candidates = re.findall(r"https?://(?:www\.)?(?:github\.com|gitlab\.com)/[^\"'\s<>]+", html, flags=re.IGNORECASE)
+
+    clean_manifest = ""
+    clean_project = ""
+    if manifest_candidates:
+        for candidate in manifest_candidates:
+            normalized = _normalize_manifest_fetch_url(candidate)
+            if _looks_like_manifest_url(normalized):
+                clean_manifest = normalized
+                break
+    if project_candidates:
+        for candidate in project_candidates:
+            try:
+                parsed = urlparse(candidate)
+            except ValueError:
+                continue
+            parts = [part for part in str(parsed.path or "").split("/") if part]
+            if len(parts) >= 2:
+                clean_project = f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/{parts[1]}"
+                break
+    if not clean_project and clean_manifest:
+        clean_project = _project_url_from_manifest_url(clean_manifest)
+    return clean_manifest, clean_project
+
+
 def _normalize_source_urls(manifest_url: str, project_url: str) -> tuple[str, str]:
     clean_manifest = str(manifest_url or "").strip()
     clean_project = str(project_url or "").strip()
+    if not clean_manifest and clean_project and _looks_like_foundry_package_url(clean_project):
+        resolved_manifest, resolved_project = _resolve_foundry_package_source(clean_project)
+        if resolved_manifest:
+            clean_manifest = resolved_manifest
+        if resolved_project:
+            clean_project = resolved_project
     if not clean_manifest:
         return "", clean_project
     if clean_project:
