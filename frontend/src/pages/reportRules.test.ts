@@ -32,6 +32,10 @@ describe("reportRules compatibility", () => {
     expect(versionWithin({ minimum: "10", verified: "13.346", maximum: "-" }, "14.359")).toBeNull();
   });
 
+  it("returns uncertain when verified major differs and max is omitted", () => {
+    expect(versionWithin({ minimum: "12", verified: "13" }, "14.361")).toBeNull();
+  });
+
   it("returns compatible when inside constraints", () => {
     expect(versionWithin({ minimum: "13.0", maximum: "13.999", verified: "13.200" }, "13.350")).toBe(true);
     expect(compatDecision({ minimum: "13.0", maximum: "13.999" }, "13.350")).toBe("compatible");
@@ -193,6 +197,27 @@ describe("reportRules force compatibility", () => {
       reason: "HTTP Error 404: Not Found",
     })).toBe(false);
   });
+
+  it("blocks force when failure is follow-up only (verified later target)", () => {
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: false,
+      foundryFollowUpOnly: true,
+      systemCompatible: true,
+      reason: "Foundry follow-up only",
+    })).toBe(false);
+    expect(canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: true,
+      hasMissingDependencies: false,
+      foundryCompatible: true,
+      systemCompatible: false,
+      systemFollowUpOnly: true,
+      reason: "System follow-up only",
+    })).toBe(false);
+  });
 });
 
 describe("reportRules scenario analysis", () => {
@@ -220,5 +245,14 @@ describe("reportRules pills partition", () => {
     const counts = partitionCountsForPills(rows);
     expect(counts).toEqual({ blocked: 2, update: 1, ready: 1, unused: 1 });
     expect(counts.blocked + counts.update + counts.ready + counts.unused).toBe(rows.length);
+  });
+
+  it("counts unused rows in unused bucket, even when blocked", () => {
+    const rows = [
+      { status: "blocked" as const, system: "unused" },
+      { status: "update" as const, system: "unused" },
+    ];
+    const counts = partitionCountsForPills(rows);
+    expect(counts).toEqual({ blocked: 0, update: 0, ready: 0, unused: 2 });
   });
 });

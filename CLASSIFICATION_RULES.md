@@ -6,25 +6,24 @@ Canonical reference for Current/Planning classification, badges, update path, an
 
 - Rules apply to all module rows and system rows.
 - No module-specific hardcode is allowed.
-- Decisions must be derived from selected targets + compatibility metadata + resolved recommendation data.
+- Decisions are derived from selected targets + compatibility metadata + resolved recommendation data.
 
 Inputs:
 - Foundry target
 - System target
 - Compatibility (`minimum`, `verified`, `maximum`)
-- Source availability (`manifestUrl`/`projectUrl`)
+- Source availability (`manifestUrl` / `projectUrl`)
 - Recommendation resolution (contextual + hydrated + cached)
 
 ## 2) Display Ordering
 
 Table ordering:
 1. Group by `system`
-2. Within each system, status order:
-   `blocked` -> `missing` -> `update` -> `ready`
+2. Within each system: `blocked` -> `missing` -> `update` -> `ready`
 3. Then by title
 
 System rows:
-- Always shown on top of the table block (before module rows), unless filtered out by an explicit filter.
+- Always shown at the top block of the table (before module rows), unless explicitly filtered out.
 
 ## 3) Status Classification
 
@@ -36,7 +35,7 @@ When:
 
 Notes:
 - The dependent module is `missing`.
-- The missing dependency module itself is not automatically `missing`.
+- The dependency module itself is not automatically `missing`.
 
 ### 3.2 `blocked`
 
@@ -48,31 +47,35 @@ When:
 ### 3.3 `update`
 
 When:
-- not `missing`/`blocked`, and
-- compatible recommendation exists and is newer than installed.
+- not `missing` / `blocked`, and
+- a compatible recommendation exists and is newer than installed.
 
 ### 3.4 `ready`
 
 When:
-- not `missing`/`blocked`, and
+- not `missing` / `blocked`, and
 - no install/update action is needed.
 
 ## 4) Compatibility Semantics
 
-Supported bound formats:
+Supported formats:
 - plain versions (`13.350`, `5.3.2`)
 - major-only (`13`)
-- wildcards (`5.3.x`, `5.3.*`)
+- wildcard (`5.3.x`, `5.3.*`)
 - comparators (`>=`, `<=`, `>`, `<`, `=`)
 - suffix `+` (`13.350+` = `>=13.350`)
 
-### Open-ended max
+Open-ended tokens:
+- `-`
+- `*`
+- `any`
+- `none`
 
-`maximum` values like `-`, `*`, `any`, `none` are treated as open-ended.
-
-Important:
-- If `verified` major differs from selected target major and max is open-ended, treat as **uncertain** (not incompatible).
-- This avoids false `FX`/`SX` for modules that are effectively open upward.
+Open-ended rules:
+- `maximum` open-ended => upper bound is not enforced.
+- `minimum` open-ended => lower bound is not enforced.
+- `minimum` and `maximum` both open-ended => range bounds are unconstrained; compatibility depends on remaining metadata.
+- If `verified` major differs from selected target major and bounds are open-ended, treat as **uncertain** (not incompatible), to avoid false `FX` / `SX`.
 
 ## 5) Badges
 
@@ -81,37 +84,45 @@ Important:
 Mutually exclusive per row:
 - `F✓` compatible
 - `F✕` incompatible
-- `F?` uncertain
+- `F?` uncertain (generic uncertainty)
 - `F↑` follow-up: verified points to a later selected target
-- `FU` open-ended/uncertain case (verified major mismatch + open max)
+- `F~` uncertain caused by open-ended bounds + verified major mismatch
+
+`F?` vs `F~`:
+- `F?` = generic uncertainty (insufficient/incomplete metadata).
+- `F~` = specific uncertainty from open-ended range with verified major mismatch.
 
 ## 5.2 System badge (`S`) (modules only)
 
 Mutually exclusive per row:
 - `S✓` compatible
 - `S✕` incompatible
-- `S?` uncertain
+- `S?` uncertain (generic uncertainty)
 - `S↑` follow-up: verified points to a later selected system target
-- `SU` open-ended/uncertain case (verified major mismatch + open max)
+- `SU` uncertain caused by open-ended bounds + verified major mismatch
+
+`S?` vs `SU`:
+- `S?` = generic uncertainty (insufficient/incomplete metadata).
+- `SU` = specific uncertainty from open-ended range with verified major mismatch.
 
 Rules:
-- Show `S*` only if module declares system compatibility restrictions.
+- Show `S*` only when module declares system compatibility restrictions.
 - If no system restriction metadata exists, do not render `S`.
-- Tooltips for `S*` must include restricted system ids.
+- `S` tooltips must include restricted system ids.
 
 ## 5.3 Missing dependency badge
 
 - Icon: `!`
-- Tooltip format: `missing dependency: <id1>, <id2>, ...`
+- Tooltip: `missing dependency: <id1>, <id2>, ...`
 
 ## 5.4 System upgrade conflict badge
 
 - Icon: `SC`
-- Current/Planning: shows cross-system recommendation conflict.
+- Current/Planning: shown when different systems suggest different versions for the same module.
 
 ## 6) Tooltip Contract
 
-Compatibility badges include:
+Compatibility tooltip format:
 - `compatible{min: x, verified: y, max: z}`
 
 Follow-up tooltips:
@@ -119,37 +130,37 @@ Follow-up tooltips:
 - `S↑`: `Update Suggested: Verified for system version <verified>. ... | systems: ...`
 
 Open-ended tooltips:
-- `FU`/`SU`: explain open max + verified major mismatch as uncertain (not blocked).
+- `F~` / `SU`: must explain open-ended bounds + verified major mismatch and that status is uncertain (not blocked).
 
-All tooltips must reflect active selected filters/context (never stale context).
+All tooltips must reflect active selected context (never stale context).
 
 ## 7) Update Path + Recommendation Selection
 
 Never show:
 - `- -> -`
-- downgrade path (e.g. `1.7 -> 1.6`)
-- placeholder target like `0.0.0` as real recommendation
+- downgrade path (example `1.7 -> 1.6`)
+- placeholder like `0.0.0` as a real recommendation
 
 Path behavior:
-- If real forward recommendation exists: `installed -> recommended`
-- If recommendation unresolved and source exists: `Loading...`
-- If no source/recommendation: `?`
-- If installed and no forward recommendation: show installed only
+- real forward recommendation => `installed -> recommended`
+- unresolved recommendation with known source => `Loading...`
+- no source/recommendation => `?`
+- installed with no forward recommendation => show installed only
 
-Recommendation selection must ignore:
+Ignore these recommendation candidates:
 - empty
 - `-`
 - `0.0.0`
-- any version `<= installedVersion` for already installed modules
+- for installed modules, any version `<= installedVersion`
 
 ## 8) Not Installed Modules
 
-Source known (`manifestUrl`/`projectUrl`):
+Source known:
 - resolve recommendation and persist metadata
 - show installable path/action when possible
 
 No source:
-- recommendation unknown
+- recommendation remains unknown
 - update path may remain `?`
 
 ## 9) Actions
@@ -166,24 +177,24 @@ Blocked:
 
 Force Compatibility:
 - Current only
-- installed module
+- module is installed
 - compatibility failure exists
-- not missing
-- not 404/not-found
-- minimum bound lower than target (foundry or system)
+- not `missing`
+- not `404/not-found`
+- minimum bound is lower than current target (foundry or system)
 
 ## 10) Scan / Refresh Behavior
 
 Start Scan (`dry-run`):
 - rebuild report
-- enrich recommendations using source data
+- enrich recommendations from source data
 - enrich unresolved dependency actions
 - persist enriched JSON report
 
 Row refresh:
-- calls suggest with `forceRefresh = true`
-- invalidates module suggestion cache for that module id
-- keeps prior row stable on provider error and shows inline error/retry state
+- call suggest endpoint with `forceRefresh = true`
+- invalidate suggestion cache for that module id
+- preserve stable row output on provider error and show inline retryable error state
 
 Provider errors exposed:
 - `provider_not_found`

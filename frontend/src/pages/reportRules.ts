@@ -119,7 +119,7 @@ export function versionWithin(compat: Record<string, unknown> | undefined, targe
   const min = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]);
   const verified = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
   const max = compatValue(compat, ["maximum", "max", "maximumCoreVersion", "maximum_core_version"]);
-  const looseMax = isLooseMaxToken(max);
+  const looseMax = isLooseMaxToken(max) || (!max && Boolean(min));
   const targetMajor = Number.parseInt(target.split(".")[0] || "0", 10);
   const minMajor = Number.parseInt(min.split(".")[0] || "0", 10);
   const maxMajor = Number.parseInt(max.split(".")[0] || "0", 10);
@@ -199,13 +199,20 @@ export function canForceCompatibility(input: {
   hasMissingDependencies: boolean;
   foundryCompatible: boolean | null;
   systemCompatible: boolean | null;
+  foundryFollowUpOnly?: boolean;
+  systemFollowUpOnly?: boolean;
+  allowSystemScopedCheck?: boolean;
   reason: string;
 }): boolean {
   if (!input.isCurrentTab) return false;
   if (!input.hasInstalledVersion) return false;
   if (input.hasMissingDependencies) return false;
   if (isRecommendationNotFound(input.reason)) return false;
-  return input.foundryCompatible === false || input.systemCompatible === false;
+  const foundryFailure = input.foundryCompatible === false && !input.foundryFollowUpOnly;
+  const systemFailure = (input.allowSystemScopedCheck !== false)
+    && input.systemCompatible === false
+    && !input.systemFollowUpOnly;
+  return foundryFailure || systemFailure;
 }
 
 export function scenarioReadinessPercent(input: {
@@ -246,8 +253,11 @@ export function partitionCountsForPills(rows: Array<{ status: PillStatus; system
       continue;
     }
     const status: PillStatus = row.hasMissingDependencies ? "missing" : row.status;
-    if (status === "missing" || status === "blocked") blocked += 1;
-    else if (status === "update") update += 1;
+    if (status === "missing" || status === "blocked") {
+      blocked += 1;
+      continue;
+    }
+    if (status === "update") update += 1;
     else ready += 1;
   }
   return { blocked, update, ready, unused };

@@ -5,7 +5,7 @@ import { UpdatePathWithRefresh } from "../components/UpdatePathWithRefresh";
 import { UpgradePanel } from "../components/UpgradePanel";
 import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
-import { partitionCountsForPills } from "./reportRules";
+import { canForceCompatibility, partitionCountsForPills } from "./reportRules";
 import { buildRelatedSystems } from "./systemKeying";
 
 type ReportPageProps = { onLoggedOut: () => void };
@@ -354,7 +354,7 @@ function versionWithin(compat: Record<string, unknown> | undefined, target: stri
   const min = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]);
   const verified = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
   const max = compatValue(compat, ["maximum", "max", "maximumCoreVersion", "maximum_core_version"]);
-  const looseMax = isLooseMaxToken(max);
+  const looseMax = isLooseMaxToken(max) || (!max && Boolean(min));
   const targetMajor = Number.parseInt(target.split(".")[0] || "0", 10);
   const minMajor = Number.parseInt(min.split(".")[0] || "0", 10);
   const maxMajor = Number.parseInt(max.split(".")[0] || "0", 10);
@@ -385,7 +385,9 @@ function versionWithin(compat: Record<string, unknown> | undefined, target: stri
 }
 function hasLooseMaxCompatibility(compat: Record<string, unknown> | undefined): boolean {
   const max = compatValue(compat, ["maximum", "max", "maximumCoreVersion", "maximum_core_version"]);
-  return isLooseMaxToken(max);
+  if (isLooseMaxToken(max)) return true;
+  const min = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]);
+  return !max && Boolean(min);
 }
 function compatibilityRangeLabel(compat: Record<string, unknown> | undefined): string {
   const min = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]) || "-";
@@ -587,7 +589,7 @@ function reasonBadges(
     });
   } else if (foundryUnbounded) {
     badges.push({
-      icon: "FU",
+      icon: "F~",
       title: `Foundry compatibility open-ended: minimum is satisfied and max is open. Verified points to a different major, so this is treated as uncertain (not blocked). ${foundryRange}`,
       tone: "warn",
     });
@@ -600,7 +602,7 @@ function reasonBadges(
       tone: foundryCompatOk === null ? "warn" : (foundryCompatOk ? "ok" : "fail")
     });
   }
-  if (hasLooseMaxCompatibility(compatibility)) {
+  if (hasLooseMaxCompatibility(compatibility) && !foundryUnbounded) {
     badges.push({
       icon: "L~",
       title: "Loose max compatibility: max is open ('-' or equivalent), so upper bound is not enforced.",
@@ -636,7 +638,7 @@ function reasonBadges(
         tone: systemCompatOk === null ? "warn" : (systemCompatOk ? "ok" : "fail")
       });
     }
-    if (hasLooseMaxCompatibility(systemCompatibility)) {
+    if (hasLooseMaxCompatibility(systemCompatibility) && !systemUnbounded) {
       badges.push({
         icon: "L~",
         title: "Loose system max compatibility: max is open ('-' or equivalent), so upper bound is not enforced.",
@@ -777,6 +779,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [planningSystemVersionFilter, setPlanningSystemVersionFilter] = useState("");
   const [activePlanningSystemId, setActivePlanningSystemId] = useState("");
   const [planningVersionBySystem, setPlanningVersionBySystem] = useState<Record<string, string>>({});
+  const [planningIncludeUnused, setPlanningIncludeUnused] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addModuleOpen, setAddModuleOpen] = useState(false);
   const [foundryRoot, setFoundryRoot] = useState<FoundryRootStatus | null>(null);
@@ -796,8 +799,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [planningContextRowsByModule, setPlanningContextRowsByModule] = useState<Record<string, PlanningContextRow>>({});
   const [refreshingModuleById, setRefreshingModuleById] = useState<Record<string, boolean>>({});
   const [moduleRefreshStatusById, setModuleRefreshStatusById] = useState<Record<string, { kind: "ok" | "error"; message: string; retryable?: boolean }>>({});
-  const [, setPlanningHydrationProgress] = useState<{ total: number; done: number }>({ total: 0, done: 0 });
+  const [planningHydrationProgress, setPlanningHydrationProgress] = useState<{ total: number; done: number }>({ total: 0, done: 0 });
   const [conflictDetail, setConflictDetail] = useState<ConflictDetail | null>(null);
+  const [statusLegendOpen, setStatusLegendOpen] = useState(false);
   const hydrationRunRef = useRef(0);
   const importPlanInputRef = useRef<HTMLInputElement | null>(null);
   const foundryConfigured = Boolean(foundryRoot?.valid);
@@ -1199,7 +1203,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     if (active && next[active] && !currentSystemFilter) {
       setCurrentSystemFilter(next[active]);
     }
-    if (!activeCurrentSystemId && !currentSystemFilter && first) setActiveCurrentSystemId(first);
   }, [currentSystemVersionById, activeCurrentSystemId, currentSystemFilter]);
 
   const currentSystemVersionBuckets = useMemo<SystemVersionBucket[]>(() => {
@@ -1286,14 +1289,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const readinessPct = total > 0 ? Math.round((ready / total) * 100) : 0;
       buckets.push({ key: version, systems, isCurrent, total, ready, update, blocked, missing, readinessPct });
     }
-    const sorted = buckets.sort((a, b) => compareVersionAsc(a.key, b.key));
-    const currentInstalled = Array.from(new Set(Object.values(currentSystemVersionById).map((v) => String(v || "").trim()).filter(Boolean)));
-    if (currentInstalled.length === 0) return sorted;
-    const anchor = currentInstalled.sort((a, b) => compareVersionDesc(a, b))[0];
-    const anchorIndex = sorted.findIndex((bucket) => bucket.key === anchor);
-    if (anchorIndex < 0) return sorted;
-    const start = Math.max(0, anchorIndex - 2);
-    return sorted.slice(start);
+    return buckets.sort((a, b) => compareVersionAsc(a.key, b.key));
   }, [currentSystemVersionById, currentRows, currentSystems, planningTargets, currentFoundryVersion]);
 
   const selectedCurrentVersionBucket = useMemo(
@@ -1592,11 +1588,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason}`.toLowerCase().includes(q) : true));
   }, [selectedCurrentRows, search, currentFilters, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
 
-  const derivePlanningEffectiveState = (row: PlanningRow): ModuleRow["state"] => {
+  function derivePlanningEffectiveState(row: PlanningRow): ModuleRow["state"] {
     const moduleKey = asString(row.module).trim();
     const titleKey = asString(row.title).trim();
-    const precomputed = planningContextRowsByModule[moduleKey] || planningContextRowsByModule[moduleKey.toLowerCase()];
-    const precomputedStatus = asString((precomputed as Record<string, unknown> | undefined)?.status).toLowerCase();
     const depSuggestion = dependencySuggestionByModule[moduleKey] || dependencySuggestionByModule[moduleKey.toLowerCase()] || dependencySuggestionByModule[titleKey] || dependencySuggestionByModule[titleKey.toLowerCase()] || {};
     const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {};
     const contextKey = `${selectedPlanningSuggestContextKey}::${moduleKey}`;
@@ -1605,8 +1599,14 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const rowRecommended = asString(row.recommendedVersion);
     const dependencyRecommended = asString(depSuggestion.recommendedVersion);
     const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
-    const effectiveCompatibility = (hydratedContext.compatibility as Record<string, unknown> | undefined) || row.compatibility;
-    const effectiveSystemCompatibility = (hydratedContext.systemCompatibility as Record<string, unknown> | undefined) || row.systemCompatibility;
+    const hydratedCompatibility = hydratedContext.compatibility as Record<string, unknown> | undefined;
+    const hydratedSystemCompatibility = hydratedContext.systemCompatibility as Record<string, unknown> | undefined;
+    const effectiveCompatibility: Record<string, unknown> = hasCompatibilityMetadata(hydratedCompatibility)
+      ? (hydratedCompatibility || {})
+      : (row.compatibility || {});
+    const effectiveSystemCompatibility: Record<string, unknown> = (hydratedSystemCompatibility && Object.keys(hydratedSystemCompatibility).length > 0)
+      ? hydratedSystemCompatibility
+      : (row.systemCompatibility || {});
     const systemCompatMap = (effectiveSystemCompatibility as Record<string, unknown> | undefined) || {};
     const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
     const effectivePlanningSystemTarget = activeSystem
@@ -1617,17 +1617,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const systemOk = versionWithin(sysCompat, effectivePlanningSystemTarget);
     const hasCompatFailure = foundryOk === false || systemOk === false;
     if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
-    if (precomputedStatus === "missing" || precomputedStatus === "blocked") return "blocked";
-    if (precomputedStatus === "update") return "update";
-    if (precomputedStatus === "ready") return "ready";
     const recommendedCandidates = [hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
     const hasInstalled = hasConcreteValue(row.installedVersion);
+    if (!hasInstalled && hasConcreteValue(effectiveRecommended)) return "update";
     if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) return "update";
     const contextHasDepUpdates = Boolean(hydratedContext.hasDependencyUpdates);
     if (contextHasDepUpdates) return "update";
     return "ready";
-  };
+  }
 
   const currentEffectiveCounts = useMemo(() => {
     return partitionCountsForPills(
@@ -1992,10 +1990,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const sysCompat = compatibilityForSystem(systemCompatMap, targetSystemId);
     const foundryOk = versionWithin(baseline.compatibility, targetFoundryVersion);
     const systemOk = versionWithin(sysCompat, targetSystemVersion);
+    const effectiveRecommended = selectPreferredRecommended([baseline.recommendedVersion], baseline.installedVersion);
+    const hasInstalled = hasConcreteValue(baseline.installedVersion);
     const nextState: ModuleRow["state"] =
       baseline.hasMissingDependencies || foundryOk === false || systemOk === false
         ? "blocked"
-        : baseline.state;
+        : (!hasInstalled && hasConcreteValue(effectiveRecommended))
+          ? "update"
+          : (hasInstalled && hasConcreteValue(effectiveRecommended) && compareVersionAsc(effectiveRecommended, baseline.installedVersion) > 0)
+            ? "update"
+            : "ready";
     return {
       ...baseline,
       state: nextState,
@@ -2005,7 +2009,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const normalizePlanningRowForFoundryOnly = (input: ModuleRow | PlanningRow, targetFoundryVersion: string): PlanningRow => {
     const baseline = normalizeModuleState(input);
     const foundryOk = versionWithin(baseline.compatibility, targetFoundryVersion);
-    const nextState: ModuleRow["state"] = baseline.hasMissingDependencies || foundryOk === false ? "blocked" : baseline.state;
+    const effectiveRecommended = selectPreferredRecommended([baseline.recommendedVersion], baseline.installedVersion);
+    const hasInstalled = hasConcreteValue(baseline.installedVersion);
+    const nextState: ModuleRow["state"] = baseline.hasMissingDependencies || foundryOk === false
+      ? "blocked"
+      : (!hasInstalled && hasConcreteValue(effectiveRecommended))
+        ? "update"
+        : (hasInstalled && hasConcreteValue(effectiveRecommended) && compareVersionAsc(effectiveRecommended, baseline.installedVersion) > 0)
+          ? "update"
+          : "ready";
     return {
       ...baseline,
       state: nextState,
@@ -2050,8 +2062,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningAllSystemsMode = !activePlanningSystemId;
 
   const selectedPlanningRows = useMemo(() => {
+    const includeUnused = planningIncludeUnused;
     if (planningAllSystemsMode) {
-      return projectPlanningRowsFoundryAggregate(selectedPlanningFoundryRows, planningFoundryFilter);
+      const rows = projectPlanningRowsFoundryAggregate(selectedPlanningFoundryRows, planningFoundryFilter);
+      return includeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
     }
     if (!selectedPlanningVersionBucket) return selectedPlanningFoundryRows;
     const plannerRows = selectedPlanningFoundryRows
@@ -2076,13 +2090,14 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     for (const row of projectedFallback) {
       if (!mergedByModule.has(row.module)) mergedByModule.set(row.module, row);
     }
-    return Array.from(mergedByModule.values()).sort((a, b) => {
+    const rows = Array.from(mergedByModule.values()).sort((a, b) => {
       const pa = rowPriority(a.state, a.hasMissingDependencies);
       const pb = rowPriority(b.state, b.hasMissingDependencies);
       if (pa !== pb) return pa - pb;
       return a.title.localeCompare(b.title);
     });
-  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId, currentRows, planningFoundryFilter, planningAllSystemsMode]);
+    return includeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
+  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId, currentRows, planningFoundryFilter, planningAllSystemsMode, planningIncludeUnused]);
 
   const currentSystemUpgradeConflictByModule = useMemo(() => {
     const out: Record<string, ConflictDetail> = {};
@@ -2244,17 +2259,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const installedRows = Array.from(mergedByModule.values()).filter((row) => hasConcreteValue(row.installedVersion));
       return installedRows;
     };
-    const buildRowsForAllSystemsFoundryOnly = (foundryVersion: string): PlanningRow[] =>
-      projectPlanningRowsFoundryAggregate(planningRowsByFoundry[foundryVersion] || [], foundryVersion);
+    const buildRowsForAllSystemsFoundryOnly = (foundryVersion: string): PlanningRow[] => {
+      const rows = projectPlanningRowsFoundryAggregate(planningRowsByFoundry[foundryVersion] || [], foundryVersion);
+      return planningIncludeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
+    };
     for (const foundryVersion of planningMatrixFoundryVersions) {
       for (const columnKey of planningMatrixColumnKeys) {
         const isAllSystemsCell = planningAllSystemsMode && columnKey === "__all__";
         const targetSystemForCell = activePlanningSystemId || planningMatrixSystemId || "";
         const mergedRows = isAllSystemsCell ? buildRowsForAllSystemsFoundryOnly(foundryVersion) : buildRowsForCell(foundryVersion, columnKey);
         const allInstalledRows = (() => {
-          if (isAllSystemsCell) {
-            return projectPlanningRowsFoundryAggregate(planningRowsByFoundry[foundryVersion] || [], foundryVersion);
-          }
+          if (isAllSystemsCell) return buildRowsForAllSystemsFoundryOnly(foundryVersion);
           const plannerRows = (planningRowsByFoundry[foundryVersion] || [])
             .filter((row) => asString(row.targetVersion).trim() === columnKey)
             .map((row) => normalizePlanningRowForTarget(row, foundryVersion, columnKey, targetSystemForCell));
@@ -2271,19 +2286,20 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const total = rows.length;
         const excluded = 0;
         const missing = rows.filter((row) => row.hasMissingDependencies).length;
-        const blocked = rows.filter((row) => !row.hasMissingDependencies && row.state === "blocked").length;
-        const update = rows.filter((row) => row.state === "update").length;
-        const ready = rows.filter((row) => row.state === "ready" && !row.hasMissingDependencies).length;
+        const blocked = rows.filter((row) => !row.hasMissingDependencies && derivePlanningEffectiveState(row) === "blocked").length;
+        const update = rows.filter((row) => derivePlanningEffectiveState(row) === "update").length;
+        const ready = rows.filter((row) => derivePlanningEffectiveState(row) === "ready" && !row.hasMissingDependencies).length;
         const readinessPct = total > 0 ? Math.round(((ready + update) / total) * 100) : 0;
         out[`${foundryVersion}::${columnKey}`] = { rawTotal, excluded, total, ready, update, blocked, missing, readinessPct };
       }
     }
     return out;
-  }, [planningRowsByFoundry, planningMatrixFoundryVersions, planningMatrixColumnKeys, planningAllSystemsMode, activePlanningSystemId, planningMatrixSystemId, currentRows]);
+  }, [planningRowsByFoundry, planningMatrixFoundryVersions, planningMatrixColumnKeys, planningAllSystemsMode, activePlanningSystemId, planningMatrixSystemId, currentRows, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule, planningIncludeUnused]);
 
   useEffect(() => {
     if (tab !== "planning") return;
     if (!model) return;
+    if (hydrationBusy) return;
     const candidateSourceByModule = new Map<string, { manifestUrl: string; projectUrl: string }>();
     for (const row of selectedPlanningRows) {
       const moduleId = asString(row.module).trim();
@@ -2346,14 +2362,20 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       let done = 0;
       for (let index = 0; index < batchAll.length; index += chunkSize) {
         if (hydrationRunRef.current !== runId) return;
-        const chunk = batchAll.slice(index, index + chunkSize);
+      const chunk = batchAll.slice(index, index + chunkSize);
+      const attemptedChunk: Record<string, boolean> = {};
+      for (const item of chunk) {
+        const moduleId = asString(item.moduleId);
+        if (!moduleId) continue;
+        attemptedChunk[`${selectedPlanningSuggestContextKey}::${moduleId}`] = true;
+      }
         try {
           const payload = await api.suggestModulesBatch(chunk, selectedPlanningSuggestContext);
           if (hydrationRunRef.current !== runId) return;
           const rows = Array.isArray(payload.rows) ? payload.rows : [];
           const updates: Record<string, SuggestedResolution> = {};
           const byModule: Record<string, SuggestedResolution> = {};
-          const attempted: Record<string, boolean> = {};
+          const attempted: Record<string, boolean> = { ...attemptedChunk };
           for (const row of rows) {
             const moduleId = asString(row?.moduleId);
             if (!moduleId) continue;
@@ -2379,11 +2401,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             updates[contextKey] = value;
             byModule[moduleId] = value;
           }
-          for (const item of chunk) {
-            const moduleId = asString(item.moduleId);
-            if (!moduleId) continue;
-            attempted[`${selectedPlanningSuggestContextKey}::${moduleId}`] = true;
-          }
           if (Object.keys(attempted).length > 0) {
             setResolvedAttemptedByContext((prev) => ({ ...prev, ...attempted }));
           }
@@ -2403,6 +2420,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         } catch {
           // best-effort hydration; keep UI responsive
         } finally {
+          if (Object.keys(attemptedChunk).length > 0) {
+            setResolvedAttemptedByContext((prev) => ({ ...prev, ...attemptedChunk }));
+          }
           done = Math.min(batchAll.length, done + chunk.length);
           setPlanningHydrationProgress({ total: batchAll.length, done });
         }
@@ -2411,7 +2431,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       setHydrationBusy(false);
       setPlanningHydrationProgress({ total: 0, done: 0 });
     })();
-  }, [tab, model, moduleSources, selectedPlanningRows, selectedPlanningSuggestContext, selectedPlanningSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter]);
+  }, [tab, model, hydrationBusy, moduleSources, selectedPlanningRows, selectedPlanningSuggestContext, selectedPlanningSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter]);
 
   const filteredPlanning = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2488,12 +2508,33 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningTableRows = useMemo<PlanningTableRow[]>(() => {
     const systemRows: Extract<PlanningTableRow, { kind: "system" }>[] = [];
     const includePlanningSystemRow = (_status: "update" | "ready"): boolean => true;
-    if (selectedPlanningVersionBucket) {
-      const selectedTargetFromIndex = planningTargetsByFoundry[planningFoundryFilter];
-      const selectedTarget = selectedTargetFromIndex && typeof selectedTargetFromIndex === "object"
-        ? (selectedTargetFromIndex as Record<string, unknown>)
-        : planningTargets.find((target) => asString(target.foundryVersion).trim() === planningFoundryFilter);
-      const targetSystems = selectedTarget ? (asArray(selectedTarget.systemRows).length > 0 ? asArray(selectedTarget.systemRows) : asArray(selectedTarget.systems)) : [];
+    const selectedTargetFromIndex = planningTargetsByFoundry[planningFoundryFilter];
+    const selectedTarget = selectedTargetFromIndex && typeof selectedTargetFromIndex === "object"
+      ? (selectedTargetFromIndex as Record<string, unknown>)
+      : planningTargets.find((target) => asString(target.foundryVersion).trim() === planningFoundryFilter);
+    const targetSystems = selectedTarget ? (asArray(selectedTarget.systemRows).length > 0 ? asArray(selectedTarget.systemRows) : asArray(selectedTarget.systems)) : [];
+    if (planningAllSystemsMode) {
+      for (const systemId of planningSystemIds) {
+        const systemRef = currentSystems.find((entry) => asString(entry.systemId) === systemId);
+        const targetRef = targetSystems.find((entry) => asString(entry.systemId).trim() === systemId);
+        const installedVersion = asString(systemRef?.installedVersion) || asString((model?.installedSystemVersions || {})[systemId]);
+        const targetVersion = asString(planningVersionBySystem[systemId] || installedVersion || asString(targetRef?.targetVersion) || asString(targetRef?.recommendedVersion) || asString(targetRef?.version));
+        const targetUrl = preferredUpdateUrlFromCandidates(asString(targetRef?.targetUrl), asString(targetRef?.releaseUrl), asString(targetRef?.manifestUrl));
+        const status: "update" | "ready" = (installedVersion && targetVersion && compareVersionAsc(targetVersion, installedVersion) > 0) ? "update" : "ready";
+        if (!includePlanningSystemRow(status)) continue;
+        systemRows.push({
+          kind: "system",
+          key: `planning-system-all-${planningFoundryFilter}-${systemId}-${targetVersion || "-"}`,
+          systemId,
+          usedInWorlds: [],
+          installedVersion: installedVersion || "-",
+          targetVersion: targetVersion || installedVersion || "-",
+          targetUrl,
+          status,
+          compatibility: (targetRef?.compatibility as Record<string, unknown> | undefined) || {},
+        });
+      }
+    } else if (selectedPlanningVersionBucket) {
       for (const systemId of selectedPlanningVersionBucket.systems) {
         if (activePlanningSystemId && systemId !== activePlanningSystemId) continue;
         const systemRef = currentSystems.find((entry) => asString(entry.systemId) === systemId);
@@ -2538,6 +2579,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     model?.installedSystemVersions,
     filteredPlanning,
     planningFilters,
+    planningAllSystemsMode,
+    planningSystemIds,
+    planningVersionBySystem,
   ]);
   const planningPage = paginate(planningTableRows, page, 12);
 
@@ -2923,6 +2967,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     targetUrl: string;
     compatibility: Record<string, unknown>;
   }) => {
+    const rowClassName = item.status === "update" ? "row-status-update" : "row-status-ready";
     const updatePathCore: ReactNode = item.status === "ready"
       ? (item.installedVersion || "-")
       : <>{(item.installedVersion || "-")} {" \u2192 "} {item.targetUrl ? <a href={item.targetUrl} target="_blank" rel="noreferrer">{(item.targetVersion || "-")}</a> : (item.targetVersion || "-")}</>;
@@ -2936,7 +2981,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       />
     );
     return (
-      <tr key={item.key}>
+      <tr key={item.key} className={rowClassName}>
         <td>{item.systemId} <small>(system)</small></td>
         <td>{updatePathCell}</td>
         <td>{reasonBadges(item.status === "update" ? "Update suggested for this system." : "No system update required.", item.compatibility, false, true, null, undefined, false, undefined)}</td>
@@ -2963,8 +3008,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     restrictedSystemIds: string[];
     systemUpgradeConflictTooltip?: string;
     onSystemUpgradeConflictClick?: (() => void) | null;
-  }) => (
-    <tr key={params.key}>
+  }) => {
+    const systemKey = String(params.row.system || "").trim().toLowerCase();
+    const rowClassName = systemKey === "unused"
+      ? "row-status-unused"
+      : (params.row.hasMissingDependencies || params.row.state === "blocked")
+        ? "row-status-blocked"
+        : params.row.state === "update"
+          ? "row-status-update"
+          : "row-status-ready";
+    return (
+    <tr key={params.key} className={rowClassName}>
       <td>
         {params.row.hasMissingDependencies ? <span title={missingDependencyLabel(params.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}
         <span title={params.row.module || "unknown"}>{(params.row.title || "Unknown module")}</span>
@@ -2987,6 +3041,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       <td style={{ textAlign: "right" }}>{params.actionsCell}</td>
     </tr>
   );
+  };
 
   const renderCurrentModuleRow = (item: Extract<CurrentTableRow, { kind: "module" }>) => {
     const moduleKey = asString(item.row.module).trim();
@@ -3034,8 +3089,23 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const hasInstalled = Boolean(asString(item.row.installedVersion).trim() && asString(item.row.installedVersion).trim() !== "-");
     const hasCompatFailure = foundryOk === false || systemOk === false;
     const reason404 = isNotFoundReason(item.row.reason);
+    const isUnusedRow = String(item.row.system || "").trim().toLowerCase() === "unused";
+    const foundryFollowUpOnly = hasVerifiedLaterThanTarget(item.row.compatibility, currentFoundryVersion);
+    const systemFollowUpOnly = hasVerifiedLaterThanTarget(sysCompat, systemTarget);
+    const softCompatibleWindow = (
+      (foundryOk !== false && (foundryFollowUpOnly || hasLooseMaxCompatibility(item.row.compatibility)))
+      || (
+        (!activeCurrentSystemId || showSystemBadge)
+        && systemOk !== false
+        && (systemFollowUpOnly || hasLooseMaxCompatibility(sysCompat))
+      )
+    );
+    const backendBlockedSoftCase = item.row.state === "blocked"
+      && !item.row.hasMissingDependencies
+      && !hasCompatFailure
+      && softCompatibleWindow;
     const effectiveState: ModuleRow["state"] = (item.row.state === "blocked" || item.row.hasMissingDependencies || hasCompatFailure)
-      ? "blocked"
+      ? (backendBlockedSoftCase ? "ready" : "blocked")
       : (!hasInstalled && (effectiveRecommended || effectiveUrl)
         ? "update"
         : (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, item.row.installedVersion) > 0
@@ -3044,8 +3114,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const displayRow: ModuleRow = { ...item.row, state: effectiveState };
     const foundryMinLowerThanTarget = hasMinimumLowerThanTarget(item.row.compatibility, currentFoundryVersion);
     const systemMinLowerThanTarget = hasMinimumLowerThanTarget(sysCompat, systemTarget);
-    const allowForceCompatibility = hasInstalled
-      && hasCompatFailure
+    const compatForceEligible = canForceCompatibility({
+      isCurrentTab: true,
+      hasInstalledVersion: hasInstalled,
+      hasMissingDependencies: item.row.hasMissingDependencies,
+      foundryCompatible: foundryOk,
+      systemCompatible: systemOk,
+      foundryFollowUpOnly,
+      systemFollowUpOnly,
+      // With "All Systems" active, don't decide force-compat from one arbitrary system target.
+      allowSystemScopedCheck: Boolean(activeCurrentSystemId),
+      reason: item.row.reason || "",
+    });
+    const allowForceCompatibility = compatForceEligible
       && !item.row.hasMissingDependencies
       && !reason404
       && (foundryMinLowerThanTarget || systemMinLowerThanTarget);
@@ -3065,9 +3146,22 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         onRefresh={() => void refreshModuleVersions(item.row, "current")}
       />
     );
+    const cautionReady = effectiveState === "ready" && !item.row.hasMissingDependencies && (
+      foundryFollowUpOnly
+      || (Boolean(activeCurrentSystemId) && systemFollowUpOnly)
+    );
     const actionsCell = (
       <div style={{ display: "inline-flex", gap: 6, flexWrap: "nowrap" }}>
-        {(item.row.hasMissingDependencies || effectiveState === "blocked") && !allowForceCompatibility && !effectiveUrl && !effectiveRecommended ? (
+        {cautionReady ? (
+          <span
+            className="btn"
+            aria-disabled="true"
+            title="Ready with follow-up suggestion for newer verified version."
+            style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}
+          >
+            Ready
+          </span>
+        ) : (item.row.hasMissingDependencies || effectiveState === "blocked") && !allowForceCompatibility && !effectiveUrl && !effectiveRecommended ? (
           <>
             <button className="btn" style={{ background: "#f59e0b", color: "#111827", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, padding: 0 }} title="Find Module" aria-label="Find Module" onClick={() => findSourceForModule(item.row.module, item.row.title)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
             <button className="btn secondary" onClick={() => void setModuleSource(item.row.module)}>Set URL</button>
@@ -3088,6 +3182,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button>
         ) : effectiveState === "blocked" ? (
           <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
+        ) : isUnusedRow ? (
+          <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Ready</span>
         ) : (
           <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>
         )}
@@ -3112,6 +3208,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const renderPlanningModuleRow = (item: Extract<PlanningTableRow, { kind: "module" }>) => {
     const row = item.row;
+    const isUnusedRow = String(row.system || "").trim().toLowerCase() === "unused";
     const moduleKey = asString(row.module).trim();
     const titleKey = asString(row.title).trim();
     const source = sourceForRow(moduleSources, moduleKey, titleKey);
@@ -3126,7 +3223,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const hydratedUrl = resolvedSourceByContext[contextKey]?.resolvedUrl || "";
     const precomputedContext = planningContextRowsByModule[moduleKey] || planningContextRowsByModule[moduleKey.toLowerCase()] || {};
     const precomputedRecommended = asString((precomputedContext as Record<string, unknown>).recommendedVersion);
-    const precomputedStatus = asString((precomputedContext as Record<string, unknown>).status).toLowerCase();
     const dependencyRecommended = asString(depSuggestion.recommendedVersion);
     const dependencyUrl = asString(depSuggestion.releaseUrl);
     const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
@@ -3141,8 +3237,14 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
       : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "");
     const hydratedContext = resolvedSourceByContext[contextKey] || {};
-    const effectiveCompatibility = (hydratedContext.compatibility as Record<string, unknown> | undefined) || row.compatibility;
-    const effectiveSystemCompatibility = (hydratedContext.systemCompatibility as Record<string, unknown> | undefined) || row.systemCompatibility;
+    const hydratedCompatibility = hydratedContext.compatibility as Record<string, unknown> | undefined;
+    const hydratedSystemCompatibility = hydratedContext.systemCompatibility as Record<string, unknown> | undefined;
+    const effectiveCompatibility: Record<string, unknown> = hasCompatibilityMetadata(hydratedCompatibility)
+      ? (hydratedCompatibility || {})
+      : (row.compatibility || {});
+    const effectiveSystemCompatibility: Record<string, unknown> = (hydratedSystemCompatibility && Object.keys(hydratedSystemCompatibility).length > 0)
+      ? hydratedSystemCompatibility
+      : (row.systemCompatibility || {});
     const systemCompatMap = (effectiveSystemCompatibility as Record<string, unknown> | undefined) || {};
     const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
     const restrictedIds = systemRestrictionIds(systemCompatMap);
@@ -3158,15 +3260,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const hasAnySource = hasSourceUrls(source) || Boolean(fallbackSource.manifestUrl || fallbackSource.projectUrl);
     const pendingResolve = unresolvedPath && hydrationBusy && hasAnySource;
     const hasInstalled = hasConcreteValue(row.installedVersion);
-    const hasCompatFailure = foundryOk === false || systemOk === false;
     const contextHasDepUpdates = Boolean(hydratedContext.hasDependencyUpdates);
-    let effectiveState: ModuleRow["state"] = "ready";
-    if (row.state === "blocked" || row.hasMissingDependencies || hasCompatFailure) effectiveState = "blocked";
-    else if (precomputedStatus === "missing" || precomputedStatus === "blocked") effectiveState = "blocked";
-    else if (precomputedStatus === "update") effectiveState = "update";
-    else if (precomputedStatus === "ready") effectiveState = "ready";
-    else if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) effectiveState = "update";
-    else if (contextHasDepUpdates) effectiveState = "update";
+    let effectiveState: ModuleRow["state"] = derivePlanningEffectiveState(row);
+    if (effectiveState === "ready") {
+      if (!hasInstalled && hasConcreteValue(effectiveRecommended)) effectiveState = "update";
+      else if (contextHasDepUpdates) effectiveState = "update";
+    }
     const displayRow: ModuleRow = {
       ...row,
       state: effectiveState,
@@ -3195,7 +3294,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
           : effectiveState === "update"
             ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
-            : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
+            : isUnusedRow
+              ? <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Ready</span>
+              : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
       </div>
     );
     return renderModuleTableRow({
@@ -3219,12 +3320,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     <div className="version-pill-row">
       <div
         key="sys-pill-all-current"
-        className="metric-card compact version-pill static"
+        className="metric-card compact version-pill version-pill-all static"
         style={!activeCurrentSystemId ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
         onClick={() => { setActiveCurrentSystemId(""); setPage(1); }}
       >
         <span>All Systems</span>
         <small style={{ color: "#94a3b8", fontSize: 11 }}>Includes foundry-only modules</small>
+        <div className="version-pill-all-spacer" aria-hidden="true" />
       </div>
       {Object.keys(currentSystemVersionById).sort((a, b) => a.localeCompare(b)).map((systemId) => {
         const header = systemId;
@@ -3421,6 +3523,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const planningStatusFilterRow = (
     <div style={{ display: "grid", gap: 6 }}>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
+        <input
+          type="checkbox"
+          checked={planningIncludeUnused}
+          onChange={(event) => {
+            setPlanningIncludeUnused(event.target.checked);
+            setPage(1);
+          }}
+        />
+        Include unused modules in matrix and table totals
+      </label>
       <div className="metrics-row compact" style={{ marginBottom: 0 }}>
         <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{planningEffectiveCounts.blocked}</strong></button>
         <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{planningEffectiveCounts.update}</strong></button>
@@ -3465,10 +3578,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       </div>
     );
   };
+  const currentContextVersionLabel = selectedCurrentVersionBucket?.key
+    || (activeCurrentSystemId ? (currentVersionBySystem[activeCurrentSystemId] || currentSystemVersionById[activeCurrentSystemId] || currentSystemFilter || "-") : (currentSystemFilter || "-"));
   const currentTableContextLabel = `Selected: Foundry ${currentFoundryVersion || "-"} + ${
     activeCurrentSystemId
-      ? `${activeCurrentSystemId} ${selectedCurrentVersionBucket?.key || "-"}`
-      : `All Systems ${selectedCurrentVersionBucket?.key || "-"}`
+      ? `${activeCurrentSystemId} ${currentContextVersionLabel}`
+      : `All Systems ${currentContextVersionLabel}`
   }`;
   const planningTableContextLabel: ReactNode = (
     <span>
@@ -3477,6 +3592,18 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         ? `${activePlanningSystemId} ${planningSystemVersionFilter || "-"}`
         : "All Systems"}
     </span>
+  );
+  const statusLegendControl = (
+    <button
+      type="button"
+      className="btn secondary btn-xs"
+      title="Badge legend"
+      aria-label="Open badge legend"
+      onClick={() => setStatusLegendOpen(true)}
+      style={{ width: 24, height: 24, minWidth: 24, padding: 0, lineHeight: "20px", textAlign: "center" }}
+    >
+      ?
+    </button>
   );
 
   return (
@@ -3644,6 +3771,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               tableContextLabel={currentTableContextLabel}
               search={showSearch ? search : ""}
               onSearchChange={(value) => { setSearch(value); setPage(1); }}
+              statusHeadControl={statusLegendControl}
               tableHeadAction={<button className="btn secondary btn-xs" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured || fixModules.length === 0} onClick={() => void submitAndWatch("apply", { modules: fixModules, batchSize: 10 })}>Update All ({fixModules.length})</button>}
               tableBody={currentPage.rows.map((item) => item.kind === "system" ? renderSystemTableRow(item) : renderCurrentModuleRow(item))}
               page={currentPage.page}
@@ -3664,6 +3792,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               tableContextLabel={planningTableContextLabel}
               search={showSearch ? search : ""}
               onSearchChange={(value) => { setSearch(value); setPage(1); }}
+              statusHeadControl={statusLegendControl}
+              tableLoading={hydrationBusy}
+              tableLoadingText={planningHydrationProgress.total > 0
+                ? `Resolving modules for selected context: ${planningHydrationProgress.done}/${planningHydrationProgress.total}`
+                : `Resolving modules for selected context: 0/${selectedPlanningRows.length}`}
               tableBody={planningPage.rows.map((item) => item.kind === "system" ? renderSystemTableRow(item) : renderPlanningModuleRow(item))}
               page={planningPage.page}
               totalPages={planningPage.totalPages}
@@ -3830,6 +3963,41 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             </table>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button className="btn secondary" onClick={() => setConflictDetail(null)}>Close</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {statusLegendOpen ? (
+        <div className="modal-backdrop" onClick={() => setStatusLegendOpen(false)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Status Badge Legend</h3>
+            <table className="report-table" style={{ marginBottom: 10 }}>
+              <thead>
+                <tr><th>Badge</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>F✓</td><td>Foundry compatibility valid for selected target.</td></tr>
+                <tr><td>F✕</td><td>Foundry compatibility incompatible for selected target.</td></tr>
+                <tr><td>F?</td><td>Foundry compatibility uncertain due to insufficient metadata.</td></tr>
+                <tr><td>F~</td><td>Foundry compatibility open-ended/uncertain (min satisfied, max open, verified in different major).</td></tr>
+                <tr><td>F↑</td><td>Follow-up suggested: verified points to a later Foundry target.</td></tr>
+                <tr><td>S✓</td><td>System compatibility valid for selected target.</td></tr>
+                <tr><td>S✕</td><td>System compatibility incompatible for selected target.</td></tr>
+                <tr><td>S?</td><td>System compatibility uncertain due to insufficient metadata.</td></tr>
+                <tr><td>SU</td><td>System compatibility open-ended/uncertain (min satisfied, max open, verified in different major).</td></tr>
+                <tr><td>S↑</td><td>Follow-up suggested: verified points to a later system target.</td></tr>
+                <tr><td>L~</td><td>Loose/open max compatibility bound (`-`, `*`, `any`, etc.).</td></tr>
+                <tr><td>SC</td><td>System conflict: different suggested versions across systems.</td></tr>
+                <tr><td>!</td><td>Missing dependency (tooltip shows missing module ids).</td></tr>
+                <tr><td>[x]</td><td>Forced compatibility flag is active for this module.</td></tr>
+              </tbody>
+            </table>
+            <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>
+              Colors: green = valid/ready, red = incompatible/blocked, yellow = uncertain/warning, blue = update suggested (including follow-up).
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setStatusLegendOpen(false)}>Close</button>
             </div>
           </section>
         </div>

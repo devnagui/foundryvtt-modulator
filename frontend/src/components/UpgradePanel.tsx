@@ -12,6 +12,8 @@ type UpgradePanelProps = {
   tableHeadAction?: ReactNode;
   statusHeadControl?: ReactNode;
   tableBody: ReactNode;
+  tableLoading?: boolean;
+  tableLoadingText?: string;
   page: number;
   totalPages: number;
   totalItems?: number;
@@ -31,6 +33,8 @@ export function UpgradePanel({
   tableHeadAction,
   statusHeadControl,
   tableBody,
+  tableLoading = false,
+  tableLoadingText = "Loading...",
   page,
   totalPages,
   totalItems = 0,
@@ -50,29 +54,52 @@ export function UpgradePanel({
       {tableContextLabel ? (
         <p style={{ marginTop: 0, marginBottom: 8, color: "var(--muted)", fontSize: 12 }}>{tableContextLabel}</p>
       ) : null}
-      <table className="report-table">
-        <thead>
-          <tr>
-            <th>
-              <input
-                type="search"
-                placeholder="Name Search"
-                value={search}
-                onChange={(event) => onSearchChange(event.target.value)}
-              />
-            </th>
-            <th>Update Path</th>
-            <th>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span>Status</span>
-                {statusHeadControl || null}
-              </div>
-            </th>
-            <th style={{ textAlign: "right" }}>{tableHeadAction || null}</th>
-          </tr>
-        </thead>
-        <tbody>{tableBody}</tbody>
-      </table>
+      <div style={{ position: "relative" }}>
+        <table className="report-table">
+          <thead>
+            <tr>
+              <th>
+                <input
+                  type="search"
+                  placeholder="Name Search"
+                  value={search}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                />
+              </th>
+              <th>Update Path</th>
+              <th>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span>Status</span>
+                  {statusHeadControl || null}
+                </div>
+              </th>
+              <th style={{ textAlign: "right" }}>{tableHeadAction || null}</th>
+            </tr>
+          </thead>
+          <tbody>{tableBody}</tbody>
+        </table>
+        {tableLoading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(2, 6, 23, 0.78)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 2,
+              borderRadius: 10,
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <span style={{ color: "var(--fg)", fontWeight: 700 }}>Calculating compatibility</span>
+              <span style={{ color: "var(--fg)" }}>{tableLoadingText}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
       <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ color: "var(--muted)" }}>Total: {Number(totalItems || 0)}</span>
         <div style={{ display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>

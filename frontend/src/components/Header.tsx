@@ -26,6 +26,7 @@ export function Header({
       <nav>
         {onStartScan ? (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            {scanMetaLabel ? <small style={{ color: "var(--muted)", fontSize: 12 }}>{scanMetaLabel}</small> : null}
             <button
               className={`btn secondary scan-btn ${scanAttention ? "scan-attention" : ""}`}
               onClick={onStartScan}
@@ -39,7 +40,6 @@ export function Header({
               </span>
               <span>Start Scan</span>
             </button>
-            {scanMetaLabel ? <small style={{ color: "var(--muted)", fontSize: 12 }}>{scanMetaLabel}</small> : null}
           </div>
         ) : null}
         {onOpenSettings ? (

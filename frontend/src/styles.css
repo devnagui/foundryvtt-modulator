@@ -168,6 +168,36 @@ body.light-mode {
 .report-table tbody tr:hover {
   background: color-mix(in srgb, var(--panel) 76%, var(--bg-soft) 24%);
 }
+.report-table tbody tr.row-status-blocked td {
+  background: rgba(127, 29, 29, 0.14);
+}
+.report-table tbody tr.row-status-update td {
+  background: rgba(30, 58, 138, 0.13);
+}
+.report-table tbody tr.row-status-ready td {
+  background: rgba(22, 101, 52, 0.12);
+}
+.report-table tbody tr.row-status-unused td {
+  background: rgba(245, 158, 11, 0.24) !important;
+}
+.report-table tbody tr.row-status-blocked td:first-child {
+  border-left: 4px solid #ef4444;
+}
+.report-table tbody tr.row-status-update td:first-child {
+  border-left: 4px solid #3b82f6;
+}
+.report-table tbody tr.row-status-ready td:first-child {
+  border-left: 4px solid #22c55e;
+}
+.report-table tbody tr.row-status-unused td:first-child {
+  border-left: 4px solid #fbbf24 !important;
+}
+.report-table tbody tr.row-status-blocked:hover td,
+.report-table tbody tr.row-status-update:hover td,
+.report-table tbody tr.row-status-ready:hover td,
+.report-table tbody tr.row-status-unused:hover td {
+  filter: brightness(1.08);
+}
 .report-table small { color: var(--muted); }
 .planning-matrix-table th,
 .planning-matrix-table td {
@@ -320,6 +350,18 @@ body.light-mode {
 .version-pill-row .version-pill {
   flex: 0 0 170px;
   max-width: 170px;
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.version-pill-row .version-pill select {
+  margin-top: auto;
+}
+.version-pill-all .version-pill-all-spacer {
+  margin-top: auto;
+  min-height: 31px;
 }
 .metric-card {
   border: 1px solid color-mix(in srgb, var(--line) 85%, #fff 15%);
