@@ -556,7 +556,7 @@ function reasonBadges(
 ) {
   const badges: Array<{ icon: string; title: string; tone: "ok" | "fail" | "warn" | "neutral" | "info"; onActivate?: (() => void) | null }> = [];
   if (hasMissingDependencies) {
-    badges.push({ icon: "??", title: "Missing dependency or unresolved dependency relationship.", tone: "warn" });
+    badges.push({ icon: "!", title: "Missing dependency or unresolved dependency relationship.", tone: "warn" });
   }
   if (forcedCompatibility && Boolean(forcedCompatibility.enabled)) {
     const target = asString(forcedCompatibility.targetVersion) || "-";
@@ -577,9 +577,7 @@ function reasonBadges(
   }
   const foundryRange = compatibilityRangeLabel(compatibility);
   const foundryFollowup = hasVerifiedLaterThanTarget(compatibility, foundryTarget);
-  const foundryUnbounded = foundryCompatOk === null
-    && hasLooseMaxCompatibility(compatibility)
-    && hasVerifiedMajorMismatch(compatibility, foundryTarget);
+  const foundryLoose = hasLooseMaxCompatibility(compatibility);
   if (foundryFollowup) {
     const verified = compatValue(compatibility, ["verified", "compatibleCoreVersion", "compatible_core_version"]) || "?";
     badges.push({
@@ -587,10 +585,19 @@ function reasonBadges(
       title: `Update Suggested: Verified for Foundry version ${verified}. ${foundryRange}`,
       tone: "info",
     });
-  } else if (foundryUnbounded) {
+  } else if (foundryCompatOk === false) {
+    badges.push({
+      icon: "F\u2715",
+      title: `Foundry compatibility incompatible with selected target. ${foundryRange}`,
+      tone: "fail",
+    });
+  } else if (foundryLoose) {
+    const mismatch = hasVerifiedMajorMismatch(compatibility, foundryTarget);
     badges.push({
       icon: "F~",
-      title: `Foundry compatibility open-ended: minimum is satisfied and max is open. Verified points to a different major, so this is treated as uncertain (not blocked). ${foundryRange}`,
+      title: mismatch
+        ? `Foundry compatibility open-ended: minimum is satisfied and max is open. Verified points to a different major, so this is treated as uncertain (not blocked). ${foundryRange}`
+        : `Foundry compatibility open-ended: minimum is satisfied and max is open, so upper bound is uncertain. ${foundryRange}`,
       tone: "warn",
     });
   } else {
@@ -602,20 +609,11 @@ function reasonBadges(
       tone: foundryCompatOk === null ? "warn" : (foundryCompatOk ? "ok" : "fail")
     });
   }
-  if (hasLooseMaxCompatibility(compatibility) && !foundryUnbounded) {
-    badges.push({
-      icon: "L~",
-      title: "Loose max compatibility: max is open ('-' or equivalent), so upper bound is not enforced.",
-      tone: "warn",
-    });
-  }
   if (showSystemBadge) {
     const systemRange = compatibilityRangeLabel(systemCompatibility);
     const systemIdsLabel = restrictedSystemIds.length > 0 ? `systems: ${restrictedSystemIds.join(", ")}` : "systems: -";
     const systemFollowup = hasVerifiedLaterThanTarget(systemCompatibility, systemTarget);
-    const systemUnbounded = systemCompatOk === null
-      && hasLooseMaxCompatibility(systemCompatibility)
-      && hasVerifiedMajorMismatch(systemCompatibility, systemTarget);
+    const systemLoose = hasLooseMaxCompatibility(systemCompatibility);
     if (systemFollowup && !systemUpgradeConflictTooltip) {
       const verified = compatValue(systemCompatibility, ["verified", "compatibleCoreVersion", "compatible_core_version"]) || "?";
       badges.push({
@@ -623,10 +621,19 @@ function reasonBadges(
         title: `Update Suggested: Verified for system version ${verified}. ${systemRange} | ${systemIdsLabel}`,
         tone: "info",
       });
-    } else if (systemUnbounded && !systemUpgradeConflictTooltip) {
+    } else if (systemCompatOk === false) {
       badges.push({
-        icon: "SU",
-        title: `System compatibility open-ended: minimum is satisfied and max is open. Verified points to a different major, so this is treated as uncertain (not blocked). ${systemRange} | ${systemIdsLabel}`,
+        icon: "S\u2715",
+        title: `System compatibility incompatible with selected target. ${systemRange} | ${systemIdsLabel}`,
+        tone: "fail",
+      });
+    } else if (systemLoose && !systemUpgradeConflictTooltip) {
+      const mismatch = hasVerifiedMajorMismatch(systemCompatibility, systemTarget);
+      badges.push({
+        icon: "S~",
+        title: mismatch
+          ? `System compatibility open-ended: minimum is satisfied and max is open. Verified points to a different major, so this is treated as uncertain (not blocked). ${systemRange} | ${systemIdsLabel}`
+          : `System compatibility open-ended: minimum is satisfied and max is open, so upper bound is uncertain. ${systemRange} | ${systemIdsLabel}`,
         tone: "warn",
       });
     } else {
@@ -636,13 +643,6 @@ function reasonBadges(
           ? `System compatibility uncertain: insufficient compatibility metadata. ${systemRange} | ${systemIdsLabel}`
           : (systemCompatOk ? `System compatibility valid for selected target. ${systemRange} | ${systemIdsLabel}` : `System compatibility incompatible with selected target. ${systemRange} | ${systemIdsLabel}`),
         tone: systemCompatOk === null ? "warn" : (systemCompatOk ? "ok" : "fail")
-      });
-    }
-    if (hasLooseMaxCompatibility(systemCompatibility) && !systemUnbounded) {
-      badges.push({
-        icon: "L~",
-        title: "Loose system max compatibility: max is open ('-' or equivalent), so upper bound is not enforced.",
-        tone: "warn",
       });
     }
   }
@@ -660,6 +660,53 @@ function reasonBadges(
     </div>
   );
 }
+function collectBadgeCodes(params: {
+  compatibility: Record<string, unknown> | undefined;
+  hasMissingDependencies: boolean;
+  foundryCompatOk: boolean | null;
+  systemCompatOk: boolean | null;
+  systemCompatibility?: Record<string, unknown> | undefined;
+  showSystemBadge: boolean;
+  forcedCompatibility?: Record<string, unknown>;
+  foundryTarget: string;
+  systemTarget: string;
+  systemUpgradeConflictTooltip?: string;
+}): string[] {
+  const out = new Set<string>();
+  if (params.hasMissingDependencies) out.add("!");
+  if (params.forcedCompatibility && Boolean(params.forcedCompatibility.enabled)) out.add("[x]");
+  if (params.systemUpgradeConflictTooltip) out.add("SC");
+  const foundryFollowup = hasVerifiedLaterThanTarget(params.compatibility, params.foundryTarget);
+  const foundryLoose = hasLooseMaxCompatibility(params.compatibility);
+  if (foundryFollowup) out.add("F\u2191");
+  else if (params.foundryCompatOk === false) out.add("F\u2715");
+  else if (foundryLoose) out.add("F~");
+  else out.add(params.foundryCompatOk === null ? "F?" : (params.foundryCompatOk ? "F\u2713" : "F\u2715"));
+  if (params.showSystemBadge) {
+    const systemFollowup = hasVerifiedLaterThanTarget(params.systemCompatibility, params.systemTarget);
+    const systemLoose = hasLooseMaxCompatibility(params.systemCompatibility);
+    if (systemFollowup && !params.systemUpgradeConflictTooltip) out.add("S\u2191");
+    else if (params.systemCompatOk === false) out.add("S\u2715");
+    else if (systemLoose && !params.systemUpgradeConflictTooltip) out.add("S~");
+    else out.add(params.systemCompatOk === null ? "S?" : (params.systemCompatOk ? "S\u2713" : "S\u2715"));
+  }
+  return Array.from(out);
+}
+const BADGE_FILTER_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: "F\u2713", label: "Foundry valid" },
+  { key: "F\u2715", label: "Foundry incompatible" },
+  { key: "F?", label: "Foundry uncertain" },
+  { key: "F~", label: "Foundry open-ended" },
+  { key: "F\u2191", label: "Foundry follow-up" },
+  { key: "S\u2713", label: "System valid" },
+  { key: "S\u2715", label: "System incompatible" },
+  { key: "S?", label: "System uncertain" },
+  { key: "S~", label: "System open-ended" },
+  { key: "S\u2191", label: "System follow-up" },
+  { key: "SC", label: "System conflict" },
+  { key: "!", label: "Missing dependency" },
+  { key: "[x]", label: "Forced compatibility" },
+];
 function bestRecommendedVersion(row: Record<string, unknown>): string {
   return asString(row.recommendedVersion) || asString(row.targetVersion) || asString(row.latestVersion) || asString(row.version);
 }
@@ -780,6 +827,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [activePlanningSystemId, setActivePlanningSystemId] = useState("");
   const [planningVersionBySystem, setPlanningVersionBySystem] = useState<Record<string, string>>({});
   const [planningIncludeUnused, setPlanningIncludeUnused] = useState(true);
+  const [badgeFilterCodes, setBadgeFilterCodes] = useState<string[]>([]);
+  const [badgeFilterOpen, setBadgeFilterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addModuleOpen, setAddModuleOpen] = useState(false);
   const [foundryRoot, setFoundryRoot] = useState<FoundryRootStatus | null>(null);
@@ -1571,6 +1620,29 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) return "update";
     return "ready";
   };
+  const currentBadgeCodesForRow = (row: ModuleRow): string[] => {
+    const activeSystem = activeCurrentSystemId || row.relatedSystems[0] || "";
+    const systemTarget = activeSystem
+      ? (currentVersionBySystem[activeSystem] || currentSystemFilter || selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "")
+      : (currentSystemFilter || selectedCurrentVersionBucket?.key || "");
+    const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
+    const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+    const showSystemBadge = systemRestrictionIds(systemCompatMap).length > 0;
+    const foundryOk = versionWithin(row.compatibility, currentFoundryVersion);
+    const systemOk = versionWithin(sysCompat, systemTarget);
+    return collectBadgeCodes({
+      compatibility: row.compatibility,
+      hasMissingDependencies: row.hasMissingDependencies,
+      foundryCompatOk: foundryOk,
+      systemCompatOk: systemOk,
+      systemCompatibility: sysCompat,
+      showSystemBadge,
+      forcedCompatibility: row.forcedCompatibility,
+      foundryTarget: currentFoundryVersion,
+      systemTarget,
+      systemUpgradeConflictTooltip: undefined,
+    });
+  };
 
   const filteredCurrent = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1585,8 +1657,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           return effectiveState === filter;
         });
       })
+      .filter((row) => (
+        badgeFilterCodes.length === 0
+          ? true
+          : badgeFilterCodes.some((code) => currentBadgeCodesForRow(row).includes(code))
+      ))
       .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason}`.toLowerCase().includes(q) : true));
-  }, [selectedCurrentRows, search, currentFilters, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
+  }, [selectedCurrentRows, search, currentFilters, badgeFilterCodes, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
 
   function derivePlanningEffectiveState(row: PlanningRow): ModuleRow["state"] {
     const moduleKey = asString(row.module).trim();
@@ -1626,6 +1703,40 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     if (contextHasDepUpdates) return "update";
     return "ready";
   }
+  const planningBadgeCodesForRow = (row: PlanningRow): string[] => {
+    const moduleKey = asString(row.module).trim();
+    const contextKey = `${selectedPlanningSuggestContextKey}::${moduleKey}`;
+    const hydratedContext = resolvedSourceByContext[contextKey] || {};
+    const hydratedCompatibility = hydratedContext.compatibility as Record<string, unknown> | undefined;
+    const hydratedSystemCompatibility = hydratedContext.systemCompatibility as Record<string, unknown> | undefined;
+    const effectiveCompatibility: Record<string, unknown> = hasCompatibilityMetadata(hydratedCompatibility)
+      ? (hydratedCompatibility || {})
+      : (row.compatibility || {});
+    const effectiveSystemCompatibility: Record<string, unknown> = (hydratedSystemCompatibility && Object.keys(hydratedSystemCompatibility).length > 0)
+      ? hydratedSystemCompatibility
+      : (row.systemCompatibility || {});
+    const systemCompatMap = effectiveSystemCompatibility || {};
+    const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
+    const effectivePlanningSystemTarget = activeSystem
+      ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
+      : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "");
+    const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+    const showSystemBadge = systemRestrictionIds(systemCompatMap).length > 0;
+    const foundryOk = versionWithin(effectiveCompatibility, planningFoundryFilter);
+    const systemOk = versionWithin(sysCompat, effectivePlanningSystemTarget);
+    return collectBadgeCodes({
+      compatibility: effectiveCompatibility,
+      hasMissingDependencies: row.hasMissingDependencies,
+      foundryCompatOk: foundryOk,
+      systemCompatOk: systemOk,
+      systemCompatibility: sysCompat,
+      showSystemBadge,
+      forcedCompatibility: row.forcedCompatibility,
+      foundryTarget: planningFoundryFilter,
+      systemTarget: effectivePlanningSystemTarget,
+      systemUpgradeConflictTooltip: undefined,
+    });
+  };
 
   const currentEffectiveCounts = useMemo(() => {
     return partitionCountsForPills(
@@ -2446,8 +2557,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           return effectiveState === filter;
         });
       })
+      .filter((row) => (
+        badgeFilterCodes.length === 0
+          ? true
+          : badgeFilterCodes.some((code) => planningBadgeCodesForRow(row).includes(code))
+      ))
       .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason} ${row.targetVersion}`.toLowerCase().includes(q) : true));
-  }, [selectedPlanningRows, planningFilters, search, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule]);
+  }, [selectedPlanningRows, planningFilters, badgeFilterCodes, search, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule]);
 
   const filteredBackups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -3504,6 +3620,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               </tbody>
             </table>
           </div>
+          <div style={{ marginTop: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
+              <input
+                type="checkbox"
+                checked={planningIncludeUnused}
+                onChange={(event) => {
+                  setPlanningIncludeUnused(event.target.checked);
+                  setPage(1);
+                }}
+              />
+              Include unused modules in matrix and table totals
+            </label>
+          </div>
         </section>
       ) : null}
     </div>
@@ -3523,17 +3652,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const planningStatusFilterRow = (
     <div style={{ display: "grid", gap: 6 }}>
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
-        <input
-          type="checkbox"
-          checked={planningIncludeUnused}
-          onChange={(event) => {
-            setPlanningIncludeUnused(event.target.checked);
-            setPage(1);
-          }}
-        />
-        Include unused modules in matrix and table totals
-      </label>
       <div className="metrics-row compact" style={{ marginBottom: 0 }}>
         <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{planningEffectiveCounts.blocked}</strong></button>
         <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{planningEffectiveCounts.update}</strong></button>
@@ -3594,16 +3712,59 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     </span>
   );
   const statusLegendControl = (
-    <button
-      type="button"
-      className="btn secondary btn-xs"
-      title="Badge legend"
-      aria-label="Open badge legend"
-      onClick={() => setStatusLegendOpen(true)}
-      style={{ width: 24, height: 24, minWidth: 24, padding: 0, lineHeight: "20px", textAlign: "center" }}
-    >
-      ?
-    </button>
+    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button
+        type="button"
+        className="btn secondary btn-xs"
+        title="Filter by badges"
+        aria-label="Filter by badges"
+        onClick={() => setBadgeFilterOpen((v) => !v)}
+        style={{ width: 24, height: 24, minWidth: 24, padding: 0, lineHeight: "20px", textAlign: "center" }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+      </button>
+      {badgeFilterCodes.length > 0 ? (
+        <span className="status-pill update" title="Active badge filters" style={{ minWidth: 20, textAlign: "center", padding: "1px 6px" }}>
+          {badgeFilterCodes.length}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="btn secondary btn-xs"
+        title="Badge legend"
+        aria-label="Open badge legend"
+        onClick={() => setStatusLegendOpen(true)}
+        style={{ width: 24, height: 24, minWidth: 24, padding: 0, lineHeight: "20px", textAlign: "center" }}
+      >
+        ?
+      </button>
+      {badgeFilterOpen ? (
+        <div style={{ position: "absolute", top: 28, right: 0, zIndex: 40, minWidth: 250, maxHeight: 280, overflow: "auto", border: "1px solid #334155", borderRadius: 10, background: "#0f172a", padding: 8, boxShadow: "0 8px 20px rgba(0,0,0,0.35)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <strong style={{ fontSize: 12 }}>Badge Filter</strong>
+            <button className="btn secondary btn-xs" onClick={() => setBadgeFilterCodes([])}>Clear</button>
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {BADGE_FILTER_OPTIONS.map((opt) => (
+              <label key={`badge-filter-${opt.key}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={badgeFilterCodes.includes(opt.key)}
+                  onChange={() => {
+                    setBadgeFilterCodes((prev) => prev.includes(opt.key) ? prev.filter((x) => x !== opt.key) : [...prev, opt.key]);
+                    setPage(1);
+                  }}
+                />
+                <span className="status-badge neutral" style={{ minWidth: 30, height: 22, fontSize: 12 }}>{opt.key}</span>
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 
   return (
@@ -3985,9 +4146,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 <tr><td>S✓</td><td>System compatibility valid for selected target.</td></tr>
                 <tr><td>S✕</td><td>System compatibility incompatible for selected target.</td></tr>
                 <tr><td>S?</td><td>System compatibility uncertain due to insufficient metadata.</td></tr>
-                <tr><td>SU</td><td>System compatibility open-ended/uncertain (min satisfied, max open, verified in different major).</td></tr>
+                <tr><td>S~</td><td>System compatibility open-ended/uncertain (min satisfied, max open, verified in different major).</td></tr>
                 <tr><td>S↑</td><td>Follow-up suggested: verified points to a later system target.</td></tr>
-                <tr><td>L~</td><td>Loose/open max compatibility bound (`-`, `*`, `any`, etc.).</td></tr>
                 <tr><td>SC</td><td>System conflict: different suggested versions across systems.</td></tr>
                 <tr><td>!</td><td>Missing dependency (tooltip shows missing module ids).</td></tr>
                 <tr><td>[x]</td><td>Forced compatibility flag is active for this module.</td></tr>
@@ -4017,6 +4177,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     </main>
   );
 }
+
 
 
 
