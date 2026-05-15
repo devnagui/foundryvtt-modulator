@@ -16,14 +16,21 @@ class FastApiIntegrationTests(unittest.TestCase):
         state_dir = root / "state"
         reports_dir = root / "reports"
         data_root = root / "foundry"
+        ui_dist_dir = root / "frontend-dist"
         (data_root / "Data" / "modules").mkdir(parents=True, exist_ok=True)
         (data_root / "Data" / "worlds").mkdir(parents=True, exist_ok=True)
         state_dir.mkdir(parents=True, exist_ok=True)
         reports_dir.mkdir(parents=True, exist_ok=True)
+        ui_dist_dir.mkdir(parents=True, exist_ok=True)
+        (ui_dist_dir / "index.html").write_text(
+            "<!doctype html><html><body><div id=\"root\"></div></body></html>",
+            encoding="utf-8",
+        )
 
         os.environ["RESOLVER_STATE_DIR"] = str(state_dir)
         os.environ["RESOLVER_REPORTS_DIR"] = str(reports_dir)
         os.environ["RESOLVER_DATA_ROOT"] = str(data_root)
+        os.environ["RESOLVER_UI_DIST_DIR"] = str(ui_dist_dir)
         os.environ["RESOLVER_COOKIE_SECURE"] = "false"
         os.environ["RESOLVER_REQUIRE_FOUNDRY_OFFLINE"] = "false"
 

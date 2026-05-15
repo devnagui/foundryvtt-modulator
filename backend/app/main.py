@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api.router import api_router, legacy_api_router
+from .services.core import load_config
 
 
 def create_app() -> FastAPI:
@@ -21,8 +22,8 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(legacy_api_router, prefix="/api")
 
-    repo_root = Path(__file__).resolve().parents[2]
-    ui_dist_dir = repo_root / "frontend" / "dist"
+    config = load_config()
+    ui_dist_dir = Path(config.ui_dist_dir)
     assets_dir = ui_dist_dir / "assets"
 
     if assets_dir.exists():
