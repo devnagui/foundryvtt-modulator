@@ -4196,19 +4196,23 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             {planningFoundryPillBuckets.map((bucket) => {
               const active = planningFoundryFilter === bucket.key;
               const tone = bucket.readinessPct >= 80 ? "#14532d" : (bucket.readinessPct >= 50 ? "#713f12" : "#7f1d1d");
-              // Compute verified % for this Foundry version
+              // Compute verified % — only check the explicit "verified" field on the
+              // recommended release for this target Foundry.  Do NOT fall back to
+              // compatibleCoreVersion (that's a range, not author verification).
               const foundryRows = (planningAllSystemsMode
                 ? projectPlanningRowsFoundryAggregate(planningRowsByFoundry[bucket.key] || [], bucket.key)
                 : selectedPlanningRows
-              ).filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
+              );
               const foundryTotal = foundryRows.length;
               const foundryVerifiedCount = foundryRows.filter((row) => {
                 const compat = (row.compatibility as Record<string, unknown> | undefined) || {};
-                const ver = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
+                const ver = compatValue(compat, ["verified"]);
                 if (!ver) return false;
-                const verMajor = ver.split(".")[0] || "";
-                const targetMajor = bucket.key.split(".")[0] || "";
-                return verMajor === targetMajor;
+                // Only count exact build matches (e.g. "14.360").
+                // Ignore vague values like "14", "14.*", or anything without a specific build number.
+                const parts = ver.split(".");
+                if (parts.length < 2 || !parts[1] || parts[1] === "*") return false;
+                return ver === bucket.key;
               }).length;
               const foundryVerifiedPct = foundryTotal > 0 ? Math.round((foundryVerifiedCount / foundryTotal) * 100) : 0;
               const verifiedTone = foundryVerifiedPct >= 50 ? "#38bdf8" : foundryVerifiedPct >= 20 ? "#a78bfa" : "#94a3b8";
