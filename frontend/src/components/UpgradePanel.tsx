@@ -3,6 +3,7 @@ import { AppLoader } from "./AppLoader";
 
 type UpgradePanelProps = {
   title: string;
+  titleExtra?: ReactNode;
   topFilterRow?: ReactNode;
   systemFilterRow: ReactNode;
   statusFilterRow: ReactNode;
@@ -25,6 +26,7 @@ type UpgradePanelProps = {
 
 export function UpgradePanel({
   title,
+  titleExtra,
   topFilterRow,
   systemFilterRow,
   statusFilterRow,
@@ -46,7 +48,7 @@ export function UpgradePanel({
 }: UpgradePanelProps) {
   return (
     <article className="panel">
-      <h3>{title}</h3>
+      <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>{title}{titleExtra || null}</h3>
       {wrapFiltersInFieldset ? (
         <fieldset className="filters-fieldset">
           <legend>Filters</legend>
