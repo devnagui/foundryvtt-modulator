@@ -79,36 +79,46 @@ def build_future_upgrade_decision(
             load_module_for_relationship,
             unresolved_world_labels,
         )
+        matrix.append(row)
 
-        # Also resolve unused modules against the target Foundry version.
-        # Release histories are already cached, so this is just re-scoring.
-        target_system_versions = {
-            system_id: details.get("recommendedVersion")
-            for system_id, details in per_system.items()
-            if details.get("recommendedVersion")
-        }
-        unused_resolution_cache: dict[str, Recommendation] = {}
-        unused_outcomes = row.get("moduleOutcomes") or []
+    # Resolve unused modules once against the highest Foundry target,
+    # then inject the outcomes into all targets. Release histories are
+    # already cached from the initial scan, so this is just re-scoring.
+    if matrix:
+        # Pick the highest Foundry target for resolution
+        highest_target = max(matrix, key=lambda r: r.get("targetFoundryVersion", ""))
+        highest_foundry = str(highest_target.get("targetFoundryVersion") or "")
+        # Collect system versions from highest target
+        highest_systems = highest_target.get("systems") or []
+        target_system_versions: dict[str, str] = {}
+        for sys_entry in highest_systems:
+            if isinstance(sys_entry, dict):
+                sid = str(sys_entry.get("systemId") or "")
+                sver = str(sys_entry.get("recommendedVersion") or sys_entry.get("installedVersion") or "")
+                if sid and sver:
+                    target_system_versions[sid] = sver
+
+        resolution_cache: dict[str, Recommendation] = {}
+        unused_outcomes: list[dict] = []
         for module_id in sorted(installed_modules_by_id.keys()):
             if module_id in used_module_ids_set:
                 continue
             module = installed_modules_by_id[module_id]
             recommendation, _ = resolve_module_recommendation(
                 module,
-                target_foundry,
+                highest_foundry,
                 target_system_versions,
                 fetch_module_history,
                 load_module_for_relationship,
-                unused_resolution_cache,
+                resolution_cache,
             )
-            status = _classify_future_module(module, recommendation, target_foundry)
+            status = _classify_future_module(module, recommendation, highest_foundry)
             unused_outcomes.append(
                 {
                     "module": module.module_id,
                     "title": module.title,
                     "installedVersion": module.version,
                     "recommendedVersion": recommendation.recommended_version,
-                    "futureTargetVersion": target_foundry,
                     "status": status,
                     "reason": recommendation.reason,
                     "confidence": recommendation.confidence,
@@ -122,8 +132,16 @@ def build_future_upgrade_decision(
                     "attentionFlag": False,
                 }
             )
-        row["moduleOutcomes"] = unused_outcomes
-        matrix.append(row)
+
+        # Inject unused outcomes into each target's moduleOutcomes
+        for row in matrix:
+            target_fv = str(row.get("targetFoundryVersion") or "")
+            existing = row.get("moduleOutcomes") or []
+            for outcome in unused_outcomes:
+                entry = dict(outcome)
+                entry["futureTargetVersion"] = target_fv
+                existing.append(entry)
+            row["moduleOutcomes"] = existing
 
     matrix.sort(
         key=lambda row: (
