@@ -4199,6 +4199,22 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             {planningFoundryPillBuckets.map((bucket) => {
               const active = planningFoundryFilter === bucket.key;
               const tone = bucket.readinessPct >= 80 ? "#14532d" : (bucket.readinessPct >= 50 ? "#713f12" : "#7f1d1d");
+              // Compute verified % for this Foundry version
+              const foundryRows = (planningAllSystemsMode
+                ? projectPlanningRowsFoundryAggregate(planningRowsByFoundry[bucket.key] || [], bucket.key)
+                : selectedPlanningRows
+              ).filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
+              const foundryTotal = foundryRows.length;
+              const foundryVerifiedCount = foundryRows.filter((row) => {
+                const compat = (row.compatibility as Record<string, unknown> | undefined) || {};
+                const ver = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
+                if (!ver) return false;
+                const verMajor = ver.split(".")[0] || "";
+                const targetMajor = bucket.key.split(".")[0] || "";
+                return verMajor === targetMajor;
+              }).length;
+              const foundryVerifiedPct = foundryTotal > 0 ? Math.round((foundryVerifiedCount / foundryTotal) * 100) : 0;
+              const verifiedTone = foundryVerifiedPct >= 50 ? "#38bdf8" : foundryVerifiedPct >= 20 ? "#a78bfa" : "#94a3b8";
               return (
                 <button
                   key={`planning-foundry-pill-${bucket.key}`}
@@ -4213,10 +4229,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                     setPlanningFoundryFilter(bucket.key);
                     setPage(1);
                   }}
-                  title={`Installable = (Ready ${bucket.ready} + Update ${bucket.update}) / Total ${bucket.total} = ${bucket.readinessPct}% | Blocked ${bucket.blocked}`}
+                  title={`Installable = (Ready ${bucket.ready} + Update ${bucket.update}) / Total ${bucket.total} = ${bucket.readinessPct}% | Blocked ${bucket.blocked} | Verified for v${bucket.key.split(".")[0]}: ${foundryVerifiedPct}%`}
                 >
-                  <span style={{ fontWeight: 700 }}>{bucket.key}</span>
-                  <strong style={{ color: tone }}>{bucket.readinessPct}%</strong>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <span style={{ fontWeight: 700 }}>{bucket.key}</span>
+                    <div style={{ display: "flex", gap: 6, fontSize: "0.75rem" }}>
+                      <strong style={{ color: tone }}>{bucket.readinessPct}%</strong>
+                      <span style={{ color: verifiedTone, fontWeight: 600, opacity: 0.85 }} title={`${foundryVerifiedPct}% modules verified for Foundry v${bucket.key.split(".")[0]}`}>V{foundryVerifiedPct}%</span>
+                    </div>
+                  </div>
                 </button>
               );
             })}
