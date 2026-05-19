@@ -1912,7 +1912,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       allSystemsMode,
     });
     if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
-    const recommendedCandidates = [hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
+    const precomputedContext = planningContextRowsByModule[moduleKey] || planningContextRowsByModule[moduleKey.toLowerCase()] || {};
+    const precomputedRecommended = asString((precomputedContext as Record<string, unknown>).recommendedVersion);
+    const recommendedCandidates = [precomputedRecommended, hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
     const effectiveUrl = preferredUpdateUrlFromCandidates(hydratedResolvedUrl, moduleUrl, dependencyUrl, rowUrl);
     const hasInstalled = hasConcreteValue(row.installedVersion);
