@@ -2099,28 +2099,7 @@ def _suggest_best_release_for_module_with_caches(
             force_refresh=force_refresh,
         )
         history_cache[key] = result
-    return result
-
-
-def export_latest_debug_log(runtime: AppRuntime, max_bytes: int = 2 * 1024 * 1024) -> dict[str, Any]:
-    log_path = runtime.config.reports_dir / "module-resolver-latest.log"
-    if not log_path.exists():
-        raise FileNotFoundError("latest_log_not_found")
-    raw = log_path.read_bytes()
-    truncated = False
-    if max_bytes > 0 and len(raw) > max_bytes:
-        raw = raw[-max_bytes:]
-        truncated = True
-    text = raw.decode("utf-8", errors="replace")
-    return {
-        "ok": True,
-        "fileName": f"modulator-debug-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.log",
-        "content": text,
-        "truncated": truncated,
-        "sizeBytes": len(raw),
-        "sourcePath": str(log_path),
-        "generatedAt": _utc_now_iso(),
-    }
+        return result
 
     def _load_module_for_relationship(relationship):
         installed = installed_modules_by_id.get(str(relationship.module_id or ""))
@@ -2184,6 +2163,27 @@ def export_latest_debug_log(runtime: AppRuntime, max_bytes: int = 2 * 1024 * 102
             for action in recommendation.dependency_actions
         ],
         "warnings": combined_warnings,
+    }
+
+
+def export_latest_debug_log(runtime: AppRuntime, max_bytes: int = 2 * 1024 * 1024) -> dict[str, Any]:
+    log_path = runtime.config.reports_dir / "module-resolver-latest.log"
+    if not log_path.exists():
+        raise FileNotFoundError("latest_log_not_found")
+    raw = log_path.read_bytes()
+    truncated = False
+    if max_bytes > 0 and len(raw) > max_bytes:
+        raw = raw[-max_bytes:]
+        truncated = True
+    text = raw.decode("utf-8", errors="replace")
+    return {
+        "ok": True,
+        "fileName": f"modulator-debug-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.log",
+        "content": text,
+        "truncated": truncated,
+        "sizeBytes": len(raw),
+        "sourcePath": str(log_path),
+        "generatedAt": _utc_now_iso(),
     }
 
 
