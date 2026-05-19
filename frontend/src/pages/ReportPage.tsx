@@ -4195,7 +4195,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           <div className="version-pill-row planning-foundry-pills" style={{ alignItems: "center" }}>
             {planningFoundryPillBuckets.map((bucket) => {
               const active = planningFoundryFilter === bucket.key;
-              const tone = bucket.readinessPct >= 80 ? "#14532d" : (bucket.readinessPct >= 50 ? "#713f12" : "#7f1d1d");
               // Compute verified % — only check the explicit "verified" field on the
               // recommended release for this target Foundry.  Do NOT fall back to
               // compatibleCoreVersion (that's a range, not author verification).
@@ -4235,13 +4234,18 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                     setPlanningFoundryFilter(bucket.key);
                     setPage(1);
                   }}
-                  title={`Verified: ${foundryVerifiedPct}% modules verified for Foundry v${bucket.key.split(".")[0]} | Matching: ${bucket.readinessPct}% (Ready ${bucket.ready} + Update ${bucket.update}) / Total ${bucket.total} | Blocked ${bucket.blocked}`}
                 >
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
                     <span style={{ fontWeight: 700, fontSize: "0.875rem" }}>{bucket.key}</span>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, fontSize: "0.7rem", lineHeight: 1.3 }}>
-                      <span style={{ color: verifiedTone, fontWeight: 600 }}>Verified: {foundryVerifiedPct}%</span>
-                      <span style={{ color: tone, fontWeight: 600 }}>Matching: {bucket.readinessPct}%</span>
+                      <span
+                        style={{ color: verifiedTone, fontWeight: 600 }}
+                        title={`Verified ${foundryVerifiedPct}% (${foundryVerifiedCount}/${foundryTotal}): modules whose recommended release declares compatibility.verified matching Foundry v${targetMajor}. Vague values ("${targetMajor}") count in all pills; specific builds ("${bucket.key}") count only in this pill.`}
+                      >Verified: {foundryVerifiedPct}%</span>
+                      <span
+                        style={{ color: "#e5e7eb", fontWeight: 600 }}
+                        title={`Matching ${bucket.readinessPct}% (${bucket.ready + bucket.update}/${bucket.total}): modules that can run on Foundry ${bucket.key} (Ready ${bucket.ready} + Update ${bucket.update}). Includes verified, min/max range matches, and open-ended compatibility. Blocked: ${bucket.blocked}.`}
+                      >Matching: {bucket.readinessPct}%</span>
                     </div>
                   </div>
                 </button>
