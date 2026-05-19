@@ -2187,17 +2187,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   useEffect(() => {
     if (tab !== "planning") return;
-    if (!planningFoundryFilter || !activePlanningSystemId || !planningSystemVersionFilter) {
+    if (!planningFoundryFilter) {
       setPlanningContextRowsByModule({});
       return;
     }
+    const effectiveSystemId = activePlanningSystemId || "";
+    const effectiveSystemVersion = planningSystemVersionFilter || "";
     let cancelled = false;
     void (async () => {
       try {
         const payload = await api.planningContext(
           planningFoundryFilter,
-          activePlanningSystemId,
-          planningSystemVersionFilter,
+          effectiveSystemId,
+          effectiveSystemVersion,
           6000
         );
         if (cancelled) return;
