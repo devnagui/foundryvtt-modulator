@@ -42,6 +42,7 @@ def build_future_upgrade_decision(
         ]
         for module_id in used_module_ids
     }
+    used_module_ids_set = set(used_module_ids)
 
     matrix = []
     system_recommendations: dict[str, list[dict]] = {}
@@ -78,6 +79,50 @@ def build_future_upgrade_decision(
             load_module_for_relationship,
             unresolved_world_labels,
         )
+
+        # Also resolve unused modules against the target Foundry version.
+        # Release histories are already cached, so this is just re-scoring.
+        target_system_versions = {
+            system_id: details.get("recommendedVersion")
+            for system_id, details in per_system.items()
+            if details.get("recommendedVersion")
+        }
+        unused_resolution_cache: dict[str, Recommendation] = {}
+        unused_outcomes = row.get("moduleOutcomes") or []
+        for module_id in sorted(installed_modules_by_id.keys()):
+            if module_id in used_module_ids_set:
+                continue
+            module = installed_modules_by_id[module_id]
+            recommendation, _ = resolve_module_recommendation(
+                module,
+                target_foundry,
+                target_system_versions,
+                fetch_module_history,
+                load_module_for_relationship,
+                unused_resolution_cache,
+            )
+            status = _classify_future_module(module, recommendation, target_foundry)
+            unused_outcomes.append(
+                {
+                    "module": module.module_id,
+                    "title": module.title,
+                    "installedVersion": module.version,
+                    "recommendedVersion": recommendation.recommended_version,
+                    "futureTargetVersion": target_foundry,
+                    "status": status,
+                    "reason": recommendation.reason,
+                    "confidence": recommendation.confidence,
+                    "source": recommendation.source,
+                    "manifestUrl": recommendation.manifest_url,
+                    "downloadUrl": recommendation.download_url,
+                    "compatibility": recommendation.compatibility,
+                    "systemCompatibility": recommendation.system_compatibility,
+                    "forcedCompatibility": _forced_compatibility_payload(module),
+                    "releasePublishedAt": recommendation.release_published_at,
+                    "attentionFlag": False,
+                }
+            )
+        row["moduleOutcomes"] = unused_outcomes
         matrix.append(row)
 
     matrix.sort(
