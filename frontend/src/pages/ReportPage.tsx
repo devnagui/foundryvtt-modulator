@@ -2210,9 +2210,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       if (fallback) next[systemId] = fallback;
     }
     if (Object.keys(next).length > 0) {
-      setPlanningVersionBySystem((prev) => ({ ...prev, ...next }));
+      setPlanningVersionBySystem((prev) => ({ ...next, ...prev }));
     }
-    if (activePlanningSystemId && next[activePlanningSystemId]) setPlanningSystemVersionFilter(next[activePlanningSystemId]);
+    if (activePlanningSystemId && next[activePlanningSystemId]) {
+      setPlanningSystemVersionFilter((prev) => prev || next[activePlanningSystemId]);
+    }
   }, [planningSystemIds, planningVersionsBySystem, currentSystemVersionById, activePlanningSystemId]);
 
   useEffect(() => {
