@@ -1,0 +1,138 @@
+{
+    "id": "ActiveAuras",
+    "title": "Active Auras",
+    "description": "Active Auras allows effects to br provided via auras from characters, drawings and templates",
+    "license": "MIT License",
+    "authors": [
+        {
+            "name": "Kandashi"
+        },
+        {
+            "name": "MrPrimate"
+        }
+    ],
+    "url": "https://github.com/kandashi/Active-Auras",
+    "bugs": "https://github.com/kandashi/Active-Auras/issues",
+    "flags": {},
+    "version": "0.12.7",
+    "compatibility": {
+        "minimum": 12,
+        "verified": 13,
+        "maximum": 13
+    },
+    "esmodules": [
+        "src/index.mjs"
+    ],
+    "languages": [
+        {
+            "lang": "cs",
+            "name": "Čeština",
+            "path": "lang/cs.json"
+        },
+        {
+            "lang": "de",
+            "name": "German",
+            "path": "lang/de.json"
+        },
+        {
+            "lang": "en",
+            "name": "English",
+            "path": "lang/en.json"
+        },
+        {
+            "lang": "es",
+            "name": "Español",
+            "path": "lang/es.json"
+        },
+        {
+            "lang": "fr",
+            "name": "French",
+            "path": "lang/fr.json"
+        },
+        {
+            "lang": "it",
+            "name": "Italiano",
+            "path": "lang/it.json"
+        },
+        {
+            "lang": "ja",
+            "name": "日本語",
+            "path": "lang/ja.json"
+        },
+        {
+            "lang": "ko",
+            "name": "Korean",
+            "path": "lang/ko.json"
+        },
+        {
+            "lang": "pt-BR",
+            "name": "Português (Brasil)",
+            "path": "lang/pt-BR.json"
+        },
+        {
+            "lang": "zh-tw",
+            "name": "正體中文",
+            "path": "lang/zh-tw.json"
+        }
+    ],
+    "packs": [
+        {
+            "name": "aa-aura-items",
+            "label": "Active Auras Auras",
+            "path": "packs/AuraItems",
+            "type": "Item",
+            "system": "dnd5e",
+            "ownership": {
+                "PLAYER": "OBSERVER",
+                "ASSISTANT": "OWNER"
+            }
+        },
+        {
+            "name": "aa-zone-actors",
+            "label": "Active Auras Zone Actors",
+            "path": "packs/ZoneActors",
+            "type": "Actor",
+            "system": "dnd5e",
+            "ownership": {
+                "PLAYER": "OBSERVER",
+                "ASSISTANT": "OWNER"
+            }
+        },
+        {
+            "name": "aa-macros",
+            "label": "Active Auras Macros",
+            "path": "packs/Macros",
+            "type": "Macro",
+            "ownership": {
+                "PLAYER": "OBSERVER",
+                "ASSISTANT": "OWNER"
+            }
+        }
+    ],
+    "packFolders": [
+        {
+            "name": "Active Auras",
+            "sorting": "m",
+            "packs": [
+                "aa-aura-items",
+                "aa-zone-actors",
+                "aa-macros"
+            ]
+        }
+    ],
+    "relationships": {
+        "requires": [
+            {
+                "id": "socketlib"
+            },
+            {
+                "id": "lib-wrapper"
+            }
+        ]
+    },
+    "socket": true,
+    "manifest": "https://github.com/kandashi/Active-Auras/releases/latest/download/module.json",
+    "download": "https://github.com/kandashi/Active-Auras/releases/download/0.12.7/module.zip",
+    "protected": false,
+    "coreTranslation": false
+}

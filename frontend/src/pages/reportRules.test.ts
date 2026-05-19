@@ -6,7 +6,9 @@ import {
   isRecommendationNotFound,
   missingDependencyLabel,
   partitionCountsForPills,
+  planningReadinessFromRows,
   parseMissingDependencies,
+  planningHasCompatFailure,
   rowPriorityForStatus,
   scenarioReadinessPercent,
   scenarioScore,
@@ -254,5 +256,74 @@ describe("reportRules pills partition", () => {
     ];
     const counts = partitionCountsForPills(rows);
     expect(counts).toEqual({ blocked: 0, update: 0, ready: 0, unused: 2 });
+  });
+});
+
+describe("reportRules planning filters regression", () => {
+  it("ignores system incompatibility in All Systems mode", () => {
+    expect(planningHasCompatFailure({
+      foundryCompatible: true,
+      systemCompatible: false,
+      allSystemsMode: true,
+    })).toBe(false);
+  });
+
+  it("keeps system incompatibility when a specific system is selected", () => {
+    expect(planningHasCompatFailure({
+      foundryCompatible: true,
+      systemCompatible: false,
+      allSystemsMode: false,
+    })).toBe(true);
+  });
+
+  it("always blocks when foundry compatibility is incompatible", () => {
+    expect(planningHasCompatFailure({
+      foundryCompatible: false,
+      systemCompatible: true,
+      allSystemsMode: true,
+    })).toBe(true);
+    expect(planningHasCompatFailure({
+      foundryCompatible: false,
+      systemCompatible: true,
+      allSystemsMode: false,
+    })).toBe(true);
+  });
+
+  it("does not block uncertain foundry compatibility (F~ / F?) by itself", () => {
+    expect(planningHasCompatFailure({
+      foundryCompatible: null,
+      systemCompatible: true,
+      allSystemsMode: true,
+    })).toBe(false);
+    expect(planningHasCompatFailure({
+      foundryCompatible: null,
+      systemCompatible: true,
+      allSystemsMode: false,
+    })).toBe(false);
+  });
+
+  it("computes planning readiness from row-state buckets (ready+update over total)", () => {
+    const rows = [
+      ...Array.from({ length: 52 }, () => ({ status: "ready" as const, system: "dnd5e" })),
+      ...Array.from({ length: 19 }, () => ({ status: "update" as const, system: "dnd5e" })),
+      ...Array.from({ length: 20 }, () => ({ status: "blocked" as const, system: "dnd5e" })),
+    ];
+    const summary = planningReadinessFromRows(rows);
+    expect(summary.total).toBe(91);
+    expect(summary.ready).toBe(52);
+    expect(summary.update).toBe(19);
+    expect(summary.blocked).toBe(20);
+    expect(summary.readinessPct).toBe(78);
+  });
+
+  it("matches expected readiness for 23 incompatible in 91 total", () => {
+    const rows = [
+      ...Array.from({ length: 68 }, () => ({ status: "update" as const, system: "dnd5e" })),
+      ...Array.from({ length: 23 }, () => ({ status: "blocked" as const, system: "dnd5e" })),
+    ];
+    const summary = planningReadinessFromRows(rows);
+    expect(summary.total).toBe(91);
+    expect(summary.blocked).toBe(23);
+    expect(summary.readinessPct).toBe(75);
   });
 });

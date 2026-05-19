@@ -6,6 +6,7 @@ type UpgradePanelProps = {
   topFilterRow?: ReactNode;
   systemFilterRow: ReactNode;
   statusFilterRow: ReactNode;
+  wrapFiltersInFieldset?: boolean;
   actionsRow?: ReactNode;
   tableContextLabel?: ReactNode;
   search: string;
@@ -27,6 +28,7 @@ export function UpgradePanel({
   topFilterRow,
   systemFilterRow,
   statusFilterRow,
+  wrapFiltersInFieldset = true,
   actionsRow,
   tableContextLabel,
   search,
@@ -45,12 +47,20 @@ export function UpgradePanel({
   return (
     <article className="panel">
       <h3>{title}</h3>
-      <fieldset className="filters-fieldset">
-        <legend>Filters</legend>
-        {topFilterRow ? topFilterRow : null}
-        {systemFilterRow}
-        {statusFilterRow}
-      </fieldset>
+      {wrapFiltersInFieldset ? (
+        <fieldset className="filters-fieldset">
+          <legend>Filters</legend>
+          {topFilterRow ? topFilterRow : null}
+          {systemFilterRow}
+          {statusFilterRow}
+        </fieldset>
+      ) : (
+        <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+          {topFilterRow ? topFilterRow : null}
+          {systemFilterRow}
+          {statusFilterRow}
+        </div>
+      )}
       {actionsRow ? actionsRow : null}
       {tableContextLabel ? (
         <p style={{ marginTop: 0, marginBottom: 8, color: "var(--muted)", fontSize: 12 }}>{tableContextLabel}</p>

@@ -2,6 +2,7 @@ export type CompatDecision = "compatible" | "incompatible" | "uncertain";
 export type PresentationStatus = "missing" | "blocked" | "update" | "ready";
 export type PillStatus = PresentationStatus | "unused";
 export type PillCounts = { blocked: number; update: number; ready: number; unused: number };
+export type PlanningReadinessSummary = PillCounts & { total: number; readinessPct: number };
 
 function compatValue(compat: Record<string, unknown> | undefined, keys: string[]): string {
   if (!compat) return "";
@@ -181,6 +182,16 @@ export function classifyPresentationStatus(input: {
   return "ready";
 }
 
+export function planningHasCompatFailure(input: {
+  foundryCompatible: boolean | null;
+  systemCompatible: boolean | null;
+  allSystemsMode: boolean;
+}): boolean {
+  if (input.foundryCompatible === false) return true;
+  if (input.allSystemsMode) return false;
+  return input.systemCompatible === false;
+}
+
 export function rowPriorityForStatus(status: PresentationStatus): number {
   if (status === "missing") return 0;
   if (status === "blocked") return 1;
@@ -261,4 +272,11 @@ export function partitionCountsForPills(rows: Array<{ status: PillStatus; system
     else ready += 1;
   }
   return { blocked, update, ready, unused };
+}
+
+export function planningReadinessFromRows(rows: Array<{ status: PillStatus; system?: string; hasMissingDependencies?: boolean }>): PlanningReadinessSummary {
+  const counts = partitionCountsForPills(rows);
+  const total = Math.max(0, rows.length - counts.unused);
+  const readinessPct = total > 0 ? Math.round(((counts.ready + counts.update) / total) * 100) : 0;
+  return { ...counts, total, readinessPct };
 }

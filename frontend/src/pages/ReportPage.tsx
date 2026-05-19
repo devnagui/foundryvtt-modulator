@@ -6,7 +6,7 @@ import { UpdatePathWithRefresh } from "../components/UpdatePathWithRefresh";
 import { UpgradePanel } from "../components/UpgradePanel";
 import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel, type UpdateArtifactSummary } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
-import { canForceCompatibility, partitionCountsForPills } from "./reportRules";
+import { canForceCompatibility, partitionCountsForPills, planningHasCompatFailure } from "./reportRules";
 import { buildRelatedSystems } from "./systemKeying";
 
 type ReportPageProps = { onLoggedOut: () => void };
@@ -770,6 +770,19 @@ function hasSourceUrls(source: Partial<ModuleSourceRow> | undefined): boolean {
 function looksLikeManifestUrl(url: string): boolean {
   return /\/(module|system|manifest)\.json(?:$|[?#])/i.test(asString(url).trim());
 }
+function projectPageUrl(manifestUrl: string, projectUrl: string, releaseUrl: string): string {
+  const proj = asString(projectUrl).trim();
+  if (proj && (proj.includes("github.com") || proj.includes("gitlab.com"))) return proj;
+  for (const raw of [manifestUrl, releaseUrl]) {
+    const url = asString(raw).trim();
+    if (!url) continue;
+    const ghMatch = url.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+)/i);
+    if (ghMatch) return `https://github.com/${ghMatch[1]}`;
+    const glMatch = url.match(/^https?:\/\/gitlab\.com\/([^/]+\/[^/]+)/i);
+    if (glMatch) return `https://gitlab.com/${glMatch[1]}`;
+  }
+  return "";
+}
 function sourceFromReleaseUrl(url: string): { manifestUrl: string; projectUrl: string } {
   const clean = asString(url).trim();
   if (!clean) return { manifestUrl: "", projectUrl: "" };
@@ -878,7 +891,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [planningSystemVersionFilter, setPlanningSystemVersionFilter] = useState("");
   const [activePlanningSystemId, setActivePlanningSystemId] = useState("");
   const [planningVersionBySystem, setPlanningVersionBySystem] = useState<Record<string, string>>({});
-  const [planningIncludeUnused, setPlanningIncludeUnused] = useState(true);
   const [badgeFilterCodes, setBadgeFilterCodes] = useState<string[]>([]);
   const [badgeFilterOpen, setBadgeFilterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1153,6 +1165,11 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     }
     return bySystem;
   }, [worldUsage]);
+  const readyRowsFromSystem = (system: Record<string, unknown>): Array<Record<string, unknown>> => {
+    const readyRows = asArray((system as { readyModuleRows?: unknown }).readyModuleRows);
+    if (readyRows.length > 0) return readyRows;
+    return asArray((system as { compatibleModuleRows?: unknown }).compatibleModuleRows);
+  };
 
   const currentRows = useMemo<ModuleRow[]>(() => {
     const rows: ModuleRow[] = [];
@@ -1183,7 +1200,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const rowMissingCount = asArray(row.missingDependencies).length + unresolvedDependencyCount(row);
         rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "update"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row) });
       }
-      for (const row of asArray(system.compatibleModuleRows)) {
+      for (const row of readyRowsFromSystem(system)) {
         const moduleId = cleanModuleId(asString(row.module));
         if (!moduleId) continue;
         if (!isUsedByAnyWorld(moduleId)) continue;
@@ -1194,13 +1211,14 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "ready"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row) });
       }
     }
+    const hasCurrentBucketModules = rows.length > 0;
     for (const item of asArray(model?.results)) {
       const moduleId = cleanModuleId(asString(item.module));
       if (!moduleId) continue;
       const compatSystems = Object.keys((item.systemCompatibility as Record<string, unknown> | undefined) || {});
       const usageSystems = Array.from((moduleUsage.get(moduleId)?.systems || new Set<string>()));
 
-      if (rows.length === 0) {
+      if (!hasCurrentBucketModules) {
         const installed = asString(item.installedVersion);
         const recommended = asString(item.recommendedVersion);
         const state: ModuleRow["state"] =
@@ -1386,13 +1404,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     for (const [systemId, installedVersion] of Object.entries(currentSystemVersionById)) {
       if (installedVersion) next[systemId] = installedVersion;
     }
-    setCurrentVersionBySystem((prev) => ({ ...prev, ...next }));
+    setCurrentVersionBySystem((prev) => {
+      let changed = false;
+      for (const [k, v] of Object.entries(next)) {
+        if (prev[k] !== v) { changed = true; break; }
+      }
+      return changed ? { ...prev, ...next } : prev;
+    });
     const first = Object.keys(currentSystemVersionById)[0] || "";
-    const active = activeCurrentSystemId || (currentSystemFilter ? "" : first);
-    if (active && next[active] && !currentSystemFilter) {
-      setCurrentSystemFilter(next[active]);
+    const active = activeCurrentSystemId || first;
+    if (active && next[active]) {
+      setCurrentSystemFilter((prev) => prev || next[active]);
     }
-  }, [currentSystemVersionById, activeCurrentSystemId, currentSystemFilter]);
+  }, [currentSystemVersionById]);
 
   const currentSystemVersionBuckets = useMemo<SystemVersionBucket[]>(() => {
     const systemsByVersion = new Map<string, Set<string>>();
@@ -1474,17 +1498,28 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             };
             pushRows(asArray(system.blockedModuleRows), "blocked");
             pushRows(asArray(system.upgradableModuleRows), "update");
-            pushRows(asArray(system.compatibleModuleRows), "ready");
+            pushRows(readyRowsFromSystem(system), "ready");
             pushRows(asArray(system.unknownModuleRows), "blocked", true);
           }
         }
       }
       const total = rows.length;
-      const missing = rows.filter((row) => row.hasMissingDependencies).length;
-      const blocked = rows.filter((row) => !row.hasMissingDependencies && row.state === "blocked").length;
-      const update = rows.filter((row) => row.state === "update").length;
-      const ready = rows.filter((row) => row.state === "ready" && !row.hasMissingDependencies).length;
-      const readinessPct = total > 0 ? Math.round((ready / total) * 100) : 0;
+      const usedRows = rows.filter((row) => row.system !== "unused");
+      const usedTotal = usedRows.length;
+      const classifyState = (row: ModuleRow): ModuleRow["state"] => {
+        const foundryOk = versionWithin(row.compatibility, currentFoundryVersion);
+        const activeSystem = row.relatedSystems[0] || "";
+        const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
+        const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+        const systemOk = versionWithin(sysCompat, version);
+        if (row.hasMissingDependencies || foundryOk === false || systemOk === false) return "blocked";
+        return row.state;
+      };
+      const missing = usedRows.filter((row) => row.hasMissingDependencies).length;
+      const blocked = usedRows.filter((row) => { const s = classifyState(row); return !row.hasMissingDependencies && s === "blocked"; }).length;
+      const update = usedRows.filter((row) => classifyState(row) === "update").length;
+      const ready = usedRows.filter((row) => classifyState(row) === "ready" && !row.hasMissingDependencies).length;
+      const readinessPct = usedTotal > 0 ? Math.round(((ready + update) / usedTotal) * 100) : 0;
       buckets.push({ key: version, systems, isCurrent, total, ready, update, blocked, missing, readinessPct });
     }
     return buckets.sort((a, b) => compareVersionAsc(a.key, b.key));
@@ -1570,7 +1605,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         };
         pushRows(asArray(system.blockedModuleRows), "blocked");
         pushRows(asArray(system.upgradableModuleRows), "update");
-        pushRows(asArray(system.compatibleModuleRows), "ready");
+        pushRows(readyRowsFromSystem(system), "ready");
         pushRows(asArray(system.unknownModuleRows), "blocked", true);
       }
     }
@@ -1844,14 +1879,21 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ? hydratedSystemCompatibility
       : (row.systemCompatibility || {});
     const systemCompatMap = (effectiveSystemCompatibility as Record<string, unknown> | undefined) || {};
+    const allSystemsMode = !activePlanningSystemId;
     const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
-    const effectivePlanningSystemTarget = activeSystem
-      ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
-      : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "");
+    const effectivePlanningSystemTarget = allSystemsMode
+      ? (asString(row.targetVersion).trim() || "")
+      : (activeSystem
+        ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
+        : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || ""));
     const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
     const foundryOk = versionWithin(effectiveCompatibility, planningFoundryFilter);
-    const systemOk = versionWithin(sysCompat, effectivePlanningSystemTarget);
-    const hasCompatFailure = foundryOk === false || systemOk === false;
+    const systemOk = allSystemsMode ? true : versionWithin(sysCompat, effectivePlanningSystemTarget);
+    const hasCompatFailure = planningHasCompatFailure({
+      foundryCompatible: foundryOk,
+      systemCompatible: systemOk,
+      allSystemsMode,
+    });
     if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
     const recommendedCandidates = [hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
@@ -1877,14 +1919,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ? hydratedSystemCompatibility
       : (row.systemCompatibility || {});
     const systemCompatMap = effectiveSystemCompatibility || {};
+    const allSystemsMode = !activePlanningSystemId;
     const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
-    const effectivePlanningSystemTarget = activeSystem
-      ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
-      : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "");
+    const effectivePlanningSystemTarget = allSystemsMode
+      ? (asString(row.targetVersion).trim() || "")
+      : (activeSystem
+        ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
+        : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || ""));
     const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
     const showSystemBadge = systemRestrictionIds(systemCompatMap).length > 0;
     const foundryOk = versionWithin(effectiveCompatibility, planningFoundryFilter);
-    const systemOk = versionWithin(sysCompat, effectivePlanningSystemTarget);
+    const systemOk = allSystemsMode ? true : versionWithin(sysCompat, effectivePlanningSystemTarget);
     return collectBadgeCodes({
       compatibility: effectiveCompatibility,
       hasMissingDependencies: row.hasMissingDependencies,
@@ -1951,7 +1996,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         };
         pushRows(asArray(system.blockedModuleRows), "blocked");
         pushRows(asArray(system.upgradableModuleRows), "update");
-        pushRows(asArray(system.compatibleModuleRows), "ready");
+        pushRows(readyRowsFromSystem(system), "ready");
         pushRows(asArray(system.unknownModuleRows), "blocked", true);
       }
       for (const row of asArray((target as Record<string, unknown>).localManifestManualModules)) {
@@ -1994,7 +2039,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const blocked = rows.filter((row) => !row.hasMissingDependencies && row.state === "blocked").length;
         const update = rows.filter((row) => row.state === "update").length;
         const ready = rows.filter((row) => row.state === "ready" && !row.hasMissingDependencies).length;
-        const readinessPct = total > 0 ? Math.round((ready / total) * 100) : 0;
+        const readinessPct = total > 0 ? Math.round(((ready + update) / total) * 100) : 0;
         return { key: version, total, ready, update, blocked, missing, readinessPct };
       })
       .sort((a, b) => compareVersionAsc(a.key, b.key));
@@ -2079,12 +2124,22 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       const blocked = rows.filter((row) => !row.hasMissingDependencies && row.state === "blocked").length;
       const update = rows.filter((row) => row.state === "update").length;
       const ready = rows.filter((row) => row.state === "ready" && !row.hasMissingDependencies).length;
-      const readinessPct = total > 0 ? Math.round((ready / total) * 100) : 0;
+      const readinessPct = total > 0 ? Math.round(((ready + update) / total) * 100) : 0;
       const isCurrent = systems.length > 0 && systems.every((systemId) => asString(currentSystemVersionById[systemId]).trim() === version);
       buckets.push({ key: version, systems, isCurrent, total, ready, update, blocked, missing, readinessPct });
     }
     return buckets.sort((a, b) => compareVersionAsc(a.key, b.key));
   }, [selectedPlanningFoundryRows, planningSystemIds, currentSystemVersionById, planningTargets, planningTargetsByFoundry, planningFoundryFilter]);
+  const planningVersionsBySystem = useMemo<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    for (const systemId of planningSystemIds) {
+      out[systemId] = planningSystemVersionBuckets
+        .filter((bucket) => bucket.systems.includes(systemId))
+        .map((bucket) => bucket.key)
+        .sort((a, b) => compareVersionAsc(a, b));
+    }
+    return out;
+  }, [planningSystemIds, planningSystemVersionBuckets]);
 
   const selectedPlanningVersionBucket = useMemo(
     () => planningSystemVersionBuckets.find((bucket) => bucket.key === planningSystemVersionFilter) || null,
@@ -2150,26 +2205,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const next: Record<string, string> = {};
     for (const systemId of planningSystemIds) {
       const installed = asString(currentSystemVersionById[systemId]).trim();
-      const options = planningSystemVersionBuckets
-        .filter((bucket) => bucket.systems.includes(systemId))
-        .map((bucket) => ({
-          key: bucket.key,
-          total: selectedPlanningFoundryRows.filter(
-            (row) => asString(row.targetVersion).trim() === bucket.key && row.relatedSystems.includes(systemId)
-          ).length,
-        }));
-      const installedOption = options.find((opt) => opt.key === installed);
-      const preferred = options.find((opt) => opt.total > 0);
-      const fallback = (installedOption && installedOption.total > 0)
-        ? installedOption.key
-        : (preferred?.key || installed || options[0]?.key || "");
+      const options = planningVersionsBySystem[systemId] || [];
+      const fallback = options[options.length - 1] || installed || "";
       if (fallback) next[systemId] = fallback;
     }
     if (Object.keys(next).length > 0) {
       setPlanningVersionBySystem((prev) => ({ ...prev, ...next }));
     }
     if (activePlanningSystemId && next[activePlanningSystemId]) setPlanningSystemVersionFilter(next[activePlanningSystemId]);
-  }, [planningSystemIds, planningSystemVersionBuckets, currentSystemVersionById, activePlanningSystemId, selectedPlanningFoundryRows, planningSystemVersionFilter]);
+  }, [planningSystemIds, planningVersionsBySystem, currentSystemVersionById, activePlanningSystemId]);
 
   useEffect(() => {
     if (tab !== "planning") return;
@@ -2269,10 +2313,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningAllSystemsMode = !activePlanningSystemId;
 
   const selectedPlanningRows = useMemo(() => {
-    const includeUnused = planningIncludeUnused;
     if (planningAllSystemsMode) {
       const rows = projectPlanningRowsFoundryAggregate(selectedPlanningFoundryRows, planningFoundryFilter);
-      return includeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
+      return rows;
     }
     if (!selectedPlanningVersionBucket) return selectedPlanningFoundryRows;
     const plannerRows = selectedPlanningFoundryRows
@@ -2303,8 +2346,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       if (pa !== pb) return pa - pb;
       return a.title.localeCompare(b.title);
     });
-    return includeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
-  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId, currentRows, planningFoundryFilter, planningAllSystemsMode, planningIncludeUnused]);
+    return rows;
+  }, [selectedPlanningFoundryRows, selectedPlanningVersionBucket, activePlanningSystemId, currentRows, planningFoundryFilter, planningAllSystemsMode]);
 
   const currentSystemUpgradeConflictByModule = useMemo(() => {
     const out: Record<string, ConflictDetail> = {};
@@ -2401,107 +2444,133 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const pairs = detail.versionsBySystem.map((entry) => `${entry.systemId}: ${entry.version}`);
     return `different suggested versions across systems (${pairs.join(" | ")})`;
   };
-  const planningMatrixSystemId = activePlanningSystemId || planningSystemIds[0] || "";
-  const planningMatrixFoundryVersions = useMemo(
-    () => planningFoundryBuckets.map((bucket) => bucket.key).sort(compareVersionAsc),
-    [planningFoundryBuckets]
-  );
-  const planningMatrixSystemVersions = useMemo(() => {
-    if (!planningMatrixSystemId) return [] as string[];
-    const installed = asString(currentSystemVersionById[planningMatrixSystemId]).trim();
-    const isAtOrAboveInstalled = (version: string): boolean => {
-      const candidate = asString(version).trim();
-      if (!candidate) return false;
-      if (!installed) return true;
-      return compareVersionAsc(candidate, installed) >= 0;
+  const planningFoundryPillBuckets = useMemo(() => {
+    const pillStatusForRow = (row: PlanningRow, foundryTarget: string): ModuleRow["state"] => {
+      const moduleKey = asString(row.module).trim();
+      const titleKey = asString(row.title).trim();
+      const depSuggestion = dependencySuggestionByModule[moduleKey] || dependencySuggestionByModule[moduleKey.toLowerCase()] || dependencySuggestionByModule[titleKey] || dependencySuggestionByModule[titleKey.toLowerCase()] || {};
+      const moduleSuggestion = resolvedSourceByModule[moduleKey] || resolvedSourceByModule[moduleKey.toLowerCase()] || resolvedSourceByModule[titleKey] || resolvedSourceByModule[titleKey.toLowerCase()] || {};
+      const rowRecommended = asString(row.recommendedVersion);
+      const dependencyRecommended = asString(depSuggestion.recommendedVersion);
+      const moduleRecommended = asString(moduleSuggestion.recommendedVersion);
+      const effectiveRecommended = selectPreferredRecommended([rowRecommended, moduleRecommended, dependencyRecommended], row.installedVersion);
+      const hasInstalled = hasConcreteValue(row.installedVersion);
+      const foundryOk = versionWithin(row.compatibility, foundryTarget);
+      const allSystemsMode = !activePlanningSystemId;
+      const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
+      const effectivePlanningSystemTarget = allSystemsMode
+        ? (asString(row.targetVersion).trim() || "")
+        : (activeSystem
+          ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
+          : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || ""));
+      const sysCompat = compatibilityForSystem((row.systemCompatibility as Record<string, unknown> | undefined) || {}, activeSystem);
+      const systemOk = allSystemsMode ? true : versionWithin(sysCompat, effectivePlanningSystemTarget);
+      const hasCompatFailure = planningHasCompatFailure({
+        foundryCompatible: foundryOk,
+        systemCompatible: systemOk,
+        allSystemsMode,
+      });
+      if (row.hasMissingDependencies || hasCompatFailure) return "blocked";
+      if (!hasInstalled && hasConcreteValue(effectiveRecommended)) return "update";
+      if (!hasInstalled && !hasConcreteValue(effectiveRecommended) && String(row.system || "").trim().toLowerCase() !== "unused") return "blocked";
+      if (hasInstalled && effectiveRecommended && compareVersionAsc(effectiveRecommended, row.installedVersion) > 0) return "update";
+      return "ready";
     };
-    const versions = new Set<string>();
-    const selectedTargetFromIndex = planningTargetsByFoundry[planningFoundryFilter];
-    const selectedTarget = selectedTargetFromIndex && typeof selectedTargetFromIndex === "object"
-      ? (selectedTargetFromIndex as Record<string, unknown>)
-      : planningTargets.find((target) => asString(target.foundryVersion).trim() === planningFoundryFilter);
-    const selectedSystemRows = selectedTarget
-      ? (asArray(selectedTarget.systemRows).length > 0 ? asArray(selectedTarget.systemRows) : asArray(selectedTarget.systems))
-      : [];
-    const selectedSystemRow = selectedSystemRows.find((row) => asString(row.systemId).trim() === planningMatrixSystemId);
-    for (const version of extractSystemTargetVersions(selectedSystemRow || {})) {
-      if (isAtOrAboveInstalled(version)) versions.add(version);
-    }
-    for (const rows of Object.values(planningRowsByFoundry)) {
-      for (const row of rows) {
-        const targetVersion = asString(row.targetVersion).trim();
-        if (!targetVersion) continue;
-        if ((row.relatedSystems.length === 0 || row.relatedSystems.includes(planningMatrixSystemId)) && isAtOrAboveInstalled(targetVersion)) {
-          versions.add(targetVersion);
-        }
+    const countByStatus = (pillRows: Array<{ status: ModuleRow["state"]; hasMissingDependencies?: boolean }>) => {
+      let blocked = 0, update = 0, ready = 0;
+      for (const row of pillRows) {
+        const status = row.hasMissingDependencies ? "blocked" : row.status;
+        if (status === "blocked") blocked++;
+        else if (status === "update") update++;
+        else ready++;
       }
-    }
-    if (installed) versions.add(installed);
-    return Array.from(versions).sort(compareVersionAsc);
-  }, [planningRowsByFoundry, planningMatrixSystemId, currentSystemVersionById, planningTargets, planningTargetsByFoundry, planningFoundryFilter]);
-  const planningMatrixColumnKeys = useMemo(() => {
-    if (planningAllSystemsMode) return ["__all__"] as string[];
-    return planningMatrixSystemVersions;
-  }, [planningAllSystemsMode, planningMatrixSystemVersions]);
-  const planningMatrixCells = useMemo(() => {
-    const out: Record<string, { rawTotal: number; excluded: number; total: number; ready: number; update: number; blocked: number; missing: number; readinessPct: number }> = {};
-    const buildRowsForCell = (foundryVersion: string, systemVersion: string): PlanningRow[] => {
-      const targetSystemForCell = activePlanningSystemId || planningMatrixSystemId || "";
-      const foundryRows = planningRowsByFoundry[foundryVersion] || [];
-      const plannerRows = foundryRows
+      return { blocked, update, ready };
+    };
+    return planningFoundryBuckets.map((bucket) => {
+      const foundryVersion = bucket.key;
+      if (foundryVersion === planningFoundryFilter) {
+        const pillRows = selectedPlanningRows.map((row) => ({
+            status: pillStatusForRow(row, foundryVersion),
+            hasMissingDependencies: row.hasMissingDependencies,
+          }));
+        const counts = countByStatus(pillRows);
+        const total = pillRows.length;
+        const readinessPct = total > 0 ? Math.round(((counts.ready + counts.update) / total) * 100) : 0;
+        return {
+          key: foundryVersion,
+          total,
+          ready: counts.ready,
+          update: counts.update,
+          blocked: counts.blocked,
+          missing: 0,
+          readinessPct,
+        };
+      }
+      if (planningAllSystemsMode) {
+        // Keep pill stats in sync with table stats: use the same projected all-systems rows.
+        const rows = projectPlanningRowsFoundryAggregate(planningRowsByFoundry[foundryVersion] || [], foundryVersion);
+        const pillRows = rows.map((row) => ({
+            status: pillStatusForRow(row, foundryVersion),
+            hasMissingDependencies: row.hasMissingDependencies,
+          }));
+        const counts = countByStatus(pillRows);
+        const total = pillRows.length;
+        const readinessPct = total > 0 ? Math.round(((counts.ready + counts.update) / total) * 100) : 0;
+        return {
+          key: foundryVersion,
+          total,
+          ready: counts.ready,
+          update: counts.update,
+          blocked: counts.blocked,
+          missing: 0,
+          readinessPct,
+        };
+      }
+      let rows: PlanningRow[] = [];
+      const systemId = activePlanningSystemId;
+      const options = systemId ? (planningVersionsBySystem[systemId] || []) : [];
+      const selectedVersion = systemId
+        ? (planningVersionBySystem[systemId] || planningSystemVersionFilter || options[options.length - 1] || asString(currentSystemVersionById[systemId]).trim())
+        : "";
+      const plannerRows = (planningRowsByFoundry[foundryVersion] || [])
         .filter((row) => {
-          if (asString(row.targetVersion).trim() !== systemVersion) return false;
-          if (!activePlanningSystemId) return true;
+          if (!systemId) return true;
+          if (asString(row.targetVersion).trim() !== selectedVersion) return false;
           if (row.relatedSystems.length === 0) return true;
-          return row.relatedSystems.includes(activePlanningSystemId);
+          return row.relatedSystems.includes(systemId);
         })
-        .map((row) => normalizePlanningRowForTarget(row, foundryVersion, systemVersion, targetSystemForCell));
+        .map((row) => normalizePlanningRowForTarget(row, foundryVersion, selectedVersion, systemId || ""));
       const projectedFallback = currentRows
-        .map((row) => normalizePlanningRowForTarget(row, foundryVersion, systemVersion, targetSystemForCell));
+        .filter((row) => {
+          if (row.system === "unused") return true;
+          if (!systemId) return true;
+          return row.relatedSystems.includes(systemId);
+        })
+        .map((row) => normalizePlanningRowForTarget(row, foundryVersion, selectedVersion, systemId || ""));
       const mergedByModule = new Map<string, PlanningRow>();
       for (const row of plannerRows) mergedByModule.set(row.module, row);
       for (const row of projectedFallback) {
         if (!mergedByModule.has(row.module)) mergedByModule.set(row.module, row);
       }
-      const installedRows = Array.from(mergedByModule.values()).filter((row) => hasConcreteValue(row.installedVersion));
-      return installedRows;
-    };
-    const buildRowsForAllSystemsFoundryOnly = (foundryVersion: string): PlanningRow[] => {
-      const rows = projectPlanningRowsFoundryAggregate(planningRowsByFoundry[foundryVersion] || [], foundryVersion);
-      return planningIncludeUnused ? rows : rows.filter((row) => String(row.system || "").trim().toLowerCase() !== "unused");
-    };
-    for (const foundryVersion of planningMatrixFoundryVersions) {
-      for (const columnKey of planningMatrixColumnKeys) {
-        const isAllSystemsCell = planningAllSystemsMode && columnKey === "__all__";
-        const targetSystemForCell = activePlanningSystemId || planningMatrixSystemId || "";
-        const mergedRows = isAllSystemsCell ? buildRowsForAllSystemsFoundryOnly(foundryVersion) : buildRowsForCell(foundryVersion, columnKey);
-        const allInstalledRows = (() => {
-          if (isAllSystemsCell) return buildRowsForAllSystemsFoundryOnly(foundryVersion);
-          const plannerRows = (planningRowsByFoundry[foundryVersion] || [])
-            .filter((row) => asString(row.targetVersion).trim() === columnKey)
-            .map((row) => normalizePlanningRowForTarget(row, foundryVersion, columnKey, targetSystemForCell));
-          const projectedFallback = currentRows.map((row) => normalizePlanningRowForTarget(row, foundryVersion, columnKey, targetSystemForCell));
-          const mergedByModule = new Map<string, PlanningRow>();
-          for (const row of plannerRows) mergedByModule.set(row.module, row);
-          for (const row of projectedFallback) {
-            if (!mergedByModule.has(row.module)) mergedByModule.set(row.module, row);
-          }
-          return Array.from(mergedByModule.values()).filter((row) => hasConcreteValue(row.installedVersion));
-        })();
-        const rawTotal = allInstalledRows.length;
-        const rows = mergedRows;
-        const total = rows.length;
-        const excluded = 0;
-        const missing = rows.filter((row) => row.hasMissingDependencies).length;
-        const blocked = rows.filter((row) => !row.hasMissingDependencies && derivePlanningEffectiveState(row) === "blocked").length;
-        const update = rows.filter((row) => derivePlanningEffectiveState(row) === "update").length;
-        const ready = rows.filter((row) => derivePlanningEffectiveState(row) === "ready" && !row.hasMissingDependencies).length;
-        const readinessPct = total > 0 ? Math.round(((ready + update) / total) * 100) : 0;
-        out[`${foundryVersion}::${columnKey}`] = { rawTotal, excluded, total, ready, update, blocked, missing, readinessPct };
-      }
-    }
-    return out;
-  }, [planningRowsByFoundry, planningMatrixFoundryVersions, planningMatrixColumnKeys, planningAllSystemsMode, activePlanningSystemId, planningMatrixSystemId, currentRows, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule, planningIncludeUnused]);
+      rows = Array.from(mergedByModule.values()).sort((a, b) => compareSystemThenStatus(a, b));
+      const pillRows = rows.map((row) => ({
+          status: pillStatusForRow(row, foundryVersion),
+          hasMissingDependencies: row.hasMissingDependencies,
+        }));
+      const counts = countByStatus(pillRows);
+      const total = pillRows.length;
+      const readinessPct = total > 0 ? Math.round(((counts.ready + counts.update) / total) * 100) : 0;
+      return {
+        key: foundryVersion,
+        total,
+        ready: counts.ready,
+        update: counts.update,
+        blocked: counts.blocked,
+        missing: 0,
+        readinessPct,
+      };
+    });
+  }, [planningFoundryBuckets, planningFoundryFilter, selectedPlanningRows, planningAllSystemsMode, planningRowsByFoundry, activePlanningSystemId, planningVersionsBySystem, planningVersionBySystem, planningSystemVersionFilter, currentSystemVersionById, currentRows]);
 
   useEffect(() => {
     if (tab !== "planning") return;
@@ -3634,7 +3703,17 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         <td>{reasonBadges(item.status === "update" ? "Update suggested for this system." : "No system update required.", item.compatibility, false, true, null, undefined, false, undefined)}</td>
         <td style={{ textAlign: "right" }}>
           {item.status === "update"
-            ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
+            ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured || !item.targetUrl} onClick={() => {
+                const plan = {
+                  destiny: {
+                    foundryVersion: planningFoundryFilter || currentFoundryVersion || "",
+                    activeSystemId: item.systemId,
+                    selectedSystemVersion: item.targetVersion,
+                    rows: [],
+                  },
+                };
+                void submitAndWatch("override-from-plan", { profile: "destiny", planContent: JSON.stringify(plan) });
+              }}>Update</button>
             : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
         </td>
       </tr>
@@ -3655,6 +3734,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     restrictedSystemIds: string[];
     systemUpgradeConflictTooltip?: string;
     onSystemUpgradeConflictClick?: (() => void) | null;
+    moduleProjectUrl?: string;
   }) => {
     const systemKey = String(params.row.system || "").trim().toLowerCase();
     const rowClassName = systemKey === "unused"
@@ -3667,8 +3747,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     return (
     <tr key={params.key} className={rowClassName}>
       <td>
-        {params.row.hasMissingDependencies ? <span title={missingDependencyLabel(params.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 6 }}>!</span> : null}
-        <span title={params.row.module || "unknown"}>{(params.row.title || "Unknown module")}</span>
+        <div className="module-name-cell">
+          {params.row.hasMissingDependencies ? <span title={missingDependencyLabel(params.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 2 }}>!</span> : null}
+          {params.moduleProjectUrl
+            ? <a className="module-name-truncate" href={params.moduleProjectUrl} target="_blank" rel="noreferrer" title={`${params.row.title || "Unknown module"} (${params.row.module || "unknown"})`}>{(params.row.title || "Unknown module")}</a>
+            : <span className="module-name-truncate" title={`${params.row.title || "Unknown module"} (${params.row.module || "unknown"})`}>{(params.row.title || "Unknown module")}</span>}
+          <span className="module-name-help" title={`${params.row.title || "Unknown module"} (${params.row.module || "unknown"})`} aria-label="Module details">?</span>
+        </div>
         {(() => {
           const moduleKey = asString(params.row.module).trim();
           const status = moduleRefreshStatusById[moduleKey] || moduleRefreshStatusById[moduleKey.toLowerCase()];
@@ -3815,13 +3900,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           </>
         ) : allowForceCompatibility ? (
           <button
-            className="btn secondary"
+            className="btn secondary btn-xs force-compat-btn"
             style={{ background: "#f59e0b", color: "#111827" }}
             disabled={actionBusy || !foundryConfigured}
             title="Force compatibility for this installed module (Current only)."
             onClick={() => void submitAndWatch("force-compat", { modules: [item.row.module], targetVersion: currentFoundryVersion })}
           >
-            Force Compatibility
+            FC
           </button>
         ) : !hasInstalled && (effectiveUrl || effectiveRecommended) ? (
           <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Install</button>
@@ -3850,6 +3935,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       restrictedSystemIds: restrictedIds,
       systemUpgradeConflictTooltip,
       onSystemUpgradeConflictClick: conflictDetailRow ? () => setConflictDetail(conflictDetailRow) : null,
+      moduleProjectUrl: projectPageUrl(asString(source.manifestUrl), asString(source.projectUrl), asString(item.row.releaseUrl)),
     });
   };
 
@@ -3879,10 +3965,13 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const systemUpgradeConflictTooltip = conflictTooltipFromDetail(conflictDetailRow);
     const rowRecommended = asString(row.recommendedVersion);
     const rowUrl = asString(row.releaseUrl);
+    const allSystemsMode = !activePlanningSystemId;
     const activeSystem = activePlanningSystemId || asString(row.relatedSystems?.[0] || "");
-    const effectivePlanningSystemTarget = activeSystem
-      ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
-      : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "");
+    const effectivePlanningSystemTarget = allSystemsMode
+      ? (asString(row.targetVersion).trim() || "")
+      : (activeSystem
+        ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || "")
+        : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || row.targetVersion || ""));
     const hydratedContext = resolvedSourceByContext[contextKey] || {};
     const hydratedCompatibility = hydratedContext.compatibility as Record<string, unknown> | undefined;
     const hydratedSystemCompatibility = hydratedContext.systemCompatibility as Record<string, unknown> | undefined;
@@ -3897,7 +3986,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const restrictedIds = systemRestrictionIds(systemCompatMap);
     const showSystemBadge = restrictedIds.length > 0;
     const foundryOk = versionWithin(effectiveCompatibility, planningFoundryFilter);
-    const systemOk = versionWithin(sysCompat, effectivePlanningSystemTarget);
+    const systemOk = allSystemsMode ? true : versionWithin(sysCompat, effectivePlanningSystemTarget);
     const recommendedCandidates = [precomputedRecommended, hydratedRecommended, rowRecommended, moduleRecommended, dependencyRecommended];
     const urlCandidates = [hydratedUrl, rowUrl, moduleUrl, dependencyUrl, asString(source.projectUrl), asString(source.manifestUrl)];
     const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, row.installedVersion);
@@ -3960,21 +4049,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       restrictedSystemIds: restrictedIds,
       systemUpgradeConflictTooltip,
       onSystemUpgradeConflictClick: conflictDetailRow ? () => setConflictDetail(conflictDetailRow) : null,
+      moduleProjectUrl: projectPageUrl(asString(source.manifestUrl), asString(source.projectUrl), asString(row.releaseUrl)),
     });
   };
 
   const currentSystemFilterRow = (
-    <div className="version-pill-row">
-      <div
-        key="sys-pill-all-current"
-        className="metric-card compact version-pill version-pill-all static"
-        style={!activeCurrentSystemId ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
-        onClick={() => { setActiveCurrentSystemId(""); setPage(1); }}
-      >
-        <span>All Systems</span>
-        <small style={{ color: "#94a3b8", fontSize: 11 }}>Includes foundry-only modules</small>
-        <div className="version-pill-all-spacer" aria-hidden="true" />
-      </div>
+    <div className="version-pill-row current-systems">
       {Object.keys(currentSystemVersionById).sort((a, b) => a.localeCompare(b)).map((systemId) => {
         const header = systemId;
         const installed = currentSystemVersionById[systemId] || "";
@@ -3989,7 +4069,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         return (
           <div
             key={`sys-pill-${systemId}`}
-            className="metric-card compact version-pill static"
+            className="metric-card compact version-pill system-pill static"
             style={isActive ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
             onClick={() => {
               if (isActive) {
@@ -4006,7 +4086,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               value={value}
               onChange={(event) => {
                 const v = event.target.value;
-                setUiBusyMessage("Applying selected system version...");
                 setCurrentVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
                 setActiveCurrentSystemId(systemId);
                 setCurrentSystemFilter(v);
@@ -4018,11 +4097,6 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                 <option key={`${systemId}-${v}`} value={v}>{v}{v === installed ? " (Current)" : ""}</option>
               ))}
             </select>
-            {isActive ? (
-              <small style={{ color: "#94a3b8", fontSize: 11 }}>
-                Ready: {selectedCurrentVersionBucket?.ready || 0} / {selectedCurrentVersionBucket?.total || 0} / Missing: {selectedCurrentVersionBucket?.missing || 0}
-              </small>
-            ) : <small style={{ color: "#94a3b8", fontSize: 11 }}>Ready: - / - / Missing: -</small>}
           </div>
         );
       })}
@@ -4030,7 +4104,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   );
 
   const currentStatusFilterRow = (
-    <div className="metrics-row compact" style={{ marginBottom: 0 }}>
+    <div className="metrics-row compact module-status-row" style={{ marginBottom: 0 }}>
       <button className={`metric-card metric-blocked compact ${currentFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{currentEffectiveCounts.blocked}</strong></button>
       <button className={`metric-card metric-upgrade compact ${currentFilters.includes("update") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{currentEffectiveCounts.update}</strong></button>
       <button className={`metric-card metric-ready compact ${currentFilters.includes("ready") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); setPage(1); }}><span>Ready</span><strong>{currentEffectiveCounts.ready}</strong></button>
@@ -4038,133 +4112,92 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     </div>
   );
   const planningSystemPillsRow = (
-    <div className="version-pill-row" style={{ marginBottom: 0 }}>
-      <button
-        key="planning-system-all"
-        className={`metric-card compact version-pill ${!activePlanningSystemId ? "active" : ""}`}
-        onClick={() => {
-          setActivePlanningSystemId("");
-          setPlanningSystemVersionFilter("");
-          setPage(1);
-        }}
-      >
-        <span>All Systems</span>
-        <small style={{ opacity: 0.85 }}>Systems: {planningSystemIds.length}</small>
-      </button>
-      {planningSystemIds.map((systemId) => {
-        const options = planningSystemVersionBuckets
-          .filter((bucket) => bucket.systems.includes(systemId))
-          .map((bucket) => bucket.key)
-          .sort(compareVersionAsc);
-        const installed = asString(currentSystemVersionById[systemId]).trim();
-        const visibleOptions = options.length > 0 ? options : (installed ? [installed] : []);
-        if (visibleOptions.length === 0) return null;
-        const value = planningVersionBySystem[systemId] || visibleOptions[0] || "";
-        const isActive = activePlanningSystemId === systemId;
-        return (
-          <button
-            key={`planning-system-${systemId}`}
-            className={`metric-card compact version-pill ${isActive ? "active" : ""}`}
-            onClick={() => {
-              if (isActive) {
-                setActivePlanningSystemId("");
-              } else {
-                setActivePlanningSystemId(systemId);
-                setPlanningSystemVersionFilter(value);
-              }
-              setPage(1);
-            }}
-          >
-            <span>{systemId}</span>
-            <small style={{ opacity: 0.85 }}>
-              Versions: {visibleOptions.length}
-            </small>
-          </button>
-        );
-      })}
+    <div className="planning-system-controls" style={{ marginBottom: 0 }}>
+     
+      <div className="version-pill-row planning-system-pills" style={{ marginBottom: 0 }}>
+        {planningSystemIds.map((systemId) => {
+          const options = planningVersionsBySystem[systemId] || [];
+          const installed = asString(currentSystemVersionById[systemId]).trim();
+          const visibleOptions = options.length > 0 ? options : (installed ? [installed] : []);
+          if (visibleOptions.length === 0) return null;
+          const value = planningVersionBySystem[systemId] || visibleOptions[visibleOptions.length - 1] || "";
+          const isActive = activePlanningSystemId === systemId;
+          return (
+            <div
+              key={`planning-system-${systemId}`}
+              className="metric-card compact version-pill system-pill static"
+              style={isActive ? { borderColor: "#fbbf24", boxShadow: "0 0 0 2px rgba(251,191,36,0.28) inset", background: "#0b1f35", color: "#e5e7eb" } : { borderColor: "#334155", background: "#1f2937", color: "#e5e7eb" }}
+              onClick={() => {
+                if (isActive) {
+                  setActivePlanningSystemId("");
+                  setPlanningSystemVersionFilter("");
+                } else {
+                  setActivePlanningSystemId(systemId);
+                  setPlanningSystemVersionFilter(value);
+                }
+                setPage(1);
+              }}
+              title={`${systemId} (${visibleOptions.length} versions)`}
+            >
+              <span>{systemId}</span>
+              <select
+                value={value}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  const v = event.target.value;
+                  setPlanningVersionBySystem((prev) => ({ ...prev, [systemId]: v }));
+                  setActivePlanningSystemId(systemId);
+                  setPlanningSystemVersionFilter(v);
+                  setPage(1);
+                }}
+                style={{ borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e5e7eb", padding: "4px 8px", width: "100%" }}
+              >
+                {visibleOptions.map((v) => (
+                  <option key={`${systemId}-${v}`} value={v}>{v}{v === installed ? " (Current)" : ""}</option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 
   const planningTopFilterRow = (
     <div style={{ display: "grid", gap: 8 }}>
+      
       {planningSystemPillsRow}
-      {planningMatrixColumnKeys.length > 0 && planningMatrixFoundryVersions.length > 0 ? (
-        <section className="panel" style={{ marginBottom: 0 }}>
-          <h4 style={{ marginTop: 0, marginBottom: 8 }}>
-            Foundry x System Compatibility{activePlanningSystemId ? ` (${planningMatrixSystemId})` : " (All Systems)"}
-          </h4>
-          <div style={{ overflowX: "auto" }}>
-            <table className="report-table planning-matrix-table" style={{ marginBottom: 0 }}>
-              <thead>
-                <tr>
-                  <th>Foundry Version</th>
-                  {planningMatrixColumnKeys.map((sv) => (
-                    <th key={`planning-matrix-head-${sv}`}>{sv === "__all__" ? "All Systems" : sv}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {planningMatrixFoundryVersions.map((fv) => (
-                  <tr key={`planning-matrix-row-${fv}`}>
-                    <td><strong>{fv}</strong></td>
-                    {planningMatrixColumnKeys.map((sv) => {
-                      const cell = planningMatrixCells[`${fv}::${sv}`];
-                      if (!cell) return <td key={`planning-matrix-cell-${fv}-${sv}`}>-</td>;
-                      const allSystemsCell = sv === "__all__";
-                      const active = allSystemsCell
-                        ? (!activePlanningSystemId && planningFoundryFilter === fv)
-                        : (planningFoundryFilter === fv && planningSystemVersionFilter === sv && activePlanningSystemId === planningMatrixSystemId);
-                      const tone = cell.readinessPct >= 80 ? "#14532d" : (cell.readinessPct >= 50 ? "#713f12" : "#7f1d1d");
-                      return (
-                        <td key={`planning-matrix-cell-${fv}-${sv}`}>
-                          <button
-                            className="btn secondary btn-xs"
-                            style={{
-                              width: "100%",
-                              background: tone,
-                              color: "#fff",
-                              borderColor: active ? "#fde047" : "transparent",
-                              borderWidth: active ? 2 : 1,
-                              boxShadow: active ? "0 0 0 2px #f59e0b inset, 0 0 0 1px rgba(255,255,255,0.45)" : "none",
-                            }}
-                            onClick={() => {
-                              if (active) return;
-                              setPlanningFoundryFilter(fv);
-                              if (allSystemsCell) {
-                                setActivePlanningSystemId("");
-                                setPlanningSystemVersionFilter("");
-                              } else {
-                                setPlanningSystemVersionFilter(sv);
-                                if (!activePlanningSystemId && planningMatrixSystemId) setActivePlanningSystemId(planningMatrixSystemId);
-                              }
-                              setPage(1);
-                            }}
-                            title={`Installable = (Ready ${cell.ready} + Update ${cell.update}) / Total ${cell.total} = ${cell.readinessPct}% | Blocked ${cell.blocked} | Missing ${cell.missing} | Raw installed ${cell.rawTotal} | Excluded ${cell.excluded}`}
-                          >
-                            {cell.readinessPct}%
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+       
+      {planningFoundryPillBuckets.length > 0 ? (
+        <div style={{ marginBottom: 0 }}>
+          <div className="version-pill-row planning-foundry-pills">
+            {planningFoundryPillBuckets.map((bucket) => {
+              const active = planningFoundryFilter === bucket.key;
+              const tone = bucket.readinessPct >= 80 ? "#14532d" : (bucket.readinessPct >= 50 ? "#713f12" : "#7f1d1d");
+              return (
+                <button
+                  key={`planning-foundry-pill-${bucket.key}`}
+                  className="metric-card compact version-pill static"
+                  style={{
+                    borderColor: active ? "#fde047" : "#334155",
+                    background: active ? "#0b1f35" : "#1f2937",
+                    color: "#e5e7eb",
+                    boxShadow: active ? "0 0 0 2px rgba(251,191,36,0.28) inset" : "none",
+                  }}
+                  onClick={() => {
+                    setPlanningFoundryFilter(bucket.key);
+                    setPage(1);
+                  }}
+                  title={`Installable = (Ready ${bucket.ready} + Update ${bucket.update}) / Total ${bucket.total} = ${bucket.readinessPct}% | Blocked ${bucket.blocked}`}
+                >
+                  <span style={{ fontWeight: 700 }}>{bucket.key}</span>
+                  <strong style={{ color: tone }}>{bucket.readinessPct}%</strong>
+                </button>
+              );
+            })}
           </div>
-          <div style={{ marginTop: 8 }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
-              <input
-                type="checkbox"
-                checked={planningIncludeUnused}
-                onChange={(event) => {
-                  setPlanningIncludeUnused(event.target.checked);
-                  setPage(1);
-                }}
-              />
-              Include unused modules in matrix and table totals
-            </label>
-          </div>
-        </section>
+        </div>
       ) : null}
     </div>
   );
@@ -4172,18 +4205,28 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const planningSystemFilterRow = <></>;
 
   const planningEffectiveCounts = useMemo(() => {
-    return partitionCountsForPills(
-      selectedPlanningRows.map((row) => ({
-        status: derivePlanningEffectiveState(row),
-        system: row.system,
-        hasMissingDependencies: row.hasMissingDependencies,
-      }))
-    );
+    let blocked = 0, update = 0, ready = 0, unused = 0;
+    for (const row of selectedPlanningRows) {
+      const system = String(row.system || "").trim().toLowerCase();
+      const status = derivePlanningEffectiveState(row);
+      const effective = row.hasMissingDependencies ? "blocked" : status;
+      if (system === "unused") {
+        // Count unused rows by their compat status, but also track the unused count for the pill
+        if (effective === "blocked") blocked++;
+        else if (effective === "update") update++;
+        else { ready++; unused++; }
+      } else {
+        if (effective === "blocked") blocked++;
+        else if (effective === "update") update++;
+        else ready++;
+      }
+    }
+    return { blocked, update, ready, unused };
   }, [selectedPlanningRows, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule]);
 
   const planningStatusFilterRow = (
     <div style={{ display: "grid", gap: 6 }}>
-      <div className="metrics-row compact" style={{ marginBottom: 0 }}>
+      <div className="metrics-row compact module-status-row" style={{ marginBottom: 0 }}>
         <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{planningEffectiveCounts.blocked}</strong></button>
         <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{planningEffectiveCounts.update}</strong></button>
         <button className={`metric-card metric-ready compact ${planningFilters.includes("ready") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); setPage(1); }}><span>Ready</span><strong>{planningEffectiveCounts.ready}</strong></button>
@@ -4494,6 +4537,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           {tab === "planning" ? (
             <UpgradePanel
               title="Planning"
+              wrapFiltersInFieldset={false}
               topFilterRow={planningTopFilterRow}
               systemFilterRow={planningSystemFilterRow}
               statusFilterRow={planningStatusFilterRow}
@@ -4971,17 +5015,5 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
