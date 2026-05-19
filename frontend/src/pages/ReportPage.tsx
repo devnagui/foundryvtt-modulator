@@ -1173,6 +1173,19 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     return asArray((system as { compatibleModuleRows?: unknown }).compatibleModuleRows);
   };
 
+  const manifestUrlByModule = useMemo(() => {
+    const byModule: Record<string, string> = {};
+    for (const item of asArray(model?.results)) {
+      const moduleId = asString(item.module).trim();
+      const manifestUrl = asString(item.manifestUrl).trim();
+      if (moduleId && manifestUrl) {
+        byModule[moduleId] = manifestUrl;
+        byModule[moduleId.toLowerCase()] = manifestUrl;
+      }
+    }
+    return byModule;
+  }, [model]);
+
   const currentRows = useMemo<ModuleRow[]>(() => {
     const rows: ModuleRow[] = [];
     const isUsedByAnyWorld = (moduleId: string): boolean => {
@@ -1657,7 +1670,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const candidates = Array.from(new Set(pool
       .filter((row) => {
         const source = sourceForRow(moduleSources, row.module, row.title);
-        const hasSource = hasSourceUrls(source);
+        const scanManifest = manifestUrlByModule[row.module] || manifestUrlByModule[row.module.toLowerCase()] || "";
+        const hasSource = hasSourceUrls(source) || Boolean(scanManifest);
         if (!hasSource) return false;
         if (hasConcreteValue(row.recommendedVersion) || hasConcreteValue(row.releaseUrl)) {
           const activeSystem = activeCurrentSystemId
@@ -1678,7 +1692,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       .map((row) => row.module)))
       .filter((moduleId) => {
         const source = sourceForRow(moduleSources, moduleId, moduleId);
-        if (!source || !hasSourceUrls(source)) return false;
+        if (!source || (!hasSourceUrls(source) && !manifestUrlByModule[moduleId] && !manifestUrlByModule[moduleId.toLowerCase()])) return false;
         const contextKey = `${selectedCurrentSuggestContextKey}::${moduleId}`;
         if (resolvedSourceByContext[contextKey]?.recommendedVersion || resolvedSourceByContext[contextKey]?.resolvedUrl) return false;
         if (resolvedAttemptedByContext[contextKey]) return false;
@@ -1691,9 +1705,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     void (async () => {
       const batch = candidates.map((moduleId) => {
         const source = sourceForRow(moduleSources, moduleId, moduleId);
+        const scanManifest = manifestUrlByModule[moduleId] || manifestUrlByModule[moduleId.toLowerCase()] || "";
         return {
           moduleId,
-          manifestUrl: asString(source.manifestUrl),
+          manifestUrl: asString(source.manifestUrl) || scanManifest,
           projectUrl: asString(source.projectUrl),
         };
       }).filter((item) => item.manifestUrl || item.projectUrl);
@@ -1771,7 +1786,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       if (hydrationRunRef.current !== runId) return;
       setHydrationBusy(false);
     })();
-  }, [tab, model, moduleSources, currentRows, selectedCurrentRows, selectedCurrentSuggestContext, selectedCurrentSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activeCurrentSystemId, selectedCurrentVersionBucket, currentVersionBySystem, currentSystemFilter, currentSystemVersionById, currentFoundryVersion]);
+  }, [tab, model, moduleSources, manifestUrlByModule, currentRows, selectedCurrentRows, selectedCurrentSuggestContext, selectedCurrentSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activeCurrentSystemId, selectedCurrentVersionBucket, currentVersionBySystem, currentSystemFilter, currentSystemVersionById, currentFoundryVersion]);
 
   useEffect(() => {
     if (!hydrationBusy && !actionBusy && uiBusyMessage === "Applying selected system version...") {
@@ -2586,7 +2601,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       if (!moduleId) continue;
       const source = sourceForRow(moduleSources, row.module, row.title);
       const fallback = sourceFromReleaseUrl(asString(row.releaseUrl));
-      const manifestUrl = asString(source.manifestUrl) || fallback.manifestUrl;
+      const scanManifest = manifestUrlByModule[moduleId] || manifestUrlByModule[moduleId.toLowerCase()] || "";
+      const manifestUrl = asString(source.manifestUrl) || fallback.manifestUrl || scanManifest;
       const projectUrl = asString(source.projectUrl) || fallback.projectUrl;
       if (!manifestUrl && !projectUrl) continue;
       if (hasConcreteValue(row.recommendedVersion) || hasConcreteValue(row.releaseUrl)) {
@@ -2711,7 +2727,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       setHydrationBusy(false);
       setPlanningHydrationProgress({ total: 0, done: 0 });
     })();
-  }, [tab, model, hydrationBusy, moduleSources, selectedPlanningRows, selectedPlanningSuggestContext, selectedPlanningSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter]);
+  }, [tab, model, hydrationBusy, moduleSources, manifestUrlByModule, selectedPlanningRows, selectedPlanningSuggestContext, selectedPlanningSuggestContextKey, resolvedSourceByContext, resolvedAttemptedByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter]);
 
   const filteredPlanning = useMemo(() => {
     const q = search.trim().toLowerCase();
