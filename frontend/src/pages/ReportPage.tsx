@@ -1112,6 +1112,8 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               setSuggestResult(`Apply finished with skipped modules due health gate: ${skippedModules.join(", ")}`);
             }
           }
+          setResolvedAttemptedByContext({});
+          setResolvedSourceByContext({});
           await loadModel();
           if (actionName === "apply" || actionName === "override-from-plan") {
             void loadUpdateArtifacts();
@@ -4380,7 +4382,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       ) : null}
       {error ? <section className="panel"><p className="error">{error}</p></section> : null}
 
-      {job ? (
+      {job && !actionBusy ? (
         <section className="panel" style={{ marginBottom: 12 }}>
           <p>Job: {job.status}</p>
           <div style={{ height: 10, borderRadius: 999, background: "#1f2937" }}><div style={{ height: 10, borderRadius: 999, width: `${Math.max(0, Math.min(100, job.progress))}%`, background: "#22c55e", transition: "width .2s" }} /></div>
@@ -5008,9 +5010,31 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
       {(actionBusy || Boolean(uiBusyMessage)) && !bulkUpdateOpen ? (
         <div className="modal-backdrop">
-          <section className="panel modal-card" style={{ width: "min(420px, 92%)" }}>
-            <h3>Please wait</h3>
-            <AppLoader label={uiBusyMessage || "Working"} detail="Please keep this window open" />
+          <section className="panel modal-card" style={{ width: "min(420px, 92%)", textAlign: "center" }}>
+            {job ? (
+              <>
+                <AppLoader label={uiBusyMessage || job.status || "Working"} />
+                <div style={{ height: 10, borderRadius: 999, background: "#1f2937", marginTop: 12 }}><div style={{ height: 10, borderRadius: 999, width: `${Math.max(0, Math.min(100, job.progress))}%`, background: "#22c55e", transition: "width .2s" }} /></div>
+                <p style={{ margin: "8px 0 0" }}>{job.progress}%</p>
+                {(() => {
+                  const meta = (job.progressMeta || {}) as Record<string, unknown>;
+                  const totalItems = Number(meta.totalItems || 0);
+                  const processedItems = Number(meta.processedItems || 0);
+                  const phase = asString(meta.phase) || "-";
+                  const itemKind = asString(meta.currentItemKind);
+                  const itemId = asString(meta.currentItemId);
+                  if (!totalItems) return null;
+                  return (
+                    <p style={{ marginTop: 4, marginBottom: 0, color: "var(--muted)" }}>
+                      Phase: {phase} | {processedItems}/{totalItems}
+                      {itemId ? ` | ${itemKind ? `${itemKind} ` : ""}${itemId}` : ""}
+                    </p>
+                  );
+                })()}
+              </>
+            ) : (
+              <AppLoader label={uiBusyMessage || "Working"} />
+            )}
           </section>
         </div>
       ) : null}
