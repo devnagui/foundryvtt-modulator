@@ -21,40 +21,41 @@ class DbPlanningContextCacheTests(unittest.TestCase):
                 "dataRoot": "D:/foundry",
                 "dryRun": True,
                 "apply": False,
-                "results": [],
-                "futureUpgradeMatrix": [],
-                "reportViews": {
-                    "v3": {
-                        "systemUpgradePlanner": {
-                            "targets": [
-                                {
-                                    "foundryVersion": "14.361",
-                                    "systemRows": [
-                                        {
-                                            "systemId": "dnd5e",
-                                            "targetVersion": "5.3.3",
-                                            "blockedModuleRows": [
-                                                {
-                                                    "module": "dae",
-                                                    "title": "DAE",
-                                                    "installedVersion": "13.0.26",
-                                                    "recommendedVersion": "13.0.30",
-                                                    "reason": "missing_dependency:socketlib",
-                                                    "compatibility": {"minimum": "13", "verified": "14.356", "maximum": "14.999"},
-                                                    "systemCompatibility": {"dnd5e": {"minimum": "5.3.0", "verified": "5.3.3", "maximum": "5.3.9"}},
-                                                }
-                                            ],
-                                            "upgradableModuleRows": [],
-                                            "compatibleModuleRows": [],
-                                            "unknownModuleRows": [],
-                                            "localManifestManualModules": [],
-                                        }
-                                    ],
-                                }
-                            ]
-                        }
+                "results": [
+                    {
+                        "module": "dae",
+                        "title": "DAE",
+                        "installedVersion": "13.0.26",
+                        "recommendedVersion": "13.0.30",
+                        "reason": "missing_dependency:socketlib",
+                        "compatibility": {"minimum": "13", "verified": "14.356", "maximum": "14.999"},
+                        "systemCompatibility": {"dnd5e": {"minimum": "5.3.0", "verified": "5.3.3", "maximum": "5.3.9"}},
                     }
-                },
+                ],
+                "futureUpgradeMatrix": [
+                    {
+                        "targetFoundryVersion": "14.361",
+                        "systems": [
+                            {
+                                "systemId": "dnd5e",
+                                "recommendedVersion": "5.3.3",
+                                "installedVersion": "5.3.3",
+                            }
+                        ],
+                        "moduleOutcomes": [
+                            {
+                                "module": "dae",
+                                "title": "DAE",
+                                "installedVersion": "13.0.26",
+                                "recommendedVersion": "13.0.30",
+                                "status": "blocked",
+                                "reason": "missing_dependency:socketlib",
+                                "compatibility": {"minimum": "13", "verified": "14.356", "maximum": "14.999"},
+                                "systemCompatibility": {"dnd5e": {"minimum": "5.3.0", "verified": "5.3.3", "maximum": "5.3.9"}},
+                            }
+                        ],
+                    }
+                ],
             }
             installed_modules = [
                 ModuleRecord(
@@ -107,30 +108,26 @@ class DbPlanningContextCacheTests(unittest.TestCase):
                 "dataRoot": "D:/foundry",
                 "dryRun": True,
                 "apply": False,
-                "results": [],
-                "futureUpgradeMatrix": [],
-                "reportViews": {
-                    "v3": {
-                        "systemUpgradePlanner": {
-                            "targets": [
-                                {
-                                    "foundryVersion": "14.361",
-                                    "systemRows": [
-                                        {
-                                            "systemId": "dnd5e",
-                                            "targetVersion": "5.3.3",
-                                            "blockedModuleRows": [{"module": "m1", "reason": "incompatible"}],
-                                            "upgradableModuleRows": [{"module": "m2", "reason": "upgrade"}],
-                                            "compatibleModuleRows": [{"module": "m3", "reason": "ok"}],
-                                            "unknownModuleRows": [{"module": "m4", "reason": "unknown"}],
-                                            "localManifestManualModules": [],
-                                        }
-                                    ],
-                                }
-                            ]
-                        }
+                "results": [
+                    {"module": "m3", "title": "M3", "installedVersion": "1.0", "recommendedVersion": "1.0", "reason": "ok", "compatibility": {"minimum": "14", "verified": "14", "maximum": "14"}, "systemCompatibility": {}},
+                    {"module": "m4", "title": "M4", "installedVersion": "1.0", "recommendedVersion": "1.0", "reason": "unknown", "compatibility": {"minimum": "12", "maximum": "13"}, "systemCompatibility": {}},
+                ],
+                "futureUpgradeMatrix": [
+                    {
+                        "targetFoundryVersion": "14.361",
+                        "systems": [
+                            {
+                                "systemId": "dnd5e",
+                                "recommendedVersion": "5.3.3",
+                                "installedVersion": "5.3.3",
+                            }
+                        ],
+                        "moduleOutcomes": [
+                            {"module": "m1", "title": "M1", "installedVersion": "1.0", "recommendedVersion": "1.0", "status": "blocked", "reason": "incompatible", "compatibility": {}, "systemCompatibility": {}},
+                            {"module": "m2", "title": "M2", "installedVersion": "1.0", "recommendedVersion": "1.1", "status": "update", "reason": "upgrade", "compatibility": {}, "systemCompatibility": {}},
+                        ],
                     }
-                },
+                ],
             }
             persist_scan_snapshot(
                 database_path=db_path,

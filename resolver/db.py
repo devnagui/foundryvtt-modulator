@@ -583,54 +583,72 @@ def _replace_future_targets(connection: sqlite3.Connection, scan_run_id: int, pa
 
 
 def _replace_planning_context_rows(connection: sqlite3.Connection, scan_run_id: int, payload: dict) -> None:
-    view = ((payload.get("reportViews") or {}).get("v3") or {}) if isinstance(payload.get("reportViews"), dict) else {}
-    planner = view.get("systemUpgradePlanner") if isinstance(view, dict) else {}
-    targets = planner.get("targets") if isinstance(planner, dict) else []
-    if not isinstance(targets, list):
+    # Work from raw payload data (futureUpgradeMatrix + results) because
+    # reportViews.v3 is not yet attached when persist_scan_snapshot runs.
+    future_matrix = payload.get("futureUpgradeMatrix") or []
+    if not isinstance(future_matrix, list) or not future_matrix:
         return
 
+    # Build scan results lookup for ALL modules
+    scan_results_by_id: dict[str, dict] = {}
+    for item in payload.get("results") or []:
+        mid = str(item.get("module") or "").strip()
+        if mid:
+            scan_results_by_id[mid] = item
+
     rows: list[tuple] = []
-    bucket_defs = (
-        ("blockedModuleRows", "blocked"),
-        ("upgradableModuleRows", "update"),
-        ("compatibleModuleRows", "ready"),
-        ("unknownModuleRows", "blocked"),
-        ("localManifestManualModules", "blocked"),
-    )
-    for target in targets:
+
+    for target in future_matrix:
         if not isinstance(target, dict):
             continue
-        foundry_version = str(target.get("foundryVersion") or "").strip()
+        foundry_version = str(target.get("targetFoundryVersion") or "").strip()
         if not foundry_version:
             continue
-        system_rows = target.get("systemRows")
-        if not isinstance(system_rows, list):
+
+        # Collect system recommendations for this target
+        systems = target.get("systems") or []
+        if not isinstance(systems, list):
+            systems = []
+
+        # Build list of (system_id, system_version) pairs
+        system_pairs: list[tuple[str, str]] = []
+        for sys_entry in systems:
+            if not isinstance(sys_entry, dict):
+                continue
+            sys_id = str(sys_entry.get("systemId") or "").strip()
+            sys_ver = str(sys_entry.get("recommendedVersion") or sys_entry.get("installedVersion") or "").strip()
+            if sys_id and sys_ver:
+                system_pairs.append((sys_id, sys_ver))
+
+        if not system_pairs:
             continue
-        for system_row in system_rows:
-            if not isinstance(system_row, dict):
-                continue
-            system_id = str(system_row.get("systemId") or "").strip()
-            system_version = str(system_row.get("targetVersion") or "").strip()
-            if not system_id or not system_version:
-                continue
-            context_key = f"{foundry_version}::{system_id}@{system_version}"
-            for bucket_key, fallback_status in bucket_defs:
-                bucket = system_row.get(bucket_key)
-                if not isinstance(bucket, list):
+
+        # Process world-used modules from moduleOutcomes
+        covered_module_ids: set[str] = set()
+        module_outcomes = target.get("moduleOutcomes") or []
+        if isinstance(module_outcomes, list):
+            for outcome in module_outcomes:
+                if not isinstance(outcome, dict):
                     continue
-                for item in bucket:
-                    if not isinstance(item, dict):
-                        continue
-                    module_id = str(item.get("module") or "").strip()
-                    if not module_id:
-                        continue
-                    reason = str(item.get("reason") or "")
-                    has_missing = bool(item.get("hasMissingDependencies")) or ("missing_dependency:" in reason.lower())
-                    status = str(item.get("presentationStatus") or fallback_status).strip().lower()
-                    if has_missing:
-                        status = "missing"
-                    elif status not in {"missing", "blocked", "update", "ready"}:
-                        status = fallback_status
+                module_id = str(outcome.get("module") or "").strip()
+                if not module_id:
+                    continue
+                covered_module_ids.add(module_id)
+                reason = str(outcome.get("reason") or "")
+                raw_status = str(outcome.get("status") or "").strip().lower()
+                has_missing = "missing_dependency:" in reason.lower()
+                if has_missing:
+                    status = "missing"
+                elif raw_status in {"ready", "blocked", "update", "missing"}:
+                    status = raw_status
+                elif raw_status == "upgradable":
+                    status = "update"
+                else:
+                    status = "blocked"
+                compat = outcome.get("compatibility") or {}
+                sys_compat = outcome.get("systemCompatibility") or {}
+                for system_id, system_version in system_pairs:
+                    context_key = f"{foundry_version}::{system_id}@{system_version}"
                     rows.append(
                         (
                             scan_run_id,
@@ -641,91 +659,65 @@ def _replace_planning_context_rows(connection: sqlite3.Connection, scan_run_id: 
                             module_id,
                             status,
                             1 if has_missing else 0,
-                            item.get("title"),
-                            item.get("installedVersion"),
-                            item.get("recommendedVersion"),
-                            reason,
-                            json.dumps(item.get("compatibility") or {}, sort_keys=True),
-                            json.dumps(item.get("systemCompatibility") or {}, sort_keys=True),
-                        )
-                    )
-
-    if not rows:
-        rows = []
-    # --- also generate planning context rows for unused modules ---
-    planner_module_ids = {r[5] for r in rows}  # module_id is at index 5
-    unused_modules = (view.get("unusedModules") or {}).get("rows") or []
-    scan_results_by_id: dict[str, dict] = {}
-    for item in payload.get("results") or []:
-        mid = str(item.get("module") or "").strip()
-        if mid:
-            scan_results_by_id[mid] = item
-    if unused_modules and targets:
-        for target in targets:
-            if not isinstance(target, dict):
-                continue
-            foundry_version = str(target.get("foundryVersion") or "").strip()
-            if not foundry_version:
-                continue
-            system_rows_list = target.get("systemRows")
-            if not isinstance(system_rows_list, list):
-                continue
-            for system_row in system_rows_list:
-                if not isinstance(system_row, dict):
-                    continue
-                system_id = str(system_row.get("systemId") or "").strip()
-                system_version = str(system_row.get("targetVersion") or "").strip()
-                if not system_id or not system_version:
-                    continue
-                context_key = f"{foundry_version}::{system_id}@{system_version}"
-                for unused in unused_modules:
-                    module_id = str(unused.get("module") or "").strip()
-                    if not module_id or module_id in planner_module_ids:
-                        continue
-                    scan_row = scan_results_by_id.get(module_id) or unused
-                    compat = scan_row.get("compatibility") or {}
-                    sys_compat = scan_row.get("systemCompatibility") or {}
-                    compat_min = str(compat.get("minimum") or "").strip()
-                    compat_max = str(compat.get("maximum") or "").strip()
-                    foundry_blocked = False
-                    if compat_min and is_below_minimum(foundry_version, compat_min):
-                        foundry_blocked = True
-                    if compat_max and exceeds_maximum(foundry_version, compat_max):
-                        foundry_blocked = True
-                    installed = str(unused.get("installedVersion") or "")
-                    recommended = str(scan_row.get("recommendedVersion") or "")
-                    has_update = bool(
-                        installed and recommended
-                        and recommended != installed
-                        and compare_versions(recommended, installed) > 0
-                    )
-                    if foundry_blocked:
-                        status = "blocked"
-                        reason = f"Installed version compatibility ({compat_min or '?'}-{compat_max or '?'}) does not cover Foundry {foundry_version}."
-                    elif has_update:
-                        status = "update"
-                        reason = str(scan_row.get("reason") or "")
-                    else:
-                        status = "ready"
-                        reason = str(scan_row.get("reason") or "")
-                    rows.append(
-                        (
-                            scan_run_id,
-                            context_key,
-                            foundry_version,
-                            system_id,
-                            system_version,
-                            module_id,
-                            status,
-                            0,
-                            unused.get("title"),
-                            installed,
-                            recommended,
+                            outcome.get("title"),
+                            outcome.get("installedVersion"),
+                            outcome.get("recommendedVersion"),
                             reason,
                             json.dumps(compat, sort_keys=True),
                             json.dumps(sys_compat, sort_keys=True),
                         )
                     )
+
+        # Process ALL other modules from scan results
+        for module_id, scan_row in scan_results_by_id.items():
+            if module_id in covered_module_ids:
+                continue
+            compat = scan_row.get("compatibility") or {}
+            sys_compat = scan_row.get("systemCompatibility") or {}
+            compat_min = str(compat.get("minimum") or "").strip()
+            compat_max = str(compat.get("maximum") or "").strip()
+            foundry_blocked = False
+            if compat_min and is_below_minimum(foundry_version, compat_min):
+                foundry_blocked = True
+            if compat_max and exceeds_maximum(foundry_version, compat_max):
+                foundry_blocked = True
+            installed = str(scan_row.get("installedVersion") or "")
+            recommended = str(scan_row.get("recommendedVersion") or "")
+            has_update = bool(
+                installed and recommended
+                and recommended != installed
+                and compare_versions(recommended, installed) > 0
+            )
+            if foundry_blocked:
+                status = "blocked"
+                reason = f"Installed version compatibility ({compat_min or '?'}-{compat_max or '?'}) does not cover Foundry {foundry_version}."
+            elif has_update:
+                status = "update"
+                reason = str(scan_row.get("reason") or "")
+            else:
+                status = "ready"
+                reason = str(scan_row.get("reason") or "")
+            for system_id, system_version in system_pairs:
+                context_key = f"{foundry_version}::{system_id}@{system_version}"
+                rows.append(
+                    (
+                        scan_run_id,
+                        context_key,
+                        foundry_version,
+                        system_id,
+                        system_version,
+                        module_id,
+                        status,
+                        0,
+                        scan_row.get("title"),
+                        installed,
+                        recommended,
+                        reason,
+                        json.dumps(compat, sort_keys=True),
+                        json.dumps(sys_compat, sort_keys=True),
+                    )
+                )
+
     if not rows:
         return
     connection.executemany(
