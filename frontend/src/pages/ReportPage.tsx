@@ -4199,19 +4199,24 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               // Compute verified % — only check the explicit "verified" field on the
               // recommended release for this target Foundry.  Do NOT fall back to
               // compatibleCoreVersion (that's a range, not author verification).
+              // Vague values ("14", "14.*") count in ALL pills of that major.
+              // Specific builds ("14.360") count ONLY in the matching pill.
               const foundryRows = (planningAllSystemsMode
                 ? projectPlanningRowsFoundryAggregate(planningRowsByFoundry[bucket.key] || [], bucket.key)
                 : selectedPlanningRows
               );
               const foundryTotal = foundryRows.length;
+              const targetMajor = bucket.key.split(".")[0] || "";
               const foundryVerifiedCount = foundryRows.filter((row) => {
                 const compat = (row.compatibility as Record<string, unknown> | undefined) || {};
                 const ver = compatValue(compat, ["verified"]);
                 if (!ver) return false;
-                // Only count exact build matches (e.g. "14.360").
-                // Ignore vague values like "14", "14.*", or anything without a specific build number.
+                const verMajor = ver.split(".")[0] || "";
+                if (verMajor !== targetMajor) return false;
                 const parts = ver.split(".");
-                if (parts.length < 2 || !parts[1] || parts[1] === "*") return false;
+                // Vague: "14" or "14.*" → counts in all pills of this major
+                if (parts.length < 2 || !parts[1] || parts[1] === "*") return true;
+                // Specific: "14.360" → only counts in matching pill
                 return ver === bucket.key;
               }).length;
               const foundryVerifiedPct = foundryTotal > 0 ? Math.round((foundryVerifiedCount / foundryTotal) * 100) : 0;
