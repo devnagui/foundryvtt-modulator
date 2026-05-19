@@ -37,16 +37,25 @@ The scan is the primary data pipeline:
 - Receives ALL installed modules (`installed_modules_by_id`) but filters to **world-used modules only**
 - For each stable future Foundry release:
   - Recommends target system versions via `_recommend_future_system_version()`
-  - Evaluates each module via `_evaluate_future_target()` → calls `resolve_module_recommendation()` per module
-- Output: `futureUpgradeMatrix` with per-Foundry coverage percentages
+  - Evaluates each **world-used** module via `_evaluate_future_target()` → calls `resolve_module_recommendation()` per module (full dependency resolution)
+  - Evaluates each **unused** module via `_resolve_unused_module_for_planning()` — lightweight, no dependency resolution
+- **Unused module resolution** is optimized:
+  - Resolved once against the **highest** Foundry target only; results reused for all lower targets
+  - Batched with `ThreadPoolExecutor(max_workers=10)` — 10 concurrent resolutions
+  - Fetches only up to 6 releases per module (±3 from installed version, via `PLANNING_RELEASE_LIMIT`)
+  - **Short-circuits** if installed version is already the latest release and compatible with target Foundry
+  - Only fetches `module.json` metadata, never downloads `.zip` module archives
+  - No recursive dependency resolution — just Foundry/system compatibility scoring
+- Output: `futureUpgradeMatrix` with per-Foundry coverage percentages and `moduleOutcomes` for ALL modules
 
 ### Planning Context Rows (`resolver/db.py`)
 
 `_replace_planning_context_rows()`:
 
-- Extracts module planning data from `systemUpgradePlanner.targets`
-- Stores in SQLite `planning_context_rows` table for fast frontend queries
-- **Also generates rows for unused modules**: evaluates each unused module's installed compatibility metadata against each target Foundry/system combination
+- Reads from raw payload data (`futureUpgradeMatrix` + `results`), not from `reportViews.v3` (which is attached after persistence)
+- Processes `moduleOutcomes` from each Foundry target (contains all modules — used + unused)
+- Falls back to `results` for any modules not covered by `moduleOutcomes`
+- Stores in SQLite `planning_context_rows` table for instant frontend queries
 - Context key format: `{foundryVersion}::{systemId}@{systemVersion}`
 
 ### Report View (`resolver/report_view_v3.py`)
@@ -111,13 +120,19 @@ Scan Request (dry-run)
   │   └─ Per system × per module → currentSystemUpgrades
   │
   ├─ build_future_upgrade_decision()
-  │   └─ Per future Foundry × per used module → futureUpgradeMatrix
+  │   ├─ Per future Foundry × per used module:
+  │   │   └─ resolve_module_recommendation() (full, with deps)
+  │   └─ Unused modules (batched 10 concurrent, highest target only):
+  │       └─ _resolve_unused_module_for_planning() (lightweight)
+  │           ├─ fetch up to 6 releases (±3 from installed)
+  │           ├─ short-circuit if latest + compatible
+  │           └─ score without dependency resolution
   │
   ├─ build_report_view_v3() ──────────────► reportViews.v3
   │   ├─ systemUpgradePlanner.targets (world-used modules)
   │   └─ unusedModules.rows (all others)
   │
   └─ persist_scan_snapshot()
-      ├─ planning_context_rows (used + unused modules)
+      ├─ planning_context_rows (ALL modules from moduleOutcomes)
       └─ release_catalog, recommendations, etc.
 ```

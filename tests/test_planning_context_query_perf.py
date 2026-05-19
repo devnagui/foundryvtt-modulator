@@ -23,6 +23,7 @@ class PlanningContextQueryPerfTests(unittest.TestCase):
                         "title": f"Module {i}",
                         "installedVersion": "1.0.0",
                         "recommendedVersion": "1.0.1",
+                        "status": "update",
                         "reason": "upgrade available",
                         "compatibility": {"minimum": "14", "verified": "14.361", "maximum": "14.999"},
                         "systemCompatibility": {"dnd5e": {"minimum": "5.3.0", "verified": "5.3.3", "maximum": "5.3.9"}},
@@ -35,29 +36,19 @@ class PlanningContextQueryPerfTests(unittest.TestCase):
                 "dryRun": True,
                 "apply": False,
                 "results": [],
-                "futureUpgradeMatrix": [],
-                "reportViews": {
-                    "v3": {
-                        "systemUpgradePlanner": {
-                            "targets": [
-                                {
-                                    "foundryVersion": "14.361",
-                                    "systemRows": [
-                                        {
-                                            "systemId": "dnd5e",
-                                            "targetVersion": "5.3.3",
-                                            "blockedModuleRows": [],
-                                            "upgradableModuleRows": module_rows,
-                                            "compatibleModuleRows": [],
-                                            "unknownModuleRows": [],
-                                            "localManifestManualModules": [],
-                                        }
-                                    ],
-                                }
-                            ]
-                        }
+                "futureUpgradeMatrix": [
+                    {
+                        "targetFoundryVersion": "14.361",
+                        "systems": [
+                            {
+                                "systemId": "dnd5e",
+                                "recommendedVersion": "5.3.3",
+                                "installedVersion": "5.3.3",
+                            }
+                        ],
+                        "moduleOutcomes": module_rows,
                     }
-                },
+                ],
             }
             installed_modules = [
                 ModuleRecord(

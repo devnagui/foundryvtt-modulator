@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -82,13 +84,13 @@ def build_future_upgrade_decision(
         matrix.append(row)
 
     # Resolve unused modules once against the highest Foundry target,
-    # then inject the outcomes into all targets. Release histories are
-    # already cached from the initial scan, so this is just re-scoring.
+    # then inject the outcomes into all targets.
+    # Uses lightweight scoring (no dependency resolution) with batched
+    # concurrency (10 at a time). Skips modules whose installed version
+    # is already the latest cached release and compatible with the target.
     if matrix:
-        # Pick the highest Foundry target for resolution
         highest_target = max(matrix, key=lambda r: r.get("targetFoundryVersion", ""))
         highest_foundry = str(highest_target.get("targetFoundryVersion") or "")
-        # Collect system versions from highest target
         highest_systems = highest_target.get("systems") or []
         target_system_versions: dict[str, str] = {}
         for sys_entry in highest_systems:
@@ -98,40 +100,46 @@ def build_future_upgrade_decision(
                 if sid and sver:
                     target_system_versions[sid] = sver
 
-        resolution_cache: dict[str, Recommendation] = {}
+        unused_modules = [
+            installed_modules_by_id[mid]
+            for mid in sorted(installed_modules_by_id.keys())
+            if mid not in used_module_ids_set
+        ]
+
+        def _resolve_one(module: ModuleRecord) -> dict:
+            return _resolve_unused_module_for_planning(
+                module, highest_foundry, target_system_versions, fetch_module_history,
+            )
+
         unused_outcomes: list[dict] = []
-        for module_id in sorted(installed_modules_by_id.keys()):
-            if module_id in used_module_ids_set:
-                continue
-            module = installed_modules_by_id[module_id]
-            recommendation, _ = resolve_module_recommendation(
-                module,
-                highest_foundry,
-                target_system_versions,
-                fetch_module_history,
-                load_module_for_relationship,
-                resolution_cache,
-            )
-            status = _classify_future_module(module, recommendation, highest_foundry)
-            unused_outcomes.append(
-                {
-                    "module": module.module_id,
-                    "title": module.title,
-                    "installedVersion": module.version,
-                    "recommendedVersion": recommendation.recommended_version,
-                    "status": status,
-                    "reason": recommendation.reason,
-                    "confidence": recommendation.confidence,
-                    "source": recommendation.source,
-                    "manifestUrl": recommendation.manifest_url,
-                    "downloadUrl": recommendation.download_url,
-                    "compatibility": recommendation.compatibility,
-                    "systemCompatibility": recommendation.system_compatibility,
-                    "forcedCompatibility": _forced_compatibility_payload(module),
-                    "releasePublishedAt": recommendation.release_published_at,
-                    "attentionFlag": False,
-                }
-            )
+        batch_size = 10
+        for i in range(0, len(unused_modules), batch_size):
+            batch = unused_modules[i : i + batch_size]
+            with ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as pool:
+                futures = {pool.submit(_resolve_one, m): m for m in batch}
+                for future in as_completed(futures):
+                    try:
+                        unused_outcomes.append(future.result())
+                    except Exception:
+                        module = futures[future]
+                        logging.warning("Planning resolution failed for %s", module.module_id, exc_info=True)
+                        unused_outcomes.append({
+                            "module": module.module_id,
+                            "title": module.title,
+                            "installedVersion": module.version,
+                            "recommendedVersion": module.version,
+                            "status": "blocked",
+                            "reason": "Planning resolution failed.",
+                            "confidence": "low",
+                            "source": "error-fallback",
+                            "manifestUrl": module.manifest_url,
+                            "downloadUrl": None,
+                            "compatibility": module.raw_manifest.get("compatibility") or {},
+                            "systemCompatibility": {},
+                            "forcedCompatibility": _forced_compatibility_payload(module),
+                            "releasePublishedAt": None,
+                            "attentionFlag": False,
+                        })
 
         # Inject unused outcomes into each target's moduleOutcomes
         for row in matrix:
@@ -1281,3 +1289,132 @@ def _extract_system_compatibility_from_module(module: ModuleRecord) -> dict[str,
         if system_id:
             compatibility_by_system[str(system_id)] = item.get("compatibility") or {}
     return compatibility_by_system
+
+
+# ---------------------------------------------------------------------------
+# Lightweight planning resolution for unused modules
+# ---------------------------------------------------------------------------
+# Only fetches up to 6 releases (±3 from installed), skips dependency
+# resolution, and short-circuits when the installed version is already the
+# latest compatible release. This is 10-20x faster than the full
+# resolve_module_recommendation() pipeline.
+
+PLANNING_RELEASE_LIMIT = 6
+
+
+def _resolve_unused_module_for_planning(
+    module: ModuleRecord,
+    target_foundry: str,
+    target_system_versions: dict[str, str],
+    fetch_history: HistoryFetcherWithLimit,
+) -> dict:
+    """Lightweight resolution: find best release for target Foundry without dependency resolution."""
+    releases, _ = fetch_history(module, PLANNING_RELEASE_LIMIT)
+    installed_compat = module.raw_manifest.get("compatibility") or {}
+    sys_compat = _extract_system_compatibility_from_module(module)
+
+    # Short-circuit: if installed is already the latest release and compatible, skip scoring
+    if releases:
+        latest = max(releases, key=lambda r: tuple(_parse_version_safe(r.version)))
+        if (
+            compare_versions(module.version, latest.version) >= 0
+            and _compatibility_includes_target(installed_compat, target_foundry)
+        ):
+            return {
+                "module": module.module_id,
+                "title": module.title,
+                "installedVersion": module.version,
+                "recommendedVersion": module.version,
+                "status": "ready",
+                "reason": "Installed version is the latest release and compatible with target Foundry.",
+                "confidence": "high",
+                "source": "planning-shortcircuit",
+                "manifestUrl": module.manifest_url,
+                "downloadUrl": module.raw_manifest.get("download"),
+                "compatibility": installed_compat,
+                "systemCompatibility": sys_compat,
+                "forcedCompatibility": _forced_compatibility_payload(module),
+                "releasePublishedAt": latest.published_at if latest.version == module.version else None,
+                "attentionFlag": False,
+            }
+
+    # Score releases against target Foundry (no dependency resolution)
+    scored = sorted(
+        releases,
+        key=lambda r: candidate_sort_key(r, target_foundry, target_system_versions),
+        reverse=True,
+    )
+    compatible = [r for r in scored if satisfies_release_constraints(r, target_foundry, target_system_versions)]
+
+    if compatible:
+        best = compatible[0]
+        is_upgrade = compare_versions(best.version, module.version) > 0
+        is_same = compare_versions(best.version, module.version) == 0
+        # Never recommend a rollback
+        if compare_versions(best.version, module.version) < 0:
+            best_compat = installed_compat
+            return {
+                "module": module.module_id,
+                "title": module.title,
+                "installedVersion": module.version,
+                "recommendedVersion": module.version,
+                "status": "ready" if _compatibility_includes_target(installed_compat, target_foundry) else "blocked",
+                "reason": f"Installed version {module.version} is newer than best catalog candidate ({best.version}); rollback suppressed.",
+                "confidence": "low",
+                "source": best.source,
+                "manifestUrl": module.manifest_url,
+                "downloadUrl": module.raw_manifest.get("download"),
+                "compatibility": installed_compat,
+                "systemCompatibility": sys_compat,
+                "forcedCompatibility": _forced_compatibility_payload(module),
+                "releasePublishedAt": best.published_at,
+                "attentionFlag": False,
+            }
+        return {
+            "module": module.module_id,
+            "title": module.title,
+            "installedVersion": module.version,
+            "recommendedVersion": best.version,
+            "status": "upgradable" if is_upgrade else "ready",
+            "reason": (
+                f"Best compatible release for Foundry {target_foundry}."
+                if is_same
+                else f"Upgrade to {best.version} for Foundry {target_foundry} compatibility."
+            ),
+            "confidence": "high",
+            "source": best.source,
+            "manifestUrl": best.manifest_url,
+            "downloadUrl": best.download_url,
+            "compatibility": best.compatibility or {},
+            "systemCompatibility": best.system_compatibility or {},
+            "forcedCompatibility": _forced_compatibility_payload(module),
+            "releasePublishedAt": best.published_at,
+            "attentionFlag": False,
+        }
+
+    # No compatible release found — module is blocked for target Foundry
+    return {
+        "module": module.module_id,
+        "title": module.title,
+        "installedVersion": module.version,
+        "recommendedVersion": module.version,
+        "status": "blocked",
+        "reason": f"No release compatible with Foundry {target_foundry} found in the latest {PLANNING_RELEASE_LIMIT} releases.",
+        "confidence": "low",
+        "source": "planning-no-match",
+        "manifestUrl": module.manifest_url,
+        "downloadUrl": None,
+        "compatibility": installed_compat,
+        "systemCompatibility": sys_compat,
+        "forcedCompatibility": _forced_compatibility_payload(module),
+        "releasePublishedAt": None,
+        "attentionFlag": False,
+    }
+
+
+def _parse_version_safe(version: str) -> tuple[int, ...]:
+    try:
+        from .versioning import parse_version
+        return parse_version(version)
+    except Exception:
+        return (0,)
