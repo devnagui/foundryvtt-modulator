@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import ModuleRecord, ReleaseRecord
+from .versioning import compare_versions, is_below_minimum, exceeds_maximum
 
 SCHEMA_VERSION = 1
 DEFAULT_MAX_SCAN_RUNS = 20
@@ -649,6 +650,82 @@ def _replace_planning_context_rows(connection: sqlite3.Connection, scan_run_id: 
                         )
                     )
 
+    if not rows:
+        rows = []
+    # --- also generate planning context rows for unused modules ---
+    planner_module_ids = {r[5] for r in rows}  # module_id is at index 5
+    unused_modules = (view.get("unusedModules") or {}).get("rows") or []
+    scan_results_by_id: dict[str, dict] = {}
+    for item in payload.get("results") or []:
+        mid = str(item.get("module") or "").strip()
+        if mid:
+            scan_results_by_id[mid] = item
+    if unused_modules and targets:
+        for target in targets:
+            if not isinstance(target, dict):
+                continue
+            foundry_version = str(target.get("foundryVersion") or "").strip()
+            if not foundry_version:
+                continue
+            system_rows_list = target.get("systemRows")
+            if not isinstance(system_rows_list, list):
+                continue
+            for system_row in system_rows_list:
+                if not isinstance(system_row, dict):
+                    continue
+                system_id = str(system_row.get("systemId") or "").strip()
+                system_version = str(system_row.get("targetVersion") or "").strip()
+                if not system_id or not system_version:
+                    continue
+                context_key = f"{foundry_version}::{system_id}@{system_version}"
+                for unused in unused_modules:
+                    module_id = str(unused.get("module") or "").strip()
+                    if not module_id or module_id in planner_module_ids:
+                        continue
+                    scan_row = scan_results_by_id.get(module_id) or unused
+                    compat = scan_row.get("compatibility") or {}
+                    sys_compat = scan_row.get("systemCompatibility") or {}
+                    compat_min = str(compat.get("minimum") or "").strip()
+                    compat_max = str(compat.get("maximum") or "").strip()
+                    foundry_blocked = False
+                    if compat_min and is_below_minimum(foundry_version, compat_min):
+                        foundry_blocked = True
+                    if compat_max and exceeds_maximum(foundry_version, compat_max):
+                        foundry_blocked = True
+                    installed = str(unused.get("installedVersion") or "")
+                    recommended = str(scan_row.get("recommendedVersion") or "")
+                    has_update = bool(
+                        installed and recommended
+                        and recommended != installed
+                        and compare_versions(recommended, installed) > 0
+                    )
+                    if foundry_blocked:
+                        status = "blocked"
+                        reason = f"Installed version compatibility ({compat_min or '?'}-{compat_max or '?'}) does not cover Foundry {foundry_version}."
+                    elif has_update:
+                        status = "update"
+                        reason = str(scan_row.get("reason") or "")
+                    else:
+                        status = "ready"
+                        reason = str(scan_row.get("reason") or "")
+                    rows.append(
+                        (
+                            scan_run_id,
+                            context_key,
+                            foundry_version,
+                            system_id,
+                            system_version,
+                            module_id,
+                            status,
+                            0,
+                            unused.get("title"),
+                            installed,
+                            recommended,
+                            reason,
+                            json.dumps(compat, sort_keys=True),
+                            json.dumps(sys_compat, sort_keys=True),
+                        )
+                    )
     if not rows:
         return
     connection.executemany(
