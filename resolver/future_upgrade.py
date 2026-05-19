@@ -83,67 +83,63 @@ def build_future_upgrade_decision(
         )
         matrix.append(row)
 
-    # Resolve unused modules once against the highest Foundry target,
-    # then inject the outcomes into all targets.
-    # Uses lightweight scoring (no dependency resolution) with batched
-    # concurrency (10 at a time). Skips modules whose installed version
-    # is already the latest cached release and compatible with the target.
+    # Resolve unused modules per Foundry target so each pill reflects
+    # actual compatibility for that specific version.  Release history
+    # is cached after the first fetch, so subsequent targets only re-score
+    # (pure CPU, no extra network).  Batched with ThreadPoolExecutor(10).
     if matrix:
-        highest_target = max(matrix, key=lambda r: r.get("targetFoundryVersion", ""))
-        highest_foundry = str(highest_target.get("targetFoundryVersion") or "")
-        highest_systems = highest_target.get("systems") or []
-        target_system_versions: dict[str, str] = {}
-        for sys_entry in highest_systems:
-            if isinstance(sys_entry, dict):
-                sid = str(sys_entry.get("systemId") or "")
-                sver = str(sys_entry.get("recommendedVersion") or sys_entry.get("installedVersion") or "")
-                if sid and sver:
-                    target_system_versions[sid] = sver
-
         unused_modules = [
             installed_modules_by_id[mid]
             for mid in sorted(installed_modules_by_id.keys())
             if mid not in used_module_ids_set
         ]
 
-        def _resolve_one(module: ModuleRecord) -> dict:
-            return _resolve_unused_module_for_planning(
-                module, highest_foundry, target_system_versions, fetch_module_history,
-            )
-
-        unused_outcomes: list[dict] = []
-        batch_size = 10
-        for i in range(0, len(unused_modules), batch_size):
-            batch = unused_modules[i : i + batch_size]
-            with ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as pool:
-                futures = {pool.submit(_resolve_one, m): m for m in batch}
-                for future in as_completed(futures):
-                    try:
-                        unused_outcomes.append(future.result())
-                    except Exception:
-                        module = futures[future]
-                        logging.warning("Planning resolution failed for %s", module.module_id, exc_info=True)
-                        unused_outcomes.append({
-                            "module": module.module_id,
-                            "title": module.title,
-                            "installedVersion": module.version,
-                            "recommendedVersion": module.version,
-                            "status": "blocked",
-                            "reason": "Planning resolution failed.",
-                            "confidence": "low",
-                            "source": "error-fallback",
-                            "manifestUrl": module.manifest_url,
-                            "downloadUrl": None,
-                            "compatibility": module.raw_manifest.get("compatibility") or {},
-                            "systemCompatibility": {},
-                            "forcedCompatibility": _forced_compatibility_payload(module),
-                            "releasePublishedAt": None,
-                            "attentionFlag": False,
-                        })
-
-        # Inject unused outcomes into each target's moduleOutcomes
         for row in matrix:
             target_fv = str(row.get("targetFoundryVersion") or "")
+            row_systems = row.get("systems") or []
+            target_system_versions: dict[str, str] = {}
+            for sys_entry in row_systems:
+                if isinstance(sys_entry, dict):
+                    sid = str(sys_entry.get("systemId") or "")
+                    sver = str(sys_entry.get("recommendedVersion") or sys_entry.get("installedVersion") or "")
+                    if sid and sver:
+                        target_system_versions[sid] = sver
+
+            def _resolve_one(module: ModuleRecord, _fv: str = target_fv, _sv: dict = target_system_versions) -> dict:
+                return _resolve_unused_module_for_planning(
+                    module, _fv, _sv, fetch_module_history,
+                )
+
+            unused_outcomes: list[dict] = []
+            batch_size = 10
+            for i in range(0, len(unused_modules), batch_size):
+                batch = unused_modules[i : i + batch_size]
+                with ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as pool:
+                    futures = {pool.submit(_resolve_one, m): m for m in batch}
+                    for future in as_completed(futures):
+                        try:
+                            unused_outcomes.append(future.result())
+                        except Exception:
+                            module = futures[future]
+                            logging.warning("Planning resolution failed for %s", module.module_id, exc_info=True)
+                            unused_outcomes.append({
+                                "module": module.module_id,
+                                "title": module.title,
+                                "installedVersion": module.version,
+                                "recommendedVersion": module.version,
+                                "status": "blocked",
+                                "reason": "Planning resolution failed.",
+                                "confidence": "low",
+                                "source": "error-fallback",
+                                "manifestUrl": module.manifest_url,
+                                "downloadUrl": None,
+                                "compatibility": module.raw_manifest.get("compatibility") or {},
+                                "systemCompatibility": {},
+                                "forcedCompatibility": _forced_compatibility_payload(module),
+                                "releasePublishedAt": None,
+                                "attentionFlag": False,
+                            })
+
             existing = row.get("moduleOutcomes") or []
             for outcome in unused_outcomes:
                 entry = dict(outcome)
