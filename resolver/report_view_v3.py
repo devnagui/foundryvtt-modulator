@@ -557,6 +557,15 @@ def _build_future_foundry_target(
         )
     )
 
+    # Collect all module IDs assigned to at least one system so we can
+    # identify unused/unassigned modules later.
+    system_assigned_module_ids: set[str] = set()
+    for item in row.get("systemCompatibility") or []:
+        for module_id in item.get("impactedModuleIds") or []:
+            mid = str(module_id).strip()
+            if mid:
+                system_assigned_module_ids.add(mid)
+
     ready_modules = []
     upgradable_modules = []
     blocked_modules = []
@@ -564,6 +573,7 @@ def _build_future_foundry_target(
     local_manifest_manual_modules = []
     for item in row.get("moduleOutcomes") or []:
         status = item.get("status") or "blocked"
+        module_id = str(item.get("module") or "").strip()
         entry = {
             "module": item.get("module"),
             "title": item.get("title") or item.get("module"),
@@ -591,6 +601,11 @@ def _build_future_foundry_target(
         else:
             unknown_modules.append(entry)
         if status == "excluded-local-only":
+            local_manifest_manual_modules.append(entry)
+        # Modules not assigned to any system are unused/manual — route
+        # them to localManifestManualModules so the frontend can display
+        # them in the "Unused" bucket.
+        elif module_id and module_id not in system_assigned_module_ids:
             local_manifest_manual_modules.append(entry)
 
     policy_blocked_modules = [current for current in blocked_modules if _is_non_blocking_policy_blocker(current)]
