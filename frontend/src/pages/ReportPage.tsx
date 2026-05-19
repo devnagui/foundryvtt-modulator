@@ -534,7 +534,7 @@ function StatusBadge({
   return (
     <button
       type="button"
-      className={`status-badge ${tone}`}
+      className={`status-badge ${tone}${open ? " tooltip-open" : ""}`}
       title={label}
       aria-label={label}
       aria-describedby={open ? tooltipId : undefined}

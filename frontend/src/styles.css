@@ -373,6 +373,11 @@ body.light-mode {
 .status-badge:focus-visible {
   box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.45);
 }
+/* When a badge has an open tooltip, lift the badge above the sticky thead (z-index: 3) */
+.status-badge:has(.status-badge-tooltip),
+.status-badge.tooltip-open {
+  z-index: 10;
+}
 .status-badge-tooltip {
   position: absolute;
   left: 50%;
