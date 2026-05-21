@@ -91,3 +91,57 @@ def upsert_module_sources(req: Request, body: dict) -> dict:
         code = str(exc)
         mapped = code if code in {"module_id_required", "manifest_or_project_required"} else "source_validation_failed"
         raise HTTPException(status_code=400, detail={"error": mapped, "message": str(exc)}) from exc
+
+
+@router.get("/provider-tokens")
+def provider_tokens_status(req: Request) -> dict:
+    rt = runtime()
+    require_auth(req, rt)
+    gh_env = bool(rt.config.github_api_token)
+    gh_config = bool(rt.config_store.get_github_token()) if not gh_env else False
+    gl_env = bool(rt.config.gitlab_api_token)
+    gl_config = bool(rt.config_store.get_gitlab_token()) if not gl_env else False
+    return {
+        "github": {
+            "configured": gh_env or gh_config,
+            "source": "env" if gh_env else ("config" if gh_config else "none"),
+        },
+        "gitlab": {
+            "configured": gl_env or gl_config,
+            "source": "env" if gl_env else ("config" if gl_config else "none"),
+        },
+    }
+
+
+@router.post("/provider-tokens")
+def save_provider_token(req: Request, body: dict) -> dict:
+    rt = runtime()
+    require_rate_limit(req, rt)
+    require_auth(req, rt)
+    require_csrf(req)
+    provider = str(body.get("provider") or "").strip().lower()
+    token = str(body.get("token") or "").strip()
+    if provider not in ("github", "gitlab"):
+        raise HTTPException(status_code=400, detail={"error": "invalid_provider", "message": "Provider must be 'github' or 'gitlab'."})
+    if not token:
+        raise HTTPException(status_code=400, detail={"error": "token_required", "message": "Token must not be empty."})
+    if len(token) > 256:
+        raise HTTPException(status_code=400, detail={"error": "token_too_long", "message": "Token exceeds maximum length."})
+    if provider == "github":
+        rt.config_store.set_github_token(token)
+    else:
+        rt.config_store.set_gitlab_token(token)
+    return {"ok": True, "provider": provider, "source": "config"}
+
+
+@router.delete("/provider-tokens")
+def clear_provider_token(req: Request, body: dict) -> dict:
+    rt = runtime()
+    require_rate_limit(req, rt)
+    require_auth(req, rt)
+    require_csrf(req)
+    provider = str(body.get("provider") or "").strip().lower()
+    if provider not in ("github", "gitlab"):
+        raise HTTPException(status_code=400, detail={"error": "invalid_provider"})
+    rt.config_store.clear_provider_token(provider)
+    return {"ok": True, "provider": provider, "source": "none"}

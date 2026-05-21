@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import json
+import logging
 import os
 import re
 import shutil
@@ -10,6 +12,7 @@ import threading
 import tempfile
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -165,6 +168,13 @@ def _preferred_update_url(*urls: Any) -> str:
     return ""
 
 
+def _effective_provider_tokens(runtime: AppRuntime) -> tuple[str, str]:
+    """Return (github_token, gitlab_token) with env var > runtime-config priority."""
+    gh = runtime.config.github_api_token or runtime.config_store.get_github_token()
+    gl = runtime.config.gitlab_api_token or runtime.config_store.get_gitlab_token()
+    return gh, gl
+
+
 def get_runtime() -> AppRuntime:
     global _RUNTIME
     if _RUNTIME is not None:
@@ -180,6 +190,7 @@ def get_runtime() -> AppRuntime:
         rate_limiter=RequestRateLimiter(config.request_rate_limit_per_minute),
     )
     _RUNTIME = runtime
+    runtime.lock_store.cleanup_stale()
     _ensure_worker(runtime)
     return runtime
 
@@ -1440,7 +1451,7 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
         return execute_rollback(runtime, scan_run_id)
     if clean_action == "override-from-plan":
         _ensure_foundry_offline(runtime)
-        lock_payload = runtime.lock_store.acquire(action="override-from-plan")
+        lock_payload = runtime.lock_store.acquire(action="override-from-plan", job_id=job_id or "")
         try:
             plan_path = str(payload.get("planPath") or "").strip()
             plan_content = str(payload.get("planContent") or "")
@@ -1458,12 +1469,22 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
                     percent = max(percent, 95)
                 runtime.action_engine.set_progress(job_id, max(0, min(percent, 99)), meta)
 
+            def _cancel_check() -> bool:
+                if not job_id:
+                    return False
+                return runtime.action_engine.is_cancelled(job_id)
+
+            gh_token, gl_token = _effective_provider_tokens(runtime)
+
             output = apply_override_from_plan(
                 runtime,
                 plan_path=plan_path,
                 plan_content=plan_content,
                 profile=profile,
                 progress_callback=_import_progress,
+                cancel_check=_cancel_check,
+                github_token=gh_token,
+                gitlab_token=gl_token,
             )
             if job_id:
                 runtime.action_engine.set_progress(
@@ -2486,6 +2507,9 @@ def apply_override_from_plan(
     plan_content: str = "",
     profile: str = "current",
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+    github_token: str = "",
+    gitlab_token: str = "",
 ) -> dict[str, Any]:
     clean_content = str(plan_content or "").strip()
     clean_path = str(plan_path or "").strip()
@@ -2516,16 +2540,36 @@ def apply_override_from_plan(
         raise ValueError("plan_no_targets")
     total_items = len(system_targets) + len(module_targets)
     processed_items = 0
+    error_count = 0
+    rate_limit_hit = False
+    failed_items: list[dict[str, str]] = []
+
+    def _emit_progress(phase: str, item_kind: str = "", item_id: str = "") -> None:
+        if progress_callback is None:
+            return
+        progress_callback({
+            "phase": phase,
+            "totalItems": total_items,
+            "processedItems": processed_items,
+            "currentItemKind": item_kind,
+            "currentItemId": item_id,
+            "appliedCount": applied_count,
+            "skippedCount": skipped_count,
+            "errorCount": error_count,
+            "failedItems": failed_items[-10:],
+            "rateLimitHit": rate_limit_hit,
+        })
+
+    logging.info("override-from-plan: starting — %d systems + %d modules to process (profile=%s)", len(system_targets), len(module_targets), selected_profile)
+
     if progress_callback is not None:
-        progress_callback(
-            {
-                "phase": "counting",
-                "totalItems": total_items,
-                "processedItems": 0,
-                "currentItemKind": "",
-                "currentItemId": "",
-            }
-        )
+        progress_callback({
+            "phase": "counting",
+            "totalItems": total_items,
+            "processedItems": 0,
+            "currentItemKind": "",
+            "currentItemId": "",
+        })
 
     data_root = runtime.config_store.get_data_root() or runtime.config.data_root
     ok, normalized_root, details = _validate_foundry_root_path(data_root)
@@ -2548,61 +2592,64 @@ def apply_override_from_plan(
     failures: list[dict[str, Any]] = []
     applied_count = 0
     skipped_count = 0
+    cancelled = False
 
+    # --- SYSTEM LOOP (sequential — few items) ---
     for system_id in sorted(system_targets.keys()):
+        if cancel_check and cancel_check():
+            logging.info("override-from-plan: cancelled by user at system %s", system_id)
+            cancelled = True
+            break
         target = system_targets.get(system_id) or {}
         target_version = str(target.get("targetVersion") or "").strip()
         source_url = str(target.get("sourceUrl") or "").strip()
-        if progress_callback is not None:
-            progress_callback(
-                {
-                    "phase": "resolving",
-                    "totalItems": total_items,
-                    "processedItems": processed_items,
-                    "currentItemKind": "system",
-                    "currentItemId": system_id,
-                }
-            )
+        _emit_progress("resolving", "system", system_id)
         if not _is_concrete_version(target_version):
+            logging.info("override-from-plan: skipped system %s — missing target version", system_id)
             skipped_count += 1
             results["systems"].append({"systemId": system_id, "status": "skipped", "reason": "missing_target_version"})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            _emit_progress("resolving", "system", system_id)
             continue
 
         installed = installed_systems_by_id.get(system_id)
         installed_version = str(installed.version if installed else "").strip()
         if installed and _version_tokens_match(installed_version, target_version):
+            logging.info("override-from-plan: skipped system %s — already at %s", system_id, target_version)
             skipped_count += 1
             results["systems"].append({"systemId": system_id, "status": "already", "installedVersion": installed_version, "targetVersion": target_version})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            _emit_progress("resolving", "system", system_id)
             continue
         if not installed and not source_url:
+            logging.warning("override-from-plan: failed system %s — source_url_missing", system_id)
             failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": "source_url_missing"})
+            error_count += 1
+            failed_items.append({"id": system_id, "kind": "system", "reason": "source_url_missing"})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            _emit_progress("resolving", "system", system_id)
             continue
 
         candidate = installed or _candidate_from_target(system_id, str(target.get("title") or system_id), installed_version or "0.0.0", source_url)
         if source_url and not (candidate.manifest_url or candidate.project_url):
             candidate = _candidate_from_target(system_id, str(target.get("title") or system_id), candidate.version or "0.0.0", source_url)
 
+        logging.info("override-from-plan: resolving system %s → %s", system_id, target_version)
         chosen_release = None
         release_count = 0
         releases: list[Any] = []
         if candidate.project_url or candidate.manifest_url:
             try:
-                releases, _warnings = fetch_system_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir)
+                releases, _warnings = fetch_system_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir, github_token=github_token, gitlab_token=gitlab_token)
                 release_count = len(releases)
                 for release in releases:
                     if _version_tokens_match(str(getattr(release, "version", "") or ""), target_version):
                         chosen_release = release
                         break
-            except Exception:
+            except Exception as exc:
+                logging.warning("override-from-plan: fetch failed for system %s: %s", system_id, exc)
+                if "429" in str(exc) or "rate" in str(exc).lower():
+                    rate_limit_hit = True
                 chosen_release = None
         recommendation = _recommendation_from_release(candidate, target_version, chosen_release, release_count, source_url) if chosen_release is not None else None
         if recommendation is None and source_url.lower().endswith(".zip"):
@@ -2643,24 +2690,18 @@ def apply_override_from_plan(
             except Exception:
                 recommendation = recommendation
         if recommendation is None:
+            logging.warning("override-from-plan: failed system %s — recommendation_not_resolved", system_id)
             failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": "recommendation_not_resolved"})
+            error_count += 1
+            failed_items.append({"id": system_id, "kind": "system", "reason": "recommendation_not_resolved"})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+            _emit_progress("resolving", "system", system_id)
             continue
         try:
-            if progress_callback is not None:
-                progress_callback(
-                    {
-                        "phase": "applying",
-                        "totalItems": total_items,
-                        "processedItems": processed_items,
-                        "currentItemKind": "system",
-                        "currentItemId": system_id,
-                    }
-                )
+            _emit_progress("applying", "system", system_id)
             backup_path = apply_system_recommendation(candidate, recommendation, str(systems_dir), runtime.config.cache_dir)
             applied_count += 1
+            logging.info("override-from-plan: applied system %s: %s → %s", system_id, installed_version or "-", recommendation.recommended_version)
             results["systems"].append({
                 "systemId": system_id,
                 "status": "applied",
@@ -2670,71 +2711,81 @@ def apply_override_from_plan(
                 "backupPath": backup_path,
             })
         except Exception as exc:
+            logging.warning("override-from-plan: apply failed for system %s: %s", system_id, exc)
             failures.append({"kind": "system", "id": system_id, "targetVersion": target_version, "reason": str(exc)})
+            error_count += 1
+            failed_items.append({"id": system_id, "kind": "system", "reason": str(exc)[:200]})
         processed_items += 1
-        if progress_callback is not None:
-            progress_callback({"phase": "applying", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "system", "currentItemId": system_id})
+        _emit_progress("applying", "system", system_id)
 
-    for module_id in sorted(module_targets.keys()):
+    # --- MODULE LOOP — resolve in parallel batches, apply sequentially ---
+    batch_size = min(max(runtime.config.import_batch_size, 1), 20)
+    module_ids_sorted = sorted(module_targets.keys())
+
+    # Pre-filter: skip modules that are already at target or have no version
+    resolve_queue: list[tuple[str, dict[str, Any], str, str, Any]] = []
+    for module_id in module_ids_sorted:
+        if cancelled or (cancel_check and cancel_check()):
+            cancelled = True
+            break
         target = module_targets.get(module_id) or {}
         target_version = str(target.get("targetVersion") or "").strip()
-        source_url = str(target.get("sourceUrl") or "").strip()
-        if progress_callback is not None:
-            progress_callback(
-                {
-                    "phase": "resolving",
-                    "totalItems": total_items,
-                    "processedItems": processed_items,
-                    "currentItemKind": "module",
-                    "currentItemId": module_id,
-                }
-            )
+        source_url_raw = str(target.get("sourceUrl") or "").strip()
         if not _is_concrete_version(target_version):
+            logging.info("override-from-plan: skipped module %s — missing target version", module_id)
             skipped_count += 1
             results["modules"].append({"moduleId": module_id, "status": "skipped", "reason": "missing_target_version"})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            _emit_progress("resolving", "module", module_id)
             continue
-
         installed = installed_modules_by_id.get(module_id)
         installed_version = str(installed.version if installed else "").strip()
         if installed and _version_tokens_match(installed_version, target_version):
+            logging.info("override-from-plan: skipped module %s — already at %s", module_id, target_version)
             skipped_count += 1
             results["modules"].append({"moduleId": module_id, "status": "already", "installedVersion": installed_version, "targetVersion": target_version})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            _emit_progress("resolving", "module", module_id)
             continue
-
-        if not source_url:
+        eff_source_url = source_url_raw
+        if not eff_source_url:
             source = _source_for_module_id(module_sources, module_id)
-            source_url = str((source or {}).get("manifestUrl") or (source or {}).get("projectUrl") or "").strip()
-        if not installed and not source_url:
+            eff_source_url = str((source or {}).get("manifestUrl") or (source or {}).get("projectUrl") or "").strip()
+        if not installed and not eff_source_url:
+            logging.warning("override-from-plan: failed module %s — source_url_missing", module_id)
             failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": "source_url_missing"})
+            error_count += 1
+            failed_items.append({"id": module_id, "kind": "module", "reason": "source_url_missing"})
             processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            _emit_progress("resolving", "module", module_id)
             continue
-        candidate = installed or _candidate_from_target(module_id, str(target.get("title") or module_id), installed_version or "0.0.0", source_url)
-        if source_url and not (candidate.manifest_url or candidate.project_url):
-            candidate = _candidate_from_target(module_id, str(target.get("title") or module_id), candidate.version or "0.0.0", source_url)
+        candidate = installed or _candidate_from_target(module_id, str(target.get("title") or module_id), installed_version or "0.0.0", eff_source_url)
+        if eff_source_url and not (candidate.manifest_url or candidate.project_url):
+            candidate = _candidate_from_target(module_id, str(target.get("title") or module_id), candidate.version or "0.0.0", eff_source_url)
+        resolve_queue.append((module_id, target, target_version, eff_source_url, candidate))
 
+    # Resolve phase — parallel batches
+    def _resolve_one_module(item: tuple[str, dict[str, Any], str, str, Any]) -> tuple[str, Recommendation | None, str]:
+        """Resolve a single module. Returns (module_id, recommendation_or_none, failure_reason)."""
+        module_id, target, target_version, source_url, candidate = item
+        installed = installed_modules_by_id.get(module_id)
+        installed_version = str(installed.version if installed else "").strip()
         chosen_release = None
         release_count = 0
         if candidate.project_url or candidate.manifest_url:
             try:
-                releases, _warnings = fetch_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir)
-                release_count = len(releases)
-                for release in releases:
-                    if _version_tokens_match(str(getattr(release, "version", "") or ""), target_version):
-                        chosen_release = release
+                mod_releases, _warnings = fetch_release_history(candidate, per_page=100, cache_dir=runtime.config.cache_dir, github_token=github_token, gitlab_token=gitlab_token)
+                release_count = len(mod_releases)
+                for rel in mod_releases:
+                    if _version_tokens_match(str(getattr(rel, "version", "") or ""), target_version):
+                        chosen_release = rel
                         break
-            except Exception:
+            except Exception as exc:
+                logging.warning("override-from-plan: fetch failed for module %s: %s", module_id, exc)
                 chosen_release = None
-        recommendation = _recommendation_from_release(candidate, target_version, chosen_release, release_count, source_url) if chosen_release is not None else None
-        if recommendation is None and source_url.lower().endswith(".zip"):
-            recommendation = Recommendation(
+        rec = _recommendation_from_release(candidate, target_version, chosen_release, release_count, source_url) if chosen_release is not None else None
+        if rec is None and source_url.lower().endswith(".zip"):
+            rec = Recommendation(
                 module=module_id,
                 installed_version=installed_version or "",
                 recommended_version=target_version,
@@ -2746,7 +2797,7 @@ def apply_override_from_plan(
                 source="override-plan-direct-zip",
                 checked_releases=0,
             )
-        if recommendation is None:
+        if rec is None:
             try:
                 fallback_suggestion = _suggest_best_release_for_module_with_caches(
                     module=candidate,
@@ -2763,7 +2814,7 @@ def apply_override_from_plan(
                 fallback_compat = fallback_suggestion.get("compatibility") if isinstance(fallback_suggestion.get("compatibility"), dict) else {}
                 fallback_sys_compat = fallback_suggestion.get("systemCompatibility") if isinstance(fallback_suggestion.get("systemCompatibility"), dict) else {}
                 if _is_concrete_version(fallback_version) and fallback_download:
-                    recommendation = Recommendation(
+                    rec = Recommendation(
                         module=module_id,
                         installed_version=installed_version or "",
                         recommended_version=fallback_version,
@@ -2778,53 +2829,85 @@ def apply_override_from_plan(
                         system_compatibility=fallback_sys_compat,
                     )
             except Exception:
-                recommendation = recommendation
-        if recommendation is None:
-            failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": "recommendation_not_resolved"})
-            processed_items += 1
-            if progress_callback is not None:
-                progress_callback({"phase": "resolving", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+                pass
+        if rec is None:
+            return module_id, None, "recommendation_not_resolved"
+        return module_id, rec, ""
+
+    resolved_modules: dict[str, tuple[Recommendation | None, str]] = {}
+    if resolve_queue and not cancelled:
+        logging.info("override-from-plan: resolving %d modules in batches of %d", len(resolve_queue), batch_size)
+        _emit_progress("resolving", "module", "")
+        for batch_start in range(0, len(resolve_queue), batch_size):
+            if cancel_check and cancel_check():
+                logging.info("override-from-plan: cancelled by user during module resolve")
+                cancelled = True
+                break
+            batch = resolve_queue[batch_start:batch_start + batch_size]
+            workers = min(batch_size, len(batch))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_resolve_one_module, item): item[0] for item in batch}
+                for future in as_completed(futures):
+                    mid = futures[future]
+                    try:
+                        mid_result, rec, reason = future.result()
+                        resolved_modules[mid_result] = (rec, reason)
+                        if rec is None:
+                            logging.warning("override-from-plan: resolve failed for module %s — %s", mid_result, reason)
+                            if "429" in reason or "rate" in reason.lower():
+                                rate_limit_hit = True
+                        else:
+                            logging.info("override-from-plan: resolved module %s → %s", mid_result, rec.recommended_version)
+                    except Exception as exc:
+                        logging.warning("override-from-plan: resolve exception for module %s: %s", mid, exc)
+                        resolved_modules[mid] = (None, str(exc)[:200])
+                        if "429" in str(exc) or "rate" in str(exc).lower():
+                            rate_limit_hit = True
+            # Update progress after each batch
+            processed_items += len(batch)
+            _emit_progress("resolving", "module", batch[-1][0] if batch else "")
+
+    # Apply phase — sequential
+    for module_id, target, target_version, source_url, candidate in resolve_queue:
+        if cancelled or (cancel_check and cancel_check()):
+            cancelled = True
+            break
+        rec, reason = resolved_modules.get(module_id, (None, "not_resolved"))
+        installed = installed_modules_by_id.get(module_id)
+        installed_version = str(installed.version if installed else "").strip()
+        if rec is None:
+            failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": reason})
+            error_count += 1
+            failed_items.append({"id": module_id, "kind": "module", "reason": reason[:200] if reason else "unknown"})
             continue
         try:
-            if progress_callback is not None:
-                progress_callback(
-                    {
-                        "phase": "applying",
-                        "totalItems": total_items,
-                        "processedItems": processed_items,
-                        "currentItemKind": "module",
-                        "currentItemId": module_id,
-                    }
-                )
-            backup_path = apply_recommendation(candidate, recommendation, str(modules_dir), runtime.config.cache_dir)
+            _emit_progress("applying", "module", module_id)
+            backup_path = apply_recommendation(candidate, rec, str(modules_dir), runtime.config.cache_dir)
             applied_count += 1
+            logging.info("override-from-plan: applied module %s: %s → %s", module_id, installed_version or "-", rec.recommended_version)
             results["modules"].append({
                 "moduleId": module_id,
                 "status": "applied",
                 "fromVersion": installed_version or "-",
                 "requestedVersion": target_version,
-                "toVersion": recommendation.recommended_version,
+                "toVersion": rec.recommended_version,
                 "backupPath": backup_path,
             })
         except Exception as exc:
+            logging.warning("override-from-plan: apply failed for module %s: %s", module_id, exc)
             failures.append({"kind": "module", "id": module_id, "targetVersion": target_version, "reason": str(exc)})
-        processed_items += 1
-        if progress_callback is not None:
-            progress_callback({"phase": "applying", "totalItems": total_items, "processedItems": processed_items, "currentItemKind": "module", "currentItemId": module_id})
+            error_count += 1
+            failed_items.append({"id": module_id, "kind": "module", "reason": str(exc)[:200]})
 
-    if progress_callback is not None:
-        progress_callback(
-            {
-                "phase": "finalizing",
-                "totalItems": total_items,
-                "processedItems": processed_items,
-                "currentItemKind": "",
-                "currentItemId": "",
-            }
-        )
+    _emit_progress("finalizing", "", "")
 
-    return {
-        "ok": len(failures) == 0,
+    logging.info(
+        "override-from-plan: finished — applied=%d skipped=%d failed=%d cancelled=%s rate_limit=%s",
+        applied_count, skipped_count, len(failures), cancelled, rate_limit_hit,
+    )
+
+    result_payload: dict[str, Any] = {
+        "ok": len(failures) == 0 and not cancelled,
         "action": "override-from-plan",
         "profile": selected_profile,
         "planPath": source_label,
@@ -2838,6 +2921,8 @@ def apply_override_from_plan(
         "failures": failures,
         "warnings": parsing_warnings,
         "results": results,
+        "cancelled": cancelled,
+        "rateLimitHit": rate_limit_hit,
         "progressSummary": {
             "totalItems": total_items,
             "processedItems": processed_items,
@@ -2845,6 +2930,12 @@ def apply_override_from_plan(
         },
         "generatedAt": _utc_now_iso(),
     }
+    if rate_limit_hit:
+        result_payload["rateLimitAdvisory"] = (
+            "GitHub/GitLab API rate limit was hit during import. "
+            "Configure a Personal Access Token in Settings to increase from 60 to 5,000 requests/hour."
+        )
+    return result_payload
 
 
 def save_module_source(runtime: AppRuntime, module_id: str, manifest_url: str, project_url: str) -> dict[str, Any]:

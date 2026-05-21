@@ -45,6 +45,9 @@ class ServiceConfig:
     max_sessions: int
     audit_file: Path
     ui_dist_dir: Path = field(default_factory=lambda: Path("frontend/dist"))
+    github_api_token: str = ""
+    gitlab_api_token: str = ""
+    import_batch_size: int = 10
 
 
 def _utc_now_iso() -> str:
@@ -137,6 +140,9 @@ def load_config() -> ServiceConfig:
         max_sessions=_parse_int(os.environ.get("RESOLVER_MAX_SESSIONS"), default=200, min_value=1),
         audit_file=audit_file,
         ui_dist_dir=Path(os.environ.get("RESOLVER_UI_DIST_DIR") or (tool_root / "frontend" / "dist")),
+        github_api_token=os.environ.get("RESOLVER_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "",
+        gitlab_api_token=os.environ.get("RESOLVER_GITLAB_TOKEN") or os.environ.get("GITLAB_TOKEN") or "",
+        import_batch_size=_parse_int(os.environ.get("RESOLVER_IMPORT_BATCH_SIZE"), default=10, min_value=1),
     )
     config.reports_dir.mkdir(parents=True, exist_ok=True)
     config.state_dir.mkdir(parents=True, exist_ok=True)
@@ -178,6 +184,7 @@ class ActionJob:
     result: dict[str, Any] | None = None
     error: str | None = None
     progress_meta: dict[str, Any] = field(default_factory=dict)
+    cancelled: bool = False
 
 
 class ActionEngine:
@@ -258,6 +265,28 @@ class ActionEngine:
             ordered = sorted(self._jobs.values(), key=lambda item: item.created_at, reverse=True)
             return {"runningJobId": self._running_job_id, "pendingCount": len(self._queue), "jobs": [self._job_to_dict(job) for job in ordered[:200]]}
 
+    def cancel(self, job_id: str) -> bool:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.status not in ("pending", "running"):
+                return False
+            job.cancelled = True
+            if job.status == "pending":
+                job.status = "failed"
+                job.error = "cancelled"
+                job.finished_at = _utc_now_iso()
+                job.updated_at = _utc_now_iso()
+                try:
+                    self._queue.remove(job_id)
+                except ValueError:
+                    pass
+            return True
+
+    def is_cancelled(self, job_id: str) -> bool:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return bool(job and job.cancelled)
+
     def _job_to_dict(self, job: ActionJob) -> dict[str, Any]:
         return {
             "jobId": job.job_id,
@@ -298,6 +327,38 @@ class RuntimeConfigStore:
             return {"selected": "", "valid": False, "message": "No Foundry path selected yet."}
         ok, normalized, details = _validate_foundry_root_path(selected)
         return {"selected": selected, "normalized": normalized if ok else "", "valid": bool(ok), "message": details.get("message") or ("Foundry root is valid." if ok else "Invalid Foundry root."), "details": details}
+
+    def get_github_token(self) -> str:
+        payload = self._read()
+        return str(payload.get("githubToken") or "").strip()
+
+    def set_github_token(self, token: str) -> None:
+        with self._lock:
+            payload = self._read()
+            payload["githubToken"] = str(token or "").strip()
+            payload["updatedAt"] = _utc_now_iso()
+            self._write(payload)
+
+    def get_gitlab_token(self) -> str:
+        payload = self._read()
+        return str(payload.get("gitlabToken") or "").strip()
+
+    def set_gitlab_token(self, token: str) -> None:
+        with self._lock:
+            payload = self._read()
+            payload["gitlabToken"] = str(token or "").strip()
+            payload["updatedAt"] = _utc_now_iso()
+            self._write(payload)
+
+    def clear_provider_token(self, provider: str) -> None:
+        key = "githubToken" if provider == "github" else "gitlabToken" if provider == "gitlab" else ""
+        if not key:
+            return
+        with self._lock:
+            payload = self._read()
+            payload.pop(key, None)
+            payload["updatedAt"] = _utc_now_iso()
+            self._write(payload)
 
     def _read(self) -> dict[str, Any]:
         if not self._path.exists():
@@ -538,19 +599,35 @@ class AuthStore:
 
 
 class MaintenanceLock:
+    LOCK_TTL_MINUTES = 30
+
     def __init__(self, state_dir: Path) -> None:
         self._path = state_dir / "maintenance.lock.json"
         self._mutex = threading.Lock()
 
-    def acquire(self, action: str) -> dict[str, Any]:
+    def acquire(self, action: str, job_id: str = "") -> dict[str, Any]:
+        import logging as _log
         with self._mutex:
             if self._path.exists():
                 try:
                     active = json.loads(self._path.read_text(encoding="utf-8"))
                 except Exception:
                     active = {"action": "unknown"}
-                raise RuntimeError(json.dumps(active))
-            payload = {"lockVersion": 1, "lockId": secrets.token_hex(16), "jobId": secrets.token_hex(16), "action": action, "createdAt": _utc_now_iso()}
+                expires_at = _parse_utc_timestamp(str(active.get("expiresAt") or ""))
+                if expires_at and datetime.now(timezone.utc) > expires_at:
+                    _log.warning("Stale maintenance lock detected (expired %s), overwriting.", active.get("expiresAt"))
+                else:
+                    raise RuntimeError(json.dumps(active))
+            now = datetime.now(timezone.utc)
+            payload = {
+                "lockVersion": 1,
+                "lockId": secrets.token_hex(16),
+                "jobId": job_id or secrets.token_hex(16),
+                "action": action,
+                "createdAt": now.isoformat().replace("+00:00", "Z"),
+                "expiresAt": (now + timedelta(minutes=self.LOCK_TTL_MINUTES)).isoformat().replace("+00:00", "Z"),
+                "pid": os.getpid(),
+            }
             self._path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
             return payload
 
@@ -561,6 +638,24 @@ class MaintenanceLock:
                     self._path.unlink()
             except OSError:
                 return
+
+    def cleanup_stale(self) -> bool:
+        import logging as _log
+        with self._mutex:
+            if not self._path.exists():
+                return False
+            try:
+                active = json.loads(self._path.read_text(encoding="utf-8"))
+            except Exception:
+                self._path.unlink(missing_ok=True)
+                _log.warning("Removed unreadable maintenance lock on startup.")
+                return True
+            expires_at = _parse_utc_timestamp(str(active.get("expiresAt") or ""))
+            if expires_at and datetime.now(timezone.utc) > expires_at:
+                self._path.unlink(missing_ok=True)
+                _log.warning("Removed stale maintenance lock on startup (expired %s, action=%s).", active.get("expiresAt"), active.get("action"))
+                return True
+            return False
 
 
 def _append_audit(config: ServiceConfig, event: str, details: dict[str, Any]) -> None:

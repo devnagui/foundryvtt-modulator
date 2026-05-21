@@ -239,6 +239,8 @@ export const api = {
       body: JSON.stringify({ action, payload })
     }),
   jobStatus: (jobId: string) => request<JobStatus>(`/api/v1/actions/jobs/${encodeURIComponent(jobId)}`),
+  cancelJob: (jobId: string) =>
+    request<{ ok: boolean; jobId: string; status: string }>(`/api/v1/actions/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
   rollbackPlan: (scanRunId: number) =>
     request<{ ok: boolean; scanRunId: number; generatedAt?: string; targetVersion?: string; modules?: string[]; backupPaths?: string[]; notes?: string }>(
       `/api/v1/actions/rollback-plan?scanRunId=${encodeURIComponent(String(scanRunId))}`
@@ -268,6 +270,18 @@ export const api = {
     request<{ ok: boolean; saved: ModuleSourceRow; suggestion?: Record<string, unknown> }>("/api/v1/config/module-sources", {
       method: "POST",
       body: JSON.stringify({ moduleId, manifestUrl, projectUrl })
+    }),
+  providerTokensStatus: () =>
+    request<{ github: { configured: boolean; source: string }; gitlab: { configured: boolean; source: string } }>("/api/v1/config/provider-tokens"),
+  saveProviderToken: (provider: "github" | "gitlab", token: string) =>
+    request<{ ok: boolean; provider: string; source: string }>("/api/v1/config/provider-tokens", {
+      method: "POST",
+      body: JSON.stringify({ provider, token })
+    }),
+  clearProviderToken: (provider: "github" | "gitlab") =>
+    request<{ ok: boolean; provider: string; source: string }>("/api/v1/config/provider-tokens", {
+      method: "DELETE",
+      body: JSON.stringify({ provider })
     }),
   suggestModule: (manifestUrl: string, context?: SuggestModuleContext, moduleId = "", options?: { forceRefresh?: boolean; projectUrl?: string }) =>
     request<{ suggestion?: Record<string, unknown> }>("/api/v1/actions/suggest-module", {

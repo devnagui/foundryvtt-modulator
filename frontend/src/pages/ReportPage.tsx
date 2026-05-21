@@ -341,6 +341,15 @@ function hasVerifiedMajorMismatch(compat: Record<string, unknown> | undefined, t
   const vm = Number.parseInt(verified.split(".")[0] || "0", 10);
   return Number.isFinite(tm) && Number.isFinite(vm) && tm !== vm;
 }
+function isVerifiedForTarget(compat: Record<string, unknown> | undefined, target: string): boolean | null {
+  if (!compat || !target) return null;
+  const verified = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
+  if (!verified) return null;
+  const tm = Number.parseInt(target.split(".")[0] || "0", 10);
+  const vm = Number.parseInt(verified.split(".")[0] || "0", 10);
+  if (!Number.isFinite(tm) || !Number.isFinite(vm)) return null;
+  return tm === vm;
+}
 function hasMinimumLowerThanTarget(compat: Record<string, unknown> | undefined, target: string): boolean {
   if (!compat || !target) return false;
   const minimum = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]);
@@ -883,6 +892,9 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [page, setPage] = useState(1);
   const [actionBusy, setActionBusy] = useState(false);
   const [currentFilters, setCurrentFilters] = useState<CurrentFilter[]>([]);
+  const [verifiedOnly, setVerifiedOnly] = useState(() => {
+    try { return sessionStorage.getItem("modulator_verified_only") !== "false"; } catch { return true; }
+  });
   const [currentSystemFilter, setCurrentSystemFilter] = useState("");
   const [activeCurrentSystemId, setActiveCurrentSystemId] = useState("");
   const [currentVersionBySystem, setCurrentVersionBySystem] = useState<Record<string, string>>({});
@@ -898,6 +910,10 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [foundryRoot, setFoundryRoot] = useState<FoundryRootStatus | null>(null);
   const [foundryPathInput, setFoundryPathInput] = useState("");
   const [suggestInput, setSuggestInput] = useState("");
+  const [tokenStatus, setTokenStatus] = useState<{ github: { configured: boolean; source: string }; gitlab: { configured: boolean; source: string } } | null>(null);
+  const [ghTokenInput, setGhTokenInput] = useState("");
+  const [glTokenInput, setGlTokenInput] = useState("");
+  const [tokenSaving, setTokenSaving] = useState(false);
   const [suggestResult, setSuggestResult] = useState("");
   const [lastImportReport, setLastImportReport] = useState<ImportReport | null>(null);
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([]);
@@ -1869,8 +1885,24 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           ? true
           : badgeFilterCodes.some((code) => currentBadgeCodesForRow(row).includes(code))
       ))
-      .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason}`.toLowerCase().includes(q) : true));
-  }, [selectedCurrentRows, search, currentFilters, badgeFilterCodes, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
+      .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason}`.toLowerCase().includes(q) : true))
+      .filter((row) => {
+        if (!verifiedOnly) return true;
+        const foundryVerified = isVerifiedForTarget(row.compatibility, currentFoundryVersion);
+        if (foundryVerified === false) return false;
+        const activeSystem = activeCurrentSystemId || row.relatedSystems[0] || "";
+        const systemTarget = activeSystem
+          ? (currentVersionBySystem[activeSystem] || currentSystemFilter || selectedCurrentVersionBucket?.key || currentSystemVersionById[activeSystem] || "")
+          : (currentSystemFilter || selectedCurrentVersionBucket?.key || "");
+        if (activeSystem && systemTarget) {
+          const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
+          const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+          const systemVerified = isVerifiedForTarget(sysCompat, systemTarget);
+          if (systemVerified === false) return false;
+        }
+        return true;
+      });
+  }, [selectedCurrentRows, search, currentFilters, badgeFilterCodes, verifiedOnly, dependencySuggestionByModule, resolvedSourceByModule, selectedCurrentSuggestContextKey, resolvedSourceByContext, activeCurrentSystemId, currentVersionBySystem, currentSystemFilter, selectedCurrentVersionBucket, currentSystemVersionById, currentFoundryVersion]);
 
   function derivePlanningEffectiveState(row: PlanningRow): ModuleRow["state"] {
     const moduleKey = asString(row.module).trim();
@@ -2000,7 +2032,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               state: presentationState(row, state),
               system: systemName,
               relatedSystems: buildRelatedSystems(systemId, relationSystems, []),
-              usedInWorlds: [],
+              usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(),
               reason,
               installedVersion: asString(row.installedVersion),
               recommendedVersion: bestRecommendedVersion(row),
@@ -2028,7 +2060,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           state: presentationState(row, "blocked"),
           system: "unused",
           relatedSystems: ["unused"],
-          usedInWorlds: [],
+          usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(),
           reason,
           installedVersion: asString(row.installedVersion),
           recommendedVersion: bestRecommendedVersion(row),
@@ -2048,7 +2080,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       });
     }
     return byFoundry;
-  }, [planningTargets, planningTargetsByFoundry]);
+  }, [planningTargets, planningTargetsByFoundry, moduleUsage]);
 
   const planningFoundryBuckets = useMemo<FoundryVersionBucket[]>(() => {
     return Object.entries(planningRowsByFoundry)
@@ -3628,6 +3660,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           releaseUrl: preferredUpdateUrlFromCandidates(item.row.releaseUrl),
           targetVersion: item.row.targetVersion || "-",
           relatedSystems: item.row.relatedSystems,
+          usedInWorlds: item.row.usedInWorlds,
         };
       });
       const exportPayload = {
@@ -3636,6 +3669,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         snapshot: {
           ...snapshot,
           data: snapshot.snapshotData || null,
+          worldUsage: worldUsage.length > 0 ? worldUsage : undefined,
         },
         current: {
           foundryVersion: currentFoundryVersion || "",
@@ -4133,6 +4167,24 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       <button className={`metric-card metric-upgrade compact ${currentFilters.includes("update") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{currentEffectiveCounts.update}</strong></button>
       <button className={`metric-card metric-ready compact ${currentFilters.includes("ready") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("ready") ? arr.filter((x) => x !== "ready") : [...arr, "ready"]); setPage(1); }}><span>Ready</span><strong>{currentEffectiveCounts.ready}</strong></button>
       <button className={`metric-card metric-unused compact ${currentFilters.includes("unused") ? "active" : ""}`} onClick={() => { setCurrentFilters((arr) => arr.includes("unused") ? arr.filter((x) => x !== "unused") : [...arr, "unused"]); setPage(1); }}><span>Unused</span><strong>{currentEffectiveCounts.unused}</strong></button>
+      <label
+        className={`metric-card compact${verifiedOnly ? " active" : ""}`}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", borderColor: verifiedOnly ? "#22c55e" : "#334155", background: verifiedOnly ? "#052e16" : "#1f2937", color: verifiedOnly ? "#86efac" : "#e5e7eb", minWidth: "auto", userSelect: "none" }}
+        title="Show only modules verified for the current Foundry and system versions"
+      >
+        <input
+          type="checkbox"
+          checked={verifiedOnly}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setVerifiedOnly(next);
+            try { sessionStorage.setItem("modulator_verified_only", String(next)); } catch {}
+            setPage(1);
+          }}
+          style={{ accentColor: "#22c55e", margin: 0 }}
+        />
+        <span>{verifiedOnly ? "\u{1F6E1}\uFE0F" : ""} Verified Only</span>
+      </label>
     </div>
   );
   const planningSystemPillsRow = (
@@ -4402,7 +4454,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     <main className="dashboard-shell">
       <Header
         onLogout={logout}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => { setTokenStatus(null); setSettingsOpen(true); }}
         settingsState={foundryConfigured ? "ok" : "warn"}
         onStartScan={() => void submitAndWatch("dry-run", { batchSize: 10 })}
         scanDisabled={Boolean(job) || actionBusy || !foundryConfigured}
@@ -4447,12 +4499,37 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
             const phase = asString(meta.phase) || "-";
             const itemKind = asString(meta.currentItemKind);
             const itemId = asString(meta.currentItemId);
+            const errorCount = Number(meta.errorCount || 0);
+            const appliedCount = Number(meta.appliedCount || 0);
+            const skippedCount = Number(meta.skippedCount || 0);
+            const rateLimitHit = Boolean(meta.rateLimitHit);
+            const failedItemsList = Array.isArray(meta.failedItems) ? meta.failedItems as Array<Record<string, string>> : [];
             if (!totalItems) return null;
             return (
-              <p style={{ marginTop: 4, marginBottom: 0, color: "var(--muted)" }}>
-                Phase: {phase} | Progress: {processedItems}/{totalItems}
-                {itemId ? ` | Current: ${itemKind ? `${itemKind} ` : ""}${itemId}` : ""}
-              </p>
+              <>
+                <p style={{ marginTop: 4, marginBottom: 0, color: "var(--muted)" }}>
+                  Phase: {phase} | Progress: {processedItems}/{totalItems}
+                  {itemId ? ` | Current: ${itemKind ? `${itemKind} ` : ""}${itemId}` : ""}
+                </p>
+                <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                  {appliedCount > 0 ? <span className="badge badge-green" title="Applied">{appliedCount} applied</span> : null}
+                  {skippedCount > 0 ? <span className="badge badge-yellow" title="Skipped">{skippedCount} skipped</span> : null}
+                  {errorCount > 0 ? <span className="badge badge-red" title="Failed">{errorCount} failed</span> : null}
+                </div>
+                {rateLimitHit ? (
+                  <p style={{ marginTop: 4, color: "#f59e0b", fontSize: 13 }}>
+                    ⚠ Rate limit hit — configure API tokens in Settings to increase limits.
+                  </p>
+                ) : null}
+                {failedItemsList.length > 0 ? (
+                  <details style={{ marginTop: 4 }}>
+                    <summary style={{ cursor: "pointer", color: "#ef4444", fontSize: 13 }}>Failed items ({failedItemsList.length})</summary>
+                    <ul style={{ margin: "4px 0", paddingLeft: 20, fontSize: 12 }}>
+                      {failedItemsList.map((fi, idx) => <li key={idx}>{fi.kind} <strong>{fi.id}</strong>: {fi.reason}</li>)}
+                    </ul>
+                  </details>
+                ) : null}
+              </>
             );
           })()}
         </section>
@@ -4944,7 +5021,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
       {settingsOpen ? (
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
-          <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()} style={{ maxHeight: "90vh", overflow: "auto" }}>
             <h3>Foundry Data Root</h3>
             <p>{foundryRoot?.message || "Configure the Foundry root path."}</p>
             <input type="text" value={foundryPathInput} onChange={(event) => setFoundryPathInput(event.target.value)} placeholder="Select folder or paste path" />
@@ -4953,6 +5030,92 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               <button className="btn" onClick={() => void applyFoundryPath()}>Validate & Save</button>
               <button className="btn secondary" onClick={() => void resetFoundryPath()}>Reset</button>
               <button className="btn secondary" onClick={() => void exportDebugLogFromSettings()}>Export Log</button>
+            </div>
+
+            <hr style={{ border: "none", borderTop: "1px solid #334155", margin: "16px 0" }} />
+            <h3 style={{ marginTop: 0 }}>API Tokens</h3>
+            <p style={{ color: "var(--muted)", fontSize: 13 }}>
+              Configure Personal Access Tokens to increase API rate limits (60 → 5,000 req/hr for GitHub).
+            </p>
+            {(() => {
+              const loadTokens = async () => {
+                try {
+                  const status = await api.providerTokensStatus();
+                  setTokenStatus(status);
+                } catch { /* ignore */ }
+              };
+              if (!tokenStatus) {
+                void loadTokens();
+              }
+              const saveToken = async (provider: "github" | "gitlab") => {
+                const val = provider === "github" ? ghTokenInput : glTokenInput;
+                if (!val.trim()) return;
+                setTokenSaving(true);
+                try {
+                  await api.saveProviderToken(provider, val.trim());
+                  if (provider === "github") setGhTokenInput("");
+                  else setGlTokenInput("");
+                  await loadTokens();
+                } catch { /* ignore */ } finally {
+                  setTokenSaving(false);
+                }
+              };
+              const clearToken = async (provider: "github" | "gitlab") => {
+                setTokenSaving(true);
+                try {
+                  await api.clearProviderToken(provider);
+                  await loadTokens();
+                } catch { /* ignore */ } finally {
+                  setTokenSaving(false);
+                }
+              };
+              const ghStatus = tokenStatus?.github;
+              const glStatus = tokenStatus?.gitlab;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <label style={{ fontWeight: 600, fontSize: 13 }}>
+                      GitHub Token{" "}
+                      {ghStatus?.configured ? (
+                        <span className="badge badge-green" style={{ fontSize: 11 }}>✓ {ghStatus.source === "env" ? "Configured (env)" : "Configured"}</span>
+                      ) : (
+                        <span className="badge badge-yellow" style={{ fontSize: 11 }}>Not configured (60 req/hr)</span>
+                      )}
+                    </label>
+                    {ghStatus?.source === "env" ? (
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>Set via environment variable. To change, update RESOLVER_GITHUB_TOKEN or GITHUB_TOKEN.</p>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                        <input type="password" value={ghTokenInput} onChange={(e) => setGhTokenInput(e.target.value)} placeholder="ghp_..." style={{ flex: 1, minWidth: 0 }} />
+                        <button className="btn" disabled={tokenSaving || !ghTokenInput.trim()} onClick={() => void saveToken("github")}>Save</button>
+                        {ghStatus?.configured ? <button className="btn secondary" disabled={tokenSaving} onClick={() => void clearToken("github")}>Clear</button> : null}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ fontWeight: 600, fontSize: 13 }}>
+                      GitLab Token{" "}
+                      {glStatus?.configured ? (
+                        <span className="badge badge-green" style={{ fontSize: 11 }}>✓ {glStatus.source === "env" ? "Configured (env)" : "Configured"}</span>
+                      ) : (
+                        <span className="badge badge-yellow" style={{ fontSize: 11 }}>Not configured</span>
+                      )}
+                    </label>
+                    {glStatus?.source === "env" ? (
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>Set via environment variable. To change, update RESOLVER_GITLAB_TOKEN or GITLAB_TOKEN.</p>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                        <input type="password" value={glTokenInput} onChange={(e) => setGlTokenInput(e.target.value)} placeholder="glpat-..." style={{ flex: 1, minWidth: 0 }} />
+                        <button className="btn" disabled={tokenSaving || !glTokenInput.trim()} onClick={() => void saveToken("gitlab")}>Save</button>
+                        {glStatus?.configured ? <button className="btn secondary" disabled={tokenSaving} onClick={() => void clearToken("gitlab")}>Clear</button> : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
               <button className="btn secondary" onClick={() => setSettingsOpen(false)}>Close</button>
             </div>
           </section>
@@ -5083,14 +5246,48 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
                   const phase = asString(meta.phase) || "-";
                   const itemKind = asString(meta.currentItemKind);
                   const itemId = asString(meta.currentItemId);
+                  const errorCount = Number(meta.errorCount || 0);
+                  const appliedCount = Number(meta.appliedCount || 0);
+                  const skippedCount = Number(meta.skippedCount || 0);
+                  const rateLimitHit = Boolean(meta.rateLimitHit);
+                  const failedItemsList = Array.isArray(meta.failedItems) ? meta.failedItems as Array<Record<string, string>> : [];
                   if (!totalItems) return null;
                   return (
-                    <p style={{ marginTop: 4, marginBottom: 0, color: "var(--muted)" }}>
-                      Phase: {phase} | {processedItems}/{totalItems}
-                      {itemId ? ` | ${itemKind ? `${itemKind} ` : ""}${itemId}` : ""}
-                    </p>
+                    <>
+                      <p style={{ marginTop: 4, marginBottom: 0, color: "var(--muted)" }}>
+                        Phase: {phase} | {processedItems}/{totalItems}
+                        {itemId ? ` | ${itemKind ? `${itemKind} ` : ""}${itemId}` : ""}
+                      </p>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 6, flexWrap: "wrap" }}>
+                        {appliedCount > 0 ? <span className="badge badge-green">{appliedCount} applied</span> : null}
+                        {skippedCount > 0 ? <span className="badge badge-yellow">{skippedCount} skipped</span> : null}
+                        {errorCount > 0 ? <span className="badge badge-red">{errorCount} failed</span> : null}
+                      </div>
+                      {rateLimitHit ? (
+                        <p style={{ marginTop: 4, color: "#f59e0b", fontSize: 12 }}>
+                          ⚠ Rate limit hit — configure API tokens in Settings
+                        </p>
+                      ) : null}
+                      {failedItemsList.length > 0 ? (
+                        <details style={{ marginTop: 4, textAlign: "left" }}>
+                          <summary style={{ cursor: "pointer", color: "#ef4444", fontSize: 12 }}>Failed ({failedItemsList.length})</summary>
+                          <ul style={{ margin: "4px 0", paddingLeft: 16, fontSize: 11, maxHeight: 120, overflow: "auto" }}>
+                            {failedItemsList.map((fi, idx) => <li key={idx}>{fi.kind} <strong>{fi.id}</strong>: {fi.reason}</li>)}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </>
                   );
                 })()}
+                {job.status === "running" ? (
+                  <button
+                    className="btn secondary"
+                    style={{ marginTop: 12, borderColor: "#ef4444", color: "#ef4444" }}
+                    onClick={() => { void api.cancelJob(job.id).catch(() => {}); }}
+                  >
+                    Cancel Import
+                  </button>
+                ) : null}
               </>
             ) : (
               <AppLoader label={uiBusyMessage || "Working"} />

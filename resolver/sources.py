@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,9 @@ def fetch_release_history(
     cache_dir: str = DEFAULT_CACHE_DIR,
     force_refresh: bool = False,
     newer_than_version: str | None = None,
+    *,
+    github_token: str = "",
+    gitlab_token: str = "",
 ) -> tuple[list[ReleaseRecord], list[str]]:
     stale_cache_candidate: tuple[list[ReleaseRecord], list[str], datetime] | None = None
     cached_releases: list[ReleaseRecord] = []
@@ -76,6 +80,7 @@ def fetch_release_history(
                 cache_dir=cache_dir,
                 force_refresh=force_refresh,
                 cached_version_keys=cached_version_keys,
+                gitlab_token=gitlab_token,
             )
             warnings.extend(source_warnings)
             if cache_sync_hit and cached_releases:
@@ -104,6 +109,7 @@ def fetch_release_history(
                 cache_dir=cache_dir,
                 force_refresh=force_refresh,
                 cached_version_keys=cached_version_keys,
+                github_token=github_token,
             )
             warnings.extend(source_warnings)
             if cache_sync_hit and cached_releases:
@@ -161,6 +167,9 @@ def fetch_system_release_history(
     per_page: int = 10,
     cache_dir: str = DEFAULT_CACHE_DIR,
     force_refresh: bool = False,
+    *,
+    github_token: str = "",
+    gitlab_token: str = "",
 ) -> tuple[list[ReleaseRecord], list[str]]:
     stale_cache_candidate: tuple[list[ReleaseRecord], list[str], datetime] | None = None
     cached_releases: list[ReleaseRecord] = []
@@ -200,6 +209,7 @@ def fetch_system_release_history(
                 manifest_names=("system.json", "package/system.json"),
                 force_refresh=force_refresh,
                 cached_version_keys=cached_version_keys,
+                gitlab_token=gitlab_token,
             )
             warnings.extend(source_warnings)
             if cache_sync_hit and cached_releases:
@@ -222,6 +232,7 @@ def fetch_system_release_history(
                 manifest_names=("system.json", "package/system.json"),
                 force_refresh=force_refresh,
                 cached_version_keys=cached_version_keys,
+                github_token=github_token,
             )
             warnings.extend(source_warnings)
             if cache_sync_hit and cached_releases:
@@ -243,6 +254,7 @@ def fetch_system_release_history(
                 manifest_names=("system.json", "package/system.json"),
                 force_refresh=force_refresh,
                 cached_version_keys=cached_version_keys,
+                github_token=github_token,
             )
             warnings.extend(source_warnings)
             if cache_sync_hit and cached_releases:
@@ -435,6 +447,8 @@ def _fetch_gitlab_tags(
     manifest_names: tuple[str, ...] = ("module.json", "package/module.json"),
     force_refresh: bool = False,
     cached_version_keys: set[tuple[str, Any]] | None = None,
+    *,
+    gitlab_token: str = "",
 ) -> tuple[list[ReleaseRecord], list[str], bool]:
     warnings: list[str] = []
     cache_sync_hit = False
@@ -444,8 +458,9 @@ def _fetch_gitlab_tags(
         return [], ["GitLab project URL is missing a repository path."], False
     api_url = f"https://gitlab.com/api/v4/projects/{quote(path, safe='')}/repository/tags?per_page={per_page}"
     try:
-        tags = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh)
+        tags = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh, gitlab_token=gitlab_token)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        logging.warning("GitLab lookup failed for %s: %s", project_url, exc)
         return [], [f"GitLab lookup failed: {exc}"], False
 
     releases: list[ReleaseRecord] = []
@@ -493,6 +508,8 @@ def _fetch_github_releases(
     manifest_names: tuple[str, ...] = ("module.json", "package/module.json"),
     force_refresh: bool = False,
     cached_version_keys: set[tuple[str, Any]] | None = None,
+    *,
+    github_token: str = "",
 ) -> tuple[list[ReleaseRecord], list[str], bool]:
     warnings: list[str] = []
     cache_sync_hit = False
@@ -503,8 +520,9 @@ def _fetch_github_releases(
     owner, repo = parts[0], parts[1]
     api_url = f"https://api.github.com/repos/{owner}/{repo}/releases?per_page={per_page}"
     try:
-        releases_json = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh)
+        releases_json = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh, github_token=github_token)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        logging.warning("GitHub release lookup failed for %s: %s", project_url, exc)
         return [], [f"GitHub release lookup failed: {exc}"], False
 
     releases: list[ReleaseRecord] = []
@@ -554,6 +572,8 @@ def _fetch_github_tags(
     manifest_names: tuple[str, ...],
     force_refresh: bool = False,
     cached_version_keys: set[tuple[str, Any]] | None = None,
+    *,
+    github_token: str = "",
 ) -> tuple[list[ReleaseRecord], list[str], bool]:
     warnings: list[str] = []
     cache_sync_hit = False
@@ -564,8 +584,9 @@ def _fetch_github_tags(
     owner, repo = parts[0], parts[1]
     api_url = f"https://api.github.com/repos/{owner}/{repo}/tags?per_page={per_page}"
     try:
-        tags_json = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh)
+        tags_json = _get_json(api_url, cache_dir=cache_dir, force_refresh=force_refresh, github_token=github_token)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        logging.warning("GitHub tag lookup failed for %s: %s", project_url, exc)
         return [], [f"GitHub tag lookup failed: {exc}"], False
 
     releases: list[ReleaseRecord] = []
@@ -643,21 +664,22 @@ def _merge_releases_with_cache(
     return merged[:limit]
 
 
-def _safe_get_json(url: str | None, cache_dir: str, force_refresh: bool = False) -> dict[str, Any] | None:
+def _safe_get_json(url: str | None, cache_dir: str, force_refresh: bool = False, *, github_token: str = "", gitlab_token: str = "") -> dict[str, Any] | None:
     if not url:
         return None
     try:
-        return _get_json(url, cache_dir=cache_dir, force_refresh=force_refresh)
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        return _get_json(url, cache_dir=cache_dir, force_refresh=force_refresh, github_token=github_token, gitlab_token=gitlab_token)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        logging.debug("_safe_get_json failed for %s: %s", url, exc)
         return None
 
 
-def _get_json(url: str, cache_dir: str = DEFAULT_CACHE_DIR, force_refresh: bool = False) -> Any:
+def _get_json(url: str, cache_dir: str = DEFAULT_CACHE_DIR, force_refresh: bool = False, *, github_token: str = "", gitlab_token: str = "") -> Any:
     cache_path = _cache_path(url, cache_dir, suffix=".json")
     if cache_path.exists() and not force_refresh:
         return json.loads(cache_path.read_text(encoding="utf-8"))
-    request = Request(url, headers=_request_headers(url))
-    with urlopen(request, timeout=15) as response:
+    request = Request(url, headers=_request_headers(url, github_token=github_token, gitlab_token=gitlab_token))
+    with _urlopen_with_retry(request, timeout=15) as response:
         payload = json.load(response)
     _write_text_cache(cache_path, json.dumps(payload), cache_dir)
     return payload
@@ -954,13 +976,97 @@ def _cache_path(url: str, cache_dir: str, suffix: str) -> Path:
     return Path(cache_dir) / digest[:2] / f"{digest}{suffix}"
 
 
-def _request_headers(url: str) -> dict[str, str]:
+def _request_headers(url: str, *, github_token: str = "", gitlab_token: str = "") -> dict[str, str]:
     headers = {"User-Agent": USER_AGENT}
-    token = os.environ.get("GITHUB_TOKEN")
     hostname = urlparse(url).hostname or ""
-    if token and ("github.com" in hostname or "api.github.com" in hostname or "raw.githubusercontent.com" in hostname):
-        headers["Authorization"] = f"Bearer {token}"
+    gh_token = github_token or os.environ.get("GITHUB_TOKEN") or os.environ.get("RESOLVER_GITHUB_TOKEN") or ""
+    if gh_token and ("github.com" in hostname or "api.github.com" in hostname or "raw.githubusercontent.com" in hostname):
+        headers["Authorization"] = f"Bearer {gh_token}"
+    gl_token = gitlab_token or os.environ.get("GITLAB_TOKEN") or os.environ.get("RESOLVER_GITLAB_TOKEN") or ""
+    if gl_token and "gitlab.com" in hostname:
+        headers["Private-Token"] = gl_token
     return headers
+
+
+def _is_retryable_http_error(exc: HTTPError) -> bool:
+    """Return True for HTTP status codes that are worth retrying."""
+    code = getattr(exc, "code", 0) or 0
+    if code == 429:
+        return True
+    if code == 403:
+        remaining = str(getattr(exc, "headers", {}).get("X-RateLimit-Remaining", "") or "").strip()
+        if remaining == "0":
+            return True
+    if 500 <= code < 600:
+        return True
+    return False
+
+
+def _extract_rate_limit_info(exc: HTTPError) -> dict[str, Any]:
+    """Extract rate-limit metadata from HTTP error headers."""
+    headers = getattr(exc, "headers", {}) or {}
+    info: dict[str, Any] = {"httpStatus": getattr(exc, "code", 0) or 0}
+    remaining = str(headers.get("X-RateLimit-Remaining", "") or "").strip()
+    if remaining:
+        info["rateLimitRemaining"] = int(remaining) if remaining.isdigit() else remaining
+    reset_raw = str(headers.get("X-RateLimit-Reset", "") or "").strip()
+    if reset_raw and reset_raw.isdigit():
+        info["rateLimitResetAt"] = datetime.fromtimestamp(int(reset_raw), tz=timezone.utc).isoformat()
+    retry_after = str(headers.get("Retry-After", "") or "").strip()
+    if retry_after:
+        info["retryAfter"] = int(retry_after) if retry_after.isdigit() else retry_after
+    limit = str(headers.get("X-RateLimit-Limit", "") or "").strip()
+    if limit:
+        info["rateLimitTotal"] = int(limit) if limit.isdigit() else limit
+    return info
+
+
+def _urlopen_with_retry(
+    request: Request,
+    *,
+    timeout: int = 15,
+    max_retries: int = 2,
+    backoff_base: float = 2.0,
+) -> Any:
+    """Execute urlopen with retry for transient/rate-limit errors."""
+    last_exc: Exception | None = None
+    for attempt in range(1 + max_retries):
+        try:
+            return urlopen(request, timeout=timeout)
+        except HTTPError as exc:
+            last_exc = exc
+            if not _is_retryable_http_error(exc):
+                raise
+            rate_info = _extract_rate_limit_info(exc)
+            retry_after = rate_info.get("retryAfter")
+            if attempt < max_retries:
+                delay = min(float(retry_after), 30.0) if isinstance(retry_after, (int, float)) else backoff_base ** (attempt + 1)
+                delay = min(delay, 30.0)
+                logging.warning(
+                    "HTTP %d for %s (attempt %d/%d). Retrying in %.1fs. %s",
+                    exc.code, request.full_url, attempt + 1, 1 + max_retries, delay,
+                    f"Rate-limit info: {rate_info}" if rate_info.get("rateLimitRemaining") is not None else "",
+                )
+                time.sleep(delay)
+            else:
+                logging.warning(
+                    "HTTP %d for %s — all %d attempts exhausted. %s",
+                    exc.code, request.full_url, 1 + max_retries,
+                    f"Rate-limit info: {rate_info}" if rate_info.get("rateLimitRemaining") is not None else "",
+                )
+                raise
+        except (URLError, TimeoutError) as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                delay = backoff_base ** (attempt + 1)
+                logging.warning(
+                    "Network error for %s (attempt %d/%d): %s. Retrying in %.1fs.",
+                    request.full_url, attempt + 1, 1 + max_retries, exc, delay,
+                )
+                time.sleep(delay)
+            else:
+                raise
+    raise last_exc  # type: ignore[misc]
 
 
 def _load_module_release_cache(
