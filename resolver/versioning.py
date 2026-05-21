@@ -81,6 +81,15 @@ def version_major(value: str | int | float | None) -> int | None:
     return parts[0] if parts else None
 
 
+def version_major_minor(value: str | int | float | None) -> tuple[int, int] | None:
+    parts = parse_version(value)
+    if len(parts) >= 2:
+        return (parts[0], parts[1])
+    if len(parts) == 1:
+        return (parts[0], 0)
+    return None
+
+
 def version_distance(left: str | int | float | None, right: str | int | float | None) -> tuple[int, ...]:
     left_parts = parse_version(left)
     right_parts = parse_version(right)

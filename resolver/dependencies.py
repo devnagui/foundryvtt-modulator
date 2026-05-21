@@ -9,7 +9,7 @@ from .scoring import (
     explain_choice,
     satisfies_release_constraints,
 )
-from .versioning import compare_versions, exceeds_maximum, is_below_minimum, version_major
+from .versioning import compare_versions, exceeds_maximum, is_below_minimum, version_major, version_major_minor
 STALE_CACHE_WARNING_PREFIX = "Used stale release cache:"
 MODULE_RELEASE_LIMIT_STEPS = (5, 20, 50)
 STOP_ON_FIRST_OPTIMAL_COMPATIBLE = True
@@ -128,7 +128,7 @@ def resolve_module_recommendation(
                 continue
             if version_major(c_verified) != target_major:
                 continue
-            # Check system verified match
+            # Check system verified match (major.minor for system versions)
             sys_ok = True
             c_sys_compat = candidate.system_compatibility or {}
             for sys_id, sys_ver in installed_system_versions.items():
@@ -138,7 +138,7 @@ def resolve_module_recommendation(
                 sys_verified = str(sys_meta.get("verified") or "").strip()
                 if not sys_verified:
                     continue
-                if version_major(sys_verified) != version_major(sys_ver):
+                if version_major_minor(sys_verified) != version_major_minor(sys_ver):
                     sys_ok = False
                     break
             if sys_ok:

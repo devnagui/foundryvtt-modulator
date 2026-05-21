@@ -353,6 +353,19 @@ function isVerifiedForTarget(compat: Record<string, unknown> | undefined, target
   if (!Number.isFinite(tm) || !Number.isFinite(vm)) return null;
   return tm === vm;
 }
+function isVerifiedForSystemTarget(compat: Record<string, unknown> | undefined, target: string): boolean | null {
+  if (!compat || !target) return null;
+  const verified = compatValue(compat, ["verified", "compatibleCoreVersion", "compatible_core_version"]);
+  if (!verified) return null;
+  const tParts = target.split(".");
+  const vParts = verified.split(".");
+  const tMajor = Number.parseInt(tParts[0] || "0", 10);
+  const tMinor = Number.parseInt(tParts[1] || "0", 10);
+  const vMajor = Number.parseInt(vParts[0] || "0", 10);
+  const vMinor = Number.parseInt(vParts[1] || "0", 10);
+  if (!Number.isFinite(tMajor) || !Number.isFinite(vMajor)) return null;
+  return tMajor === vMajor && tMinor === vMinor;
+}
 function hasMinimumLowerThanTarget(compat: Record<string, unknown> | undefined, target: string): boolean {
   if (!compat || !target) return false;
   const minimum = compatValue(compat, ["minimum", "min", "minimumCoreVersion", "minimum_core_version"]);
@@ -1907,7 +1920,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         if (activeSystem && systemTarget) {
           const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
           const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
-          const systemVerified = isVerifiedForTarget(sysCompat, systemTarget);
+          const systemVerified = isVerifiedForSystemTarget(sysCompat, systemTarget);
           if (systemVerified === false) return false;
         }
         return true;
