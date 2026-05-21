@@ -2808,8 +2808,27 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           ? true
           : badgeFilterCodes.some((code) => planningBadgeCodesForRow(row).includes(code))
       ))
-      .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason} ${row.targetVersion}`.toLowerCase().includes(q) : true));
-  }, [selectedPlanningRows, planningFilters, badgeFilterCodes, search, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule]);
+      .filter((row) => (q ? `${row.title} ${row.module} ${row.system} ${row.reason} ${row.targetVersion}`.toLowerCase().includes(q) : true))
+      .filter((row) => {
+        if (!verifiedOnly) return true;
+        const foundryVerified = isVerifiedForTarget(row.compatibility, planningFoundryFilter);
+        if (foundryVerified === false) return false;
+        const allSystemsMode = !activePlanningSystemId;
+        const activeSystem = activePlanningSystemId || row.relatedSystems[0] || "";
+        const systemTarget = allSystemsMode
+          ? ""
+          : (activeSystem
+            ? (planningVersionBySystem[activeSystem] || planningSystemVersionFilter || selectedPlanningVersionBucket?.key || "")
+            : (planningSystemVersionFilter || selectedPlanningVersionBucket?.key || ""));
+        if (activeSystem && systemTarget) {
+          const systemCompatMap = (row.systemCompatibility as Record<string, unknown> | undefined) || {};
+          const sysCompat = compatibilityForSystem(systemCompatMap, activeSystem);
+          const systemVerified = isVerifiedForSystemTarget(sysCompat, systemTarget);
+          if (systemVerified === false) return false;
+        }
+        return true;
+      });
+  }, [selectedPlanningRows, planningFilters, badgeFilterCodes, search, verifiedOnly, dependencySuggestionByModule, resolvedSourceByModule, selectedPlanningSuggestContextKey, resolvedSourceByContext, activePlanningSystemId, planningVersionBySystem, planningSystemVersionFilter, selectedPlanningVersionBucket, planningFoundryFilter, planningContextRowsByModule]);
 
   const filteredBackups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -4367,6 +4386,26 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const planningStatusFilterRow = (
     <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 2 }}>
+        <label
+          className={`metric-card compact${verifiedOnly ? " active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", borderColor: verifiedOnly ? "#22c55e" : "#334155", background: verifiedOnly ? "#052e16" : "#1f2937", color: verifiedOnly ? "#86efac" : "#e5e7eb", minWidth: "auto", userSelect: "none" }}
+          title="Show only modules verified for the selected Foundry and system versions"
+        >
+          <input
+            type="checkbox"
+            checked={verifiedOnly}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setVerifiedOnly(next);
+              try { sessionStorage.setItem("modulator_verified_only", String(next)); } catch {}
+              setPage(1);
+            }}
+            style={{ accentColor: "#22c55e", margin: 0 }}
+          />
+          <span>{verifiedOnly ? "\u{1F6E1}\uFE0F" : ""} Verified Only</span>
+        </label>
+      </div>
       <div className="metrics-row compact module-status-row" style={{ marginBottom: 0 }}>
         <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{planningEffectiveCounts.blocked}</strong></button>
         <button className={`metric-card metric-upgrade compact ${planningFilters.includes("update") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("update") ? arr.filter((x) => x !== "update") : [...arr, "update"]); setPage(1); }}><span>Update</span><strong>{planningEffectiveCounts.update}</strong></button>
