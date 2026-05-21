@@ -378,6 +378,11 @@ body.light-mode {
 .status-badge.tooltip-open {
   z-index: 10;
 }
+/* Also lift the containing table cell so it competes with sticky th at the same stacking level */
+.report-table td:has(.tooltip-open) {
+  position: relative;
+  z-index: 5;
+}
 .status-badge-tooltip {
   position: absolute;
   left: 50%;
@@ -777,5 +782,8 @@ body.light-mode {
     transform: none;
     min-width: 190px;
     max-width: 240px;
+    /* Open below the badge on mobile to avoid sticky header overlap */
+    bottom: auto;
+    top: calc(100% + 6px);
   }
 }
