@@ -207,10 +207,9 @@ def _ensure_worker(runtime: AppRuntime) -> None:
                 if job is None:
                     threading.Event().wait(0.25)
                     continue
-                runtime.action_engine.set_progress(job.job_id, 25, {"phase": "queued"})
+                runtime.action_engine.set_progress(job.job_id, 5, {"phase": "queued"})
                 _append_audit(runtime.config, "action_worker_started", {"jobId": job.job_id, "action": job.action})
                 try:
-                    runtime.action_engine.set_progress(job.job_id, 60, {"phase": "running"})
                     result = _execute_action_job(runtime, job.action, job.payload, job.job_id)
                     runtime.action_engine.set_progress(job.job_id, 95, {"phase": "finalizing"})
                     runtime.action_engine.complete(job.job_id, ok=True, result=result)
@@ -1582,20 +1581,61 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
             str(runtime.config.reports_dir / "module-resolver-latest.log"),
             *extra_args,
         ]
-        result = subprocess.run(cmd, cwd=str(runtime.config.tool_root), capture_output=True, text=True, check=False)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(runtime.config.tool_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stderr_lines: list[str] = []
+
+        def _read_stderr() -> None:
+            assert proc.stderr is not None
+            for raw_line in proc.stderr:
+                line = raw_line.rstrip("\n")
+                stderr_lines.append(line)
+                if job_id and line.startswith("PROGRESS:"):
+                    parts = line.split(":", 3)
+                    if len(parts) >= 4:
+                        try:
+                            pct = int(parts[1])
+                            phase = parts[2]
+                            msg = parts[3]
+                            meta: dict[str, Any] = {"phase": phase, "message": msg}
+                            # Parse "N/Total moduleId" format for item-level progress
+                            count_match = _PROGRESS_COUNT_RE.match(msg)
+                            if count_match:
+                                meta["processedItems"] = int(count_match.group(1))
+                                meta["totalItems"] = int(count_match.group(2))
+                                meta["currentItemId"] = count_match.group(3)
+                            runtime.action_engine.set_progress(
+                                job_id,
+                                max(5, min(pct, 94)),
+                                meta,
+                            )
+                        except (ValueError, IndexError):
+                            pass
+
+        stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+        stderr_thread.start()
+        stdout_data = proc.stdout.read() if proc.stdout else ""
+        proc.wait()
+        stderr_thread.join(timeout=5)
+        stderr_data = "\n".join(stderr_lines)
         output = {
-            "ok": result.returncode == 0,
-            "returnCode": result.returncode,
+            "ok": proc.returncode == 0,
+            "returnCode": proc.returncode,
             "command": cmd,
-            "stdout": (result.stdout or "")[-20000:],
-            "stderr": (result.stderr or "")[-20000:],
+            "stdout": (stdout_data or "")[-20000:],
+            "stderr": (stderr_data or "")[-20000:],
             "lock": lock_payload,
             "generatedAt": _utc_now_iso(),
             "dataRoot": effective_data_root,
             "preflight": preflight_gate,
         }
-        if result.returncode != 0:
-            raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={result.returncode}")
+        if proc.returncode != 0:
+            raise RuntimeError(output.get("stderr") or f"Action failed with returnCode={proc.returncode}")
         if action_name in {"dry-run", "apply", "force-compat"}:
             try:
                 _enrich_latest_report_file(runtime, force_refresh_suggestions=(action_name == "dry-run"))

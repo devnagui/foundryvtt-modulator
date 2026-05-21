@@ -54,6 +54,9 @@ type ModuleRow = {
   systemCompatibility: Record<string, unknown>;
   hasMissingDependencies: boolean;
   forcedCompatibility?: Record<string, unknown>;
+  verifiedRecommendedVersion?: string;
+  verifiedCompatibility?: Record<string, unknown>;
+  verifiedSystemCompatibility?: Record<string, unknown>;
 };
 type CurrentTableRow =
   | { kind: "module"; key: string; row: ModuleRow }
@@ -754,6 +757,13 @@ function bestReleaseUrl(row: Record<string, unknown>): string {
     asString(row.manifestUrl)
   );
 }
+function extractVerifiedFields(row: Record<string, unknown>): Pick<ModuleRow, "verifiedRecommendedVersion" | "verifiedCompatibility" | "verifiedSystemCompatibility"> {
+  return {
+    verifiedRecommendedVersion: asString(row.verifiedRecommendedVersion) || undefined,
+    verifiedCompatibility: (row.verifiedCompatibility as Record<string, unknown> | undefined) || undefined,
+    verifiedSystemCompatibility: (row.verifiedSystemCompatibility as Record<string, unknown> | undefined) || undefined,
+  };
+}
 function hasConcreteValue(value: string): boolean {
   const v = asString(value).trim();
   return Boolean(v && v !== "-" && v !== "0.0.0");
@@ -1219,7 +1229,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const usageSystems = Array.from((moduleUsage.get(moduleId)?.systems || new Set<string>()));
         const rowReason = asString(row.reason);
         const rowMissingCount = asArray(row.missingDependencies).length + unresolvedDependencyCount(row);
-        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "blocked"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row) });
+        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "blocked"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row), ...extractVerifiedFields(row) });
       }
       for (const row of asArray(system.upgradableModuleRows)) {
         const moduleId = cleanModuleId(asString(row.module));
@@ -1229,7 +1239,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const usageSystems = Array.from((moduleUsage.get(moduleId)?.systems || new Set<string>()));
         const rowReason = asString(row.reason);
         const rowMissingCount = asArray(row.missingDependencies).length + unresolvedDependencyCount(row);
-        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "update"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row) });
+        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "update"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row), ...extractVerifiedFields(row) });
       }
       for (const row of readyRowsFromSystem(system)) {
         const moduleId = cleanModuleId(asString(row.module));
@@ -1239,7 +1249,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         const usageSystems = Array.from((moduleUsage.get(moduleId)?.systems || new Set<string>()));
         const rowReason = asString(row.reason);
         const rowMissingCount = asArray(row.missingDependencies).length + unresolvedDependencyCount(row);
-        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "ready"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row) });
+        rows.push({ module: moduleId, title: cleanTitle(asString(row.title), moduleId), state: presentationState(row, "ready"), system: systemName, relatedSystems: buildRelatedSystems(systemId, usageSystems, compatSystems), usedInWorlds: Array.from((moduleUsage.get(moduleId)?.worlds || new Set<string>())).sort(), reason: rowReason, installedVersion: asString(row.installedVersion), recommendedVersion: bestRecommendedVersion(row), releaseUrl: bestReleaseUrl(row), compatibility: (row.compatibility as Record<string, unknown> | undefined) || {}, systemCompatibility: (row.systemCompatibility as Record<string, unknown> | undefined) || {}, hasMissingDependencies: presentationMissing(row, rowReason, rowMissingCount), forcedCompatibility: forcedCompatibilityFromRow(row), ...extractVerifiedFields(row) });
       }
     }
     const hasCurrentBucketModules = rows.length > 0;
@@ -2042,6 +2052,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
               hasMissingDependencies: presentationMissing(row, reason, asArray(row.missingDependencies).length + unresolvedDependencyCount(row)),
               forcedCompatibility: forcedCompatibilityFromRow(row),
               targetVersion: targetVersion || foundryVersion,
+              ...extractVerifiedFields(row),
             });
           }
         };
@@ -2070,6 +2081,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           hasMissingDependencies: presentationMissing(row, reason, asArray(row.missingDependencies).length + unresolvedDependencyCount(row)),
           forcedCompatibility: forcedCompatibilityFromRow(row),
           targetVersion: foundryVersion,
+          ...extractVerifiedFields(row),
         });
       }
       byFoundry[foundryVersion] = rows.map(normalizeModuleState).sort((a, b) => {
@@ -3634,6 +3646,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           releaseUrl: preferredUpdateUrlFromCandidates(item.row.releaseUrl),
           relatedSystems: item.row.relatedSystems,
           usedInWorlds: item.row.usedInWorlds,
+          verifiedRecommendedVersion: item.row.verifiedRecommendedVersion || undefined,
         };
       });
       const planningRowsExport = planningTableRows.map((item) => {
@@ -3661,6 +3674,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           targetVersion: item.row.targetVersion || "-",
           relatedSystems: item.row.relatedSystems,
           usedInWorlds: item.row.usedInWorlds,
+          verifiedRecommendedVersion: item.row.verifiedRecommendedVersion || undefined,
         };
       });
       const exportPayload = {
@@ -3872,7 +3886,12 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     const urlCandidates = staleContextValue
       ? [hydratedUrl, moduleUrl, dependencyUrl, contextualUrl, asString(source.projectUrl), asString(source.manifestUrl)]
       : [contextualUrl, hydratedUrl, moduleUrl, dependencyUrl, asString(source.projectUrl), asString(source.manifestUrl)];
-    const effectiveRecommended = selectPreferredRecommended(recommendedCandidates, item.row.installedVersion);
+    // When "Verified Only" is active, prefer the verified-specific recommendation
+    const verifiedRec = asString(item.row.verifiedRecommendedVersion).trim();
+    const finalRecommendedCandidates = verifiedOnly && verifiedRec
+      ? [verifiedRec, ...recommendedCandidates]
+      : recommendedCandidates;
+    const effectiveRecommended = selectPreferredRecommended(finalRecommendedCandidates, item.row.installedVersion);
     const effectiveUrl = preferredUpdateUrlFromCandidates(...urlCandidates);
     const unresolvedPath = !effectiveUrl && !effectiveRecommended;
     const pendingResolve = unresolvedPath && hydrationBusy && hasSourceUrls(source);

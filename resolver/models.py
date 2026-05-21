@@ -67,3 +67,8 @@ class Recommendation:
     missing_dependencies: list[DependencyAction] = field(default_factory=list)
     release_published_at: str | None = None
     attention_flag: bool = False
+    verified_recommended_version: str | None = None
+    verified_download_url: str | None = None
+    verified_manifest_url: str | None = None
+    verified_compatibility: dict[str, Any] = field(default_factory=dict)
+    verified_system_compatibility: dict[str, dict[str, Any]] = field(default_factory=dict)

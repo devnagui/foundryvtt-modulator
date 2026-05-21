@@ -61,10 +61,19 @@ class ApplyHealthGateExecuteTests(unittest.TestCase):
             stdout = ""
             stderr = ""
 
+        class _FakePopen:
+            returncode = 0
+            def __init__(self, *a, **kw):
+                import io
+                self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
+            def wait(self):
+                pass
+
         with patch.object(runtime_mod, "_evaluate_apply_health_gate", side_effect=AssertionError("should not call preflight gate when modules are empty")), \
             patch.object(runtime_mod, "subprocess") as subprocess_mod, \
             patch.object(runtime_mod, "_enrich_latest_report_file", return_value=None):
-            subprocess_mod.run.return_value = _Completed()
+            subprocess_mod.Popen.side_effect = _FakePopen
             out = runtime_mod._execute_action_job(runtime, "apply", {})
 
         self.assertTrue(out.get("ok"))

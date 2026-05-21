@@ -44,6 +44,11 @@ TOOL_ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_REPORTS_DIR = DEFAULT_REPORTS_DIR / "public"
 
 
+def _emit_progress(percent: int, phase: str, message: str) -> None:
+    """Emit a structured progress marker to stderr for the backend worker to parse."""
+    print(f"PROGRESS:{percent}:{phase}:{message}", file=sys.stderr, flush=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Recommend Foundry module versions for the installed Foundry core version.")
     parser.add_argument("--data-root", required=True, help="Foundry data root containing Data, Logs and Config directories.")
@@ -629,10 +634,12 @@ def main() -> int:
         warning = f"Foundry release catalog lookup failed: {exc}"
         future_foundry_warnings.append(warning)
         logging.warning("%s", warning)
+    _emit_progress(10, "loading_packages", "Loading installed packages...")
     modules_dir = modules_dir_from_data_root(args.data_root)
     installed_system_versions = load_system_versions(args.data_root)
     installed_system_records = load_system_records(args.data_root)
     all_modules = load_modules(str(modules_dir))
+    _emit_progress(20, "loading_worlds", "Loading world data...")
     world_usage = load_world_usage(args.data_root, known_module_ids=[m.module_id for m in all_modules])
     logging.info("Scanning modules in %s", modules_dir)
     if installed_system_versions:
@@ -750,6 +757,7 @@ def main() -> int:
     pre_apply_versions = {module.module_id: module.version for module in all_modules}
     applied_any = False
     batch_count = ceil(len(modules) / args.batch_size)
+    _emit_progress(30, "fetching_releases", "Fetching release metadata...")
     with _foundry_maintenance_window(args, required=bool(args.apply)):
         for batch_index in range(batch_count):
             start = batch_index * args.batch_size
@@ -761,7 +769,10 @@ def main() -> int:
                 batch_count,
                 len(batch),
             )
-            for module in batch:
+            for module_index, module in enumerate(batch):
+                overall_index = batch_index * args.batch_size + module_index + 1
+                scan_pct = 30 + int(overall_index * 40 / max(len(modules), 1))
+                _emit_progress(min(scan_pct, 69), "resolving_versions", f"{overall_index}/{len(modules)} {module.module_id}")
                 logging.info("Resolving module %s (%s)", module.module_id, module.version)
                 recommendation, module_warnings = resolve_module_recommendation(
                     module,
@@ -928,6 +939,7 @@ def main() -> int:
                                 bucket.append(warning)
                                 logging.warning("%s: %s", warning_module_id, warning)
 
+    _emit_progress(70, "evaluating_dependencies", "Evaluating dependencies...")
     backup_maintenance = {
         "removedCount": 0,
         "removedBytes": 0,
@@ -991,6 +1003,7 @@ def main() -> int:
         "source": foundry_state,
     }
 
+    _emit_progress(80, "generating_report", "Generating report...")
     payload = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "targetVersion": target_version,
@@ -1077,6 +1090,7 @@ def main() -> int:
             if warning not in bucket:
                 bucket.append(warning)
         payload["warnings"] = warnings
+    _emit_progress(90, "persisting", "Saving to database...")
     scan_run_id = persist_scan_snapshot(
         resolved_database_path,
         payload,

@@ -683,6 +683,18 @@ def _replace_planning_context_rows(connection: sqlite3.Connection, scan_run_id: 
                 foundry_blocked = True
             installed = str(scan_row.get("installedVersion") or "")
             recommended = str(scan_row.get("recommendedVersion") or "")
+            # Re-validate: if the recommended version's compat doesn't cover the
+            # target Foundry, clear the stale recommendation so the frontend won't
+            # display an impossible upgrade path.
+            if recommended and recommended != installed:
+                rec_compat_min = compat_min
+                rec_compat_max = compat_max
+                if rec_compat_min and is_below_minimum(foundry_version, rec_compat_min):
+                    recommended = installed or ""
+                    foundry_blocked = True
+                elif rec_compat_max and exceeds_maximum(foundry_version, rec_compat_max):
+                    recommended = installed or ""
+                    foundry_blocked = True
             has_update = bool(
                 installed and recommended
                 and recommended != installed

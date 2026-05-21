@@ -9,7 +9,7 @@ from .scoring import (
     explain_choice,
     satisfies_release_constraints,
 )
-
+from .versioning import compare_versions, exceeds_maximum, is_below_minimum, version_major
 STALE_CACHE_WARNING_PREFIX = "Used stale release cache:"
 MODULE_RELEASE_LIMIT_STEPS = (5, 20, 50)
 STOP_ON_FIRST_OPTIMAL_COMPATIBLE = True
@@ -114,6 +114,37 @@ def resolve_module_recommendation(
 
     dependency_updates = [action for action in dependency_actions if _is_upgrade_action(action)]
     missing_dependencies = [action for action in dependency_actions if action.recommended_version is None]
+
+    # Compute verified-only best candidate: highest compatible release whose
+    # verified Foundry major matches the target AND verified system major matches
+    # each installed system (when system compat exists).
+    verified_release: ReleaseRecord | None = None
+    target_major = version_major(target_version)
+    if target_major is not None and compatible_candidates:
+        for candidate, _, _ in compatible_candidates:
+            c_compat = candidate.compatibility or {}
+            c_verified = str(c_compat.get("verified") or "").strip()
+            if not c_verified:
+                continue
+            if version_major(c_verified) != target_major:
+                continue
+            # Check system verified match
+            sys_ok = True
+            c_sys_compat = candidate.system_compatibility or {}
+            for sys_id, sys_ver in installed_system_versions.items():
+                sys_meta = c_sys_compat.get(sys_id)
+                if not isinstance(sys_meta, dict):
+                    continue
+                sys_verified = str(sys_meta.get("verified") or "").strip()
+                if not sys_verified:
+                    continue
+                if version_major(sys_verified) != version_major(sys_ver):
+                    sys_ok = False
+                    break
+            if sys_ok:
+                verified_release = candidate
+                break
+
     recommendation = Recommendation(
         module=module.module_id,
         installed_version=module.version,
@@ -132,6 +163,11 @@ def resolve_module_recommendation(
         missing_dependencies=missing_dependencies,
         release_published_at=chosen_release.published_at,
         attention_flag=attention_flag,
+        verified_recommended_version=verified_release.version if verified_release else None,
+        verified_download_url=verified_release.download_url if verified_release else None,
+        verified_manifest_url=verified_release.manifest_url if verified_release else None,
+        verified_compatibility=verified_release.compatibility if verified_release else {},
+        verified_system_compatibility=verified_release.system_compatibility if verified_release else {},
     )
     resolution_cache[module.module_id] = recommendation
     active_stack.remove(module.module_id)

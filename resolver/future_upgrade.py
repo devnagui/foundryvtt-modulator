@@ -329,6 +329,9 @@ def build_current_system_upgrade_view(
                         or forced_override_upgrade
                     ),
                     "forcedCompatibility": _forced_compatibility_payload(module),
+                    "verifiedRecommendedVersion": recommendation.verified_recommended_version,
+                    "verifiedCompatibility": recommendation.verified_compatibility or {},
+                    "verifiedSystemCompatibility": recommendation.verified_system_compatibility or {},
                 }
             )
             for dependency in recommendation.dependency_updates:
