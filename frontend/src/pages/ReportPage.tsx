@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { AppLoader } from "../components/AppLoader";
 import { UpdatePathWithRefresh } from "../components/UpdatePathWithRefresh";
 import { UpgradePanel } from "../components/UpgradePanel";
-import { api, type FoundryRootStatus, type ImportHistoryEntry, type ModuleSourceRow, type PlanningContextRow, type ReportModel, type UpdateArtifactSummary } from "../services/api";
+import { api, type FoundryRootStatus, type ImportHistoryEntry, type LockGroup, type ModuleSourceRow, type PlanningContextRow, type ReportModel, type UpdateArtifactSummary } from "../services/api";
 import { sourceByModuleId } from "./moduleSourceResolver";
 import { canForceCompatibility, partitionCountsForPills, planningHasCompatFailure } from "./reportRules";
 import { buildRelatedSystems } from "./systemKeying";
@@ -973,12 +973,42 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
   const [rollbackPlanLoading, setRollbackPlanLoading] = useState(false);
   const [rollbackPlanError, setRollbackPlanError] = useState("");
   const [rollbackPlanData, setRollbackPlanData] = useState<RollbackPlanView | null>(null);
+  const [lockGroups, setLockGroups] = useState<LockGroup[]>([]);
+  const [activeLockGroupId, setActiveLockGroupId] = useState<string>("");
+  const [lockGroupModalOpen, setLockGroupModalOpen] = useState(false);
+  const [lockGroupEditId, setLockGroupEditId] = useState<string>("");
+  const [lockGroupEditName, setLockGroupEditName] = useState("");
+  const [lockGroupEditEntries, setLockGroupEditEntries] = useState<LockGroup["entries"]>([]);
+  const [lockGroupSaving, setLockGroupSaving] = useState(false);
+  const [moduleActionsTarget, setModuleActionsTarget] = useState<{
+    moduleId: string;
+    title: string;
+    tab: "current" | "planning";
+    installedVersion: string;
+    recommendedVersion: string;
+    effectiveState: string;
+    effectiveUrl: string;
+    hasMissingDependencies: boolean;
+    allowForceCompatibility: boolean;
+    canRefreshVersions: boolean;
+    hasInstalled: boolean;
+    isUnused: boolean;
+  } | null>(null);
   const [modulesViewModal, setModulesViewModal] = useState<ModulesViewModal | null>(null);
   const [updateArtifactModal, setUpdateArtifactModal] = useState<UpdateArtifactModal | null>(null);
   const hydrationRunRef = useRef(0);
   const importPlanInputRef = useRef<HTMLInputElement | null>(null);
   const foundryConfigured = Boolean(foundryRoot?.valid);
   const showSearch = tab === "current" || tab === "planning" || tab === "backups";
+  const activeLockGroup = useMemo(() => lockGroups.find((g) => g.id === activeLockGroupId) || null, [lockGroups, activeLockGroupId]);
+  const lockGroupIndex = useMemo<Record<string, { version: string; verified: boolean; required: boolean; notes?: string }>>(() => {
+    if (!activeLockGroup) return {};
+    const idx: Record<string, { version: string; verified: boolean; required: boolean; notes?: string }> = {};
+    for (const entry of activeLockGroup.entries) {
+      idx[entry.packageId] = { version: entry.version, verified: entry.verified, required: entry.required, notes: entry.notes };
+    }
+    return idx;
+  }, [activeLockGroup]);
 
   useEffect(() => {
     if (tab === "backups" || tab === "import") {
@@ -1027,6 +1057,15 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       setModuleSources(normalized);
     } catch {
       setModuleSources({});
+    }
+  };
+
+  const loadLockGroups = async () => {
+    try {
+      const payload = await api.lockGroups();
+      setLockGroups(Array.isArray(payload.groups) ? payload.groups : []);
+    } catch {
+      setLockGroups([]);
     }
   };
 
@@ -1092,7 +1131,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
     }
   };
 
-  useEffect(() => { void loadModel(); void loadFoundryConfig(); void loadModuleSources(); }, []);
+  useEffect(() => { void loadModel(); void loadFoundryConfig(); void loadModuleSources(); void loadLockGroups(); }, []);
   useEffect(() => { if (tab === "import") void loadImportHistory(); }, [tab]);
   useEffect(() => { if (tab === "backups") void loadUpdateArtifacts(); }, [tab]);
 
@@ -3853,6 +3892,16 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       <td>
         <div className="module-name-cell">
           {params.row.hasMissingDependencies ? <span title={missingDependencyLabel(params.row.reason)} style={{ color: "#fbbf24", fontWeight: 800, marginRight: 2 }}>!</span> : null}
+          {(() => {
+            const moduleKey = asString(params.row.module).trim();
+            const lockEntry = lockGroupIndex[moduleKey] || lockGroupIndex[moduleKey.toLowerCase()];
+            if (!lockEntry) return null;
+            const tooltipParts = [`Pinned to ${lockEntry.version}`];
+            if (activeLockGroup) tooltipParts.push(`Group: "${activeLockGroup.name}"`);
+            if (lockEntry.verified) tooltipParts.push("Verified ✓");
+            if (lockEntry.notes) tooltipParts.push(lockEntry.notes);
+            return <span title={tooltipParts.join("\n")} style={{ color: lockEntry.verified ? "#a78bfa" : "#fbbf24", fontWeight: 700, marginRight: 2, cursor: "help", fontSize: "0.75rem" }}>{lockEntry.verified ? "🔒" : "🔒~"}</span>;
+          })()}
           {params.moduleProjectUrl
             ? <a className="module-name-truncate" href={params.moduleProjectUrl} target="_blank" rel="noreferrer" title={`${params.row.title || "Unknown module"} (${params.row.module || "unknown"})`}>{(params.row.title || "Unknown module")}</a>
             : <span className="module-name-truncate" title={`${params.row.title || "Unknown module"} (${params.row.module || "unknown"})`}>{(params.row.title || "Unknown module")}</span>}
@@ -3991,44 +4040,31 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
       foundryFollowUpOnly
       || (Boolean(activeCurrentSystemId) && systemFollowUpOnly)
     );
+    const actionSummaryLabel = cautionReady ? "Ready" : effectiveState === "blocked" || item.row.hasMissingDependencies ? "Blocked" : !hasInstalled && (effectiveRecommended || effectiveUrl) ? "Install" : effectiveState === "update" ? "Update" : isUnusedRow ? "Unused" : "Ready";
+    const actionSummaryColor = cautionReady ? "#f59e0b" : actionSummaryLabel === "Blocked" ? "#ef4444" : actionSummaryLabel === "Install" || actionSummaryLabel === "Update" ? "#3b82f6" : actionSummaryLabel === "Unused" ? "#f59e0b" : "#22c55e";
+    const actionSummaryTextColor = actionSummaryLabel === "Ready" ? "#052e16" : actionSummaryLabel === "Unused" || actionSummaryLabel === "Blocked" || cautionReady ? "#111827" : "#fff";
     const actionsCell = (
-      <div style={{ display: "inline-flex", gap: 6, flexWrap: "nowrap" }}>
-        {cautionReady ? (
-          <span
-            className="btn"
-            aria-disabled="true"
-            title="Ready with follow-up suggestion for newer verified version."
-            style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}
-          >
-            Ready
-          </span>
-        ) : (item.row.hasMissingDependencies || effectiveState === "blocked") && !allowForceCompatibility && !effectiveUrl && !effectiveRecommended ? (
-          <>
-            <button className="btn" style={{ background: "#f59e0b", color: "#111827", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, padding: 0 }} title="Find Module" aria-label="Find Module" onClick={() => findSourceForModule(item.row.module, item.row.title)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
-            <button className="btn secondary" onClick={() => void setModuleSource(item.row.module)}>Set URL</button>
-          </>
-        ) : allowForceCompatibility ? (
-          <button
-            className="btn secondary btn-xs force-compat-btn"
-            style={{ background: "#f59e0b", color: "#111827" }}
-            disabled={actionBusy || !foundryConfigured}
-            title="Force compatibility for this installed module (Current only)."
-            onClick={() => void submitAndWatch("force-compat", { modules: [item.row.module], targetVersion: currentFoundryVersion })}
-          >
-            FC
-          </button>
-        ) : !hasInstalled && (effectiveUrl || effectiveRecommended) ? (
-          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Install</button>
-        ) : effectiveState === "update" ? (
-          <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => void submitAndWatch("apply", { modules: [item.row.module], batchSize: 10 })}>Update</button>
-        ) : effectiveState === "blocked" ? (
-          <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
-        ) : isUnusedRow ? (
-          <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Unused</span>
-        ) : (
-          <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>
-        )}
-      </div>
+      <button
+        className="btn btn-xs"
+        style={{ background: actionSummaryColor, color: actionSummaryTextColor, cursor: "pointer", minWidth: 32, paddingLeft: 8, paddingRight: 8, fontWeight: 700, letterSpacing: 2 }}
+        title={actionSummaryLabel}
+        onClick={() => setModuleActionsTarget({
+          moduleId: item.row.module,
+          title: item.row.title || item.row.module,
+          tab: "current",
+          installedVersion: item.row.installedVersion || "",
+          recommendedVersion: effectiveRecommended || "",
+          effectiveState: effectiveState,
+          effectiveUrl: effectiveUrl || "",
+          hasMissingDependencies: item.row.hasMissingDependencies,
+          allowForceCompatibility,
+          canRefreshVersions,
+          hasInstalled,
+          isUnused: isUnusedRow,
+        })}
+      >
+        ⋯
+      </button>
     );
     return renderModuleTableRow({
       key: item.key,
@@ -4133,16 +4169,31 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         onRefresh={() => void refreshModuleVersions(row, "planning")}
       />
     );
+    const actionSummaryLabel = row.hasMissingDependencies ? "Blocked" : effectiveState === "update" ? "Update" : isUnusedRow ? "Unused" : "Ready";
+    const actionSummaryColor = actionSummaryLabel === "Blocked" ? "#ef4444" : actionSummaryLabel === "Update" ? "#3b82f6" : actionSummaryLabel === "Unused" ? "#f59e0b" : "#22c55e";
+    const actionSummaryTextColor = actionSummaryLabel === "Ready" ? "#052e16" : actionSummaryLabel === "Unused" || actionSummaryLabel === "Blocked" ? "#111827" : "#fff";
     const actionsCell = (
-      <div style={{ display: "inline-flex", gap: 6, flexWrap: "nowrap" }}>
-        {row.hasMissingDependencies
-          ? <button className="btn" style={{ background: "#ef4444", color: "#fff" }} disabled>Blocked</button>
-          : effectiveState === "update"
-            ? <button className="btn secondary" style={{ background: "#3b82f6", color: "#fff" }} disabled>Update</button>
-            : isUnusedRow
-              ? <span className="btn" aria-disabled="true" style={{ background: "#f59e0b", color: "#111827", cursor: "default", pointerEvents: "none" }}>Unused</span>
-              : <span className="btn" aria-disabled="true" style={{ background: "#22c55e", color: "#052e16", cursor: "default", pointerEvents: "none" }}>Ready</span>}
-      </div>
+      <button
+        className="btn btn-xs"
+        style={{ background: actionSummaryColor, color: actionSummaryTextColor, cursor: "pointer", minWidth: 32, paddingLeft: 8, paddingRight: 8, fontWeight: 700, letterSpacing: 2 }}
+        title={actionSummaryLabel}
+        onClick={() => setModuleActionsTarget({
+          moduleId: row.module,
+          title: row.title || row.module,
+          tab: "planning",
+          installedVersion: row.installedVersion || "",
+          recommendedVersion: effectiveRecommended || "",
+          effectiveState: effectiveState,
+          effectiveUrl: effectiveUrl || "",
+          hasMissingDependencies: row.hasMissingDependencies,
+          allowForceCompatibility: false,
+          canRefreshVersions,
+          hasInstalled,
+          isUnused: isUnusedRow,
+        })}
+      >
+        ⋯
+      </button>
     );
     return renderModuleTableRow({
       key: item.key,
@@ -4236,6 +4287,20 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         />
         <span>{verifiedOnly ? "\u{1F6E1}\uFE0F" : ""} Verified Only</span>
       </label>
+      {lockGroups.length > 0 && (
+        <select
+          className="metric-card compact"
+          style={{ borderColor: activeLockGroupId ? "#a78bfa" : "#334155", background: activeLockGroupId ? "#1e1145" : "#1f2937", color: activeLockGroupId ? "#c4b5fd" : "#e5e7eb", minWidth: "auto", cursor: "pointer", padding: "4px 8px", fontSize: "0.75rem" }}
+          value={activeLockGroupId}
+          onChange={(e) => { setActiveLockGroupId(e.target.value); setPage(1); }}
+          title={activeLockGroup ? `Lock Group: ${activeLockGroup.name}` : "Select a version lock group"}
+        >
+          <option value="">🔓 No Group</option>
+          {lockGroups.map((g) => (
+            <option key={g.id} value={g.id}>🔒 {g.name}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
   const planningSystemPillsRow = (
@@ -4386,7 +4451,7 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
 
   const planningStatusFilterRow = (
     <div style={{ display: "grid", gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 2 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 2, gap: 6 }}>
         <label
           className={`metric-card compact${verifiedOnly ? " active" : ""}`}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", borderColor: verifiedOnly ? "#22c55e" : "#334155", background: verifiedOnly ? "#052e16" : "#1f2937", color: verifiedOnly ? "#86efac" : "#e5e7eb", minWidth: "auto", userSelect: "none" }}
@@ -4405,6 +4470,20 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           />
           <span>{verifiedOnly ? "\u{1F6E1}\uFE0F" : ""} Verified Only</span>
         </label>
+        {lockGroups.length > 0 && (
+          <select
+            className="metric-card compact"
+            style={{ borderColor: activeLockGroupId ? "#a78bfa" : "#334155", background: activeLockGroupId ? "#1e1145" : "#1f2937", color: activeLockGroupId ? "#c4b5fd" : "#e5e7eb", minWidth: "auto", cursor: "pointer", padding: "4px 8px", fontSize: "0.75rem" }}
+            value={activeLockGroupId}
+            onChange={(e) => { setActiveLockGroupId(e.target.value); setPage(1); }}
+            title={activeLockGroup ? `Lock Group: ${activeLockGroup.name}` : "Select a version lock group"}
+          >
+            <option value="">🔓 No Group</option>
+            {lockGroups.map((g) => (
+              <option key={g.id} value={g.id}>🔒 {g.name}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="metrics-row compact module-status-row" style={{ marginBottom: 0 }}>
         <button className={`metric-card metric-blocked compact ${planningFilters.includes("blocked") ? "active" : ""}`} onClick={() => { setPlanningFilters((arr) => arr.includes("blocked") ? arr.filter((x) => x !== "blocked") : [...arr, "blocked"]); setPage(1); }}><span>Blocked & Missing</span><strong>{planningEffectiveCounts.blocked}</strong></button>
@@ -5208,6 +5287,122 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
         </div>
       ) : null}
 
+      {lockGroupModalOpen ? (
+        <div className="modal-backdrop" onClick={() => setLockGroupModalOpen(false)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()} style={{ width: "min(600px, 94%)", maxHeight: "80vh", overflow: "auto" }}>
+            <h3 style={{ marginTop: 0 }}>Manage Lock Groups</h3>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              <button className="btn btn-sm" onClick={() => { setLockGroupEditId("new"); setLockGroupEditName(""); setLockGroupEditEntries([]); }}>
+                + New Group
+              </button>
+              <button className="btn btn-sm secondary" disabled={lockGroupSaving} onClick={async () => {
+                setLockGroupSaving(true);
+                try {
+                  const name = `Snapshot ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+                  await api.createLockGroupFromCurrent(name);
+                  await loadLockGroups();
+                } catch { /* ignore */ }
+                setLockGroupSaving(false);
+              }}>
+                📸 Create from Current
+              </button>
+            </div>
+
+            {lockGroupEditId ? (
+              <div style={{ padding: 12, background: "#111827", borderRadius: 8, marginBottom: 12 }}>
+                <h4 style={{ marginTop: 0, marginBottom: 8 }}>{lockGroupEditId === "new" ? "New Group" : "Edit Group"}</h4>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, color: "var(--muted)" }}>Name</label>
+                  <input type="text" value={lockGroupEditName} onChange={(e) => setLockGroupEditName(e.target.value)} placeholder="e.g. Combat Suite v13" style={{ width: "100%" }} />
+                </div>
+                {lockGroupEditEntries.length > 0 ? (
+                  <table className="report-table" style={{ marginBottom: 8, fontSize: 12 }}>
+                    <thead><tr><th>Package</th><th>Kind</th><th>Version</th><th>Verified</th><th>Req</th><th></th></tr></thead>
+                    <tbody>
+                      {lockGroupEditEntries.map((entry, idx) => (
+                        <tr key={`edit-entry-${idx}`}>
+                          <td>{entry.packageId}</td>
+                          <td>{entry.packageKind}</td>
+                          <td>
+                            <input type="text" value={entry.version} style={{ width: 80, fontSize: 11 }} onChange={(e) => {
+                              const next = [...lockGroupEditEntries];
+                              next[idx] = { ...next[idx], version: e.target.value };
+                              setLockGroupEditEntries(next);
+                            }} />
+                          </td>
+                          <td><input type="checkbox" checked={entry.verified} onChange={(e) => { const next = [...lockGroupEditEntries]; next[idx] = { ...next[idx], verified: e.target.checked }; setLockGroupEditEntries(next); }} /></td>
+                          <td><input type="checkbox" checked={entry.required} onChange={(e) => { const next = [...lockGroupEditEntries]; next[idx] = { ...next[idx], required: e.target.checked }; setLockGroupEditEntries(next); }} /></td>
+                          <td><button className="btn btn-xs secondary" onClick={() => setLockGroupEditEntries(lockGroupEditEntries.filter((_, i) => i !== idx))}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p style={{ fontSize: 12, color: "var(--muted)" }}>No entries yet. Add modules from the action menu on each row.</p>}
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button className="btn btn-sm" disabled={lockGroupSaving || !lockGroupEditName.trim()} onClick={async () => {
+                    setLockGroupSaving(true);
+                    try {
+                      const data = { name: lockGroupEditName, foundryVersion: currentFoundryVersion || "", entries: lockGroupEditEntries };
+                      if (lockGroupEditId === "new") {
+                        await api.createLockGroup(data);
+                      } else {
+                        await api.updateLockGroup(lockGroupEditId, data);
+                      }
+                      await loadLockGroups();
+                      setLockGroupEditId("");
+                    } catch { /* ignore */ }
+                    setLockGroupSaving(false);
+                  }}>Save</button>
+                  <button className="btn btn-sm secondary" onClick={() => setLockGroupEditId("")}>Cancel</button>
+                </div>
+              </div>
+            ) : null}
+
+            {lockGroups.length === 0 ? (
+              <p style={{ color: "var(--muted)" }}>No lock groups yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {lockGroups.map((g) => {
+                  const moduleCount = g.entries.filter((e) => e.packageKind === "module").length;
+                  const systemCount = g.entries.filter((e) => e.packageKind === "system").length;
+                  const verifiedCount = g.entries.filter((e) => e.verified).length;
+                  return (
+                    <div key={g.id} style={{ padding: 10, background: "#1f2937", borderRadius: 6, border: activeLockGroupId === g.id ? "1px solid #a78bfa" : "1px solid #334155" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <strong style={{ color: "#e5e7eb" }}>🔒 {g.name}</strong>
+                        <span style={{ fontSize: 11, color: "var(--muted)" }}>F{g.foundryVersion || "?"}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
+                        {moduleCount} modules, {systemCount} systems &middot; {verifiedCount}/{g.entries.length} verified
+                      </p>
+                      <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                        <button className="btn btn-xs" style={{ background: activeLockGroupId === g.id ? "#a78bfa" : "#334155", color: activeLockGroupId === g.id ? "#111" : "#e5e7eb" }} onClick={() => { setActiveLockGroupId(activeLockGroupId === g.id ? "" : g.id); setPage(1); }}>
+                          {activeLockGroupId === g.id ? "Active ✓" : "Activate"}
+                        </button>
+                        <button className="btn btn-xs secondary" onClick={() => { setLockGroupEditId(g.id); setLockGroupEditName(g.name); setLockGroupEditEntries([...g.entries]); }}>Edit</button>
+                        <button className="btn btn-xs secondary" style={{ borderColor: "#ef4444", color: "#ef4444" }} disabled={lockGroupSaving} onClick={async () => {
+                          setLockGroupSaving(true);
+                          try {
+                            await api.deleteLockGroup(g.id);
+                            if (activeLockGroupId === g.id) setActiveLockGroupId("");
+                            await loadLockGroups();
+                          } catch { /* ignore */ }
+                          setLockGroupSaving(false);
+                        }}>Delete</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+              <button className="btn secondary" onClick={() => setLockGroupModalOpen(false)}>Close</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {conflictDetail ? (
         <div className="modal-backdrop" onClick={() => setConflictDetail(null)}>
           <section className="panel modal-card" onClick={(event) => event.stopPropagation()}>
@@ -5301,6 +5496,116 @@ export function ReportPage({ onLoggedOut }: ReportPageProps) {
           </section>
         </div>
       ) : null}
+
+      {moduleActionsTarget ? (() => {
+        const mat = moduleActionsTarget;
+        const lockEntry = lockGroupIndex[mat.moduleId] || lockGroupIndex[mat.moduleId.toLowerCase()];
+        const isInActiveGroup = Boolean(lockEntry);
+        const allGroupsForModule = lockGroups.filter((g) => g.entries.some((e) => e.packageId === mat.moduleId || e.packageId === mat.moduleId.toLowerCase()));
+        return (
+        <div className="modal-backdrop" onClick={() => setModuleActionsTarget(null)}>
+          <section className="panel modal-card" onClick={(event) => event.stopPropagation()} style={{ width: "min(480px, 94%)" }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>{mat.title}</h3>
+            <p style={{ marginTop: 0, marginBottom: 12, color: "var(--muted)", fontSize: 12 }}>
+              {mat.moduleId} &middot; {mat.installedVersion ? `v${mat.installedVersion}` : "not installed"}
+              {mat.recommendedVersion && mat.recommendedVersion !== mat.installedVersion ? ` → v${mat.recommendedVersion}` : ""}
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <h4 style={{ marginTop: 0, marginBottom: 6, fontSize: 13, color: "#e5e7eb" }}>Actions</h4>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {mat.tab === "current" && !mat.hasInstalled && mat.recommendedVersion ? (
+                <button className="btn btn-sm" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => { setModuleActionsTarget(null); void submitAndWatch("apply", { modules: [mat.moduleId], batchSize: 10 }); }}>
+                  Install v{mat.recommendedVersion}
+                </button>
+              ) : null}
+              {mat.tab === "current" && mat.effectiveState === "update" && mat.hasInstalled ? (
+                <button className="btn btn-sm" style={{ background: "#3b82f6", color: "#fff" }} disabled={actionBusy || !foundryConfigured} onClick={() => { setModuleActionsTarget(null); void submitAndWatch("apply", { modules: [mat.moduleId], batchSize: 10 }); }}>
+                  Update to v{mat.recommendedVersion}
+                </button>
+              ) : null}
+              {mat.tab === "current" && mat.allowForceCompatibility ? (
+                <button className="btn btn-sm" style={{ background: "#f59e0b", color: "#111827" }} disabled={actionBusy || !foundryConfigured} onClick={() => { setModuleActionsTarget(null); void submitAndWatch("force-compat", { modules: [mat.moduleId], targetVersion: currentFoundryVersion }); }}>
+                  Force Compat
+                </button>
+              ) : null}
+              {mat.tab === "current" && (mat.effectiveState === "blocked" || mat.hasMissingDependencies) && !mat.effectiveUrl && !mat.recommendedVersion ? (
+                <>
+                  <button className="btn btn-sm" style={{ background: "#f59e0b", color: "#111827" }} onClick={() => { setModuleActionsTarget(null); findSourceForModule(mat.moduleId, mat.title); }}>
+                    🔍 Find Source
+                  </button>
+                  <button className="btn btn-sm secondary" onClick={() => { setModuleActionsTarget(null); void setModuleSource(mat.moduleId); }}>
+                    Set URL
+                  </button>
+                </>
+              ) : null}
+              {mat.canRefreshVersions ? (
+                <button className="btn btn-sm secondary" disabled={actionBusy} onClick={() => { setModuleActionsTarget(null); void refreshModuleVersions({ module: mat.moduleId, title: mat.title } as ModuleRow, mat.tab); }}>
+                  🔄 Refresh
+                </button>
+              ) : null}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <h4 style={{ marginTop: 0, marginBottom: 6, fontSize: 13, color: "#e5e7eb" }}>Lock Groups</h4>
+              {allGroupsForModule.length > 0 ? (
+                <div style={{ marginBottom: 4, fontSize: 12 }}>
+                  Member of: {allGroupsForModule.map((g) => (
+                    <span key={g.id} className="badge" style={{ background: "#1e1145", color: "#c4b5fd", marginRight: 4 }}>🔒 {g.name}</span>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>Not in any lock group.</p>
+              )}
+              {lockGroups.length > 0 ? (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {lockGroups.map((g) => {
+                    const inThisGroup = g.entries.some((e) => e.packageId === mat.moduleId || e.packageId === mat.moduleId.toLowerCase());
+                    return (
+                      <button
+                        key={g.id}
+                        className="btn btn-xs secondary"
+                        style={inThisGroup ? { borderColor: "#a78bfa", color: "#c4b5fd" } : {}}
+                        disabled={lockGroupSaving}
+                        onClick={async () => {
+                          setLockGroupSaving(true);
+                          try {
+                            const updatedEntries = inThisGroup
+                              ? g.entries.filter((e) => e.packageId !== mat.moduleId && e.packageId !== mat.moduleId.toLowerCase())
+                              : [...g.entries, { packageId: mat.moduleId, packageKind: "module" as const, version: mat.installedVersion || mat.recommendedVersion || "", verified: false, required: true }];
+                            await api.updateLockGroup(g.id, { name: g.name, foundryVersion: g.foundryVersion, entries: updatedEntries });
+                            await loadLockGroups();
+                          } catch { /* ignore */ }
+                          setLockGroupSaving(false);
+                        }}
+                      >
+                        {inThisGroup ? `Remove from ${g.name}` : `Add to ${g.name}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <button className="btn btn-xs secondary" style={{ marginTop: 6 }} onClick={() => { setModuleActionsTarget(null); setLockGroupModalOpen(true); }}>
+                Manage Groups...
+              </button>
+            </div>
+
+            {isInActiveGroup && lockEntry ? (
+              <div style={{ padding: "8px 10px", background: "#1e1145", borderRadius: 6, marginBottom: 12, fontSize: 12 }}>
+                <strong style={{ color: "#c4b5fd" }}>🔒 Pinned to v{lockEntry.version}</strong>
+                {lockEntry.verified ? <span style={{ color: "#86efac", marginLeft: 6 }}>✓ Verified</span> : <span style={{ color: "#fbbf24", marginLeft: 6 }}>~ Unverified</span>}
+                {lockEntry.notes ? <p style={{ margin: "4px 0 0", color: "#9ca3af" }}>{lockEntry.notes}</p> : null}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn secondary" onClick={() => setModuleActionsTarget(null)}>Close</button>
+            </div>
+          </section>
+        </div>
+        );
+      })() : null}
 
       {(actionBusy || Boolean(uiBusyMessage)) && !bulkUpdateOpen ? (
         <div className="modal-backdrop">

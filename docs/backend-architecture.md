@@ -93,6 +93,24 @@ The scan is the primary data pipeline:
 - `POST /api/v1/auth/login` — authenticate, returns session cookie (`mm_session`)
 - `POST /api/v1/auth/logout` — invalidate session
 
+### Lock Groups
+- `GET /api/v1/lock-groups` — list all version lock groups
+- `POST /api/v1/lock-groups` — create a new lock group
+- `GET /api/v1/lock-groups/{id}` — get a single lock group
+- `PUT /api/v1/lock-groups/{id}` — update a lock group
+- `DELETE /api/v1/lock-groups/{id}` — delete a lock group
+- `POST /api/v1/lock-groups/from-current` — snapshot current installation into a new group
+
+### Lock Group Store (`backend/app/services/lock_groups.py`)
+
+`LockGroupStore` manages version lock groups persisted in `state/version-lock-groups.json`.
+Each group contains:
+- `name`, `foundryVersion` — group identity and target
+- `entries[]` — list of `{ packageId, packageKind (module|system), version, verified, required, notes }`
+- `createdAt`, `updatedAt` — timestamps
+
+Thread-safe CRUD with `threading.Lock`. Validates entries (deduplication, kind normalization, empty-version filtering).
+
 ## Database Schema (`state/resolver.db`)
 
 Key tables:

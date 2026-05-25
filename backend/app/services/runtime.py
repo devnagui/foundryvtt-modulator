@@ -46,6 +46,7 @@ from .core import (
     _validate_foundry_root_path,
     load_config,
 )
+from .lock_groups import LockGroupStore
 
 
 @dataclass
@@ -57,6 +58,7 @@ class AppRuntime:
     config_store: RuntimeConfigStore
     module_source_store: ModuleSourceStore
     rate_limiter: RequestRateLimiter
+    lock_group_store: LockGroupStore = None  # type: ignore[assignment]
 
 
 _RUNTIME: AppRuntime | None = None
@@ -66,6 +68,7 @@ _REPORT_SUGGEST_CACHE: dict[str, dict[str, Any]] = {}
 _REPORT_SUGGEST_CACHE_LOCK = threading.Lock()
 _IMPORT_HISTORY_LOCK = threading.Lock()
 _IMPORT_HISTORY_MAX_ITEMS = 100
+_PROGRESS_COUNT_RE = re.compile(r"^(\d+)/(\d+)\s+(.+)$")
 
 
 class SuggestionProviderError(ValueError):
@@ -188,6 +191,7 @@ def get_runtime() -> AppRuntime:
         config_store=RuntimeConfigStore(config),
         module_source_store=ModuleSourceStore(config),
         rate_limiter=RequestRateLimiter(config.request_rate_limit_per_minute),
+        lock_group_store=LockGroupStore(config),
     )
     _RUNTIME = runtime
     runtime.lock_store.cleanup_stale()
@@ -1592,7 +1596,10 @@ def _execute_action_job(runtime: AppRuntime, action: str, payload: dict[str, Any
 
         def _read_stderr() -> None:
             assert proc.stderr is not None
-            for raw_line in proc.stderr:
+            while True:
+                raw_line = proc.stderr.readline()
+                if not raw_line:
+                    break
                 line = raw_line.rstrip("\n")
                 stderr_lines.append(line)
                 if job_id and line.startswith("PROGRESS:"):

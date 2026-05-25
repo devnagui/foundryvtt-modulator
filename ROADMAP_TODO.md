@@ -38,12 +38,52 @@
 - [ ] On import of an exported plan on another machine, world data is self-contained in the file.
 
 ### 1.2 "Verified Only" filter checkbox (frontend — Current tab)
-- [ ] Add a default-on checkbox filter: **"Verified versions only"**.
-- [ ] When enabled, the resolver/report should only consider module versions whose `verified` Foundry version matches the installed Foundry major, AND whose `verified` dnd5e/system version matches the installed system version.
-- [ ] Modules/systems that fail the verified check should show a warning badge (e.g., "unverified for F13" or "unverified for dnd5e 5.3.0").
-- [ ] Checkbox state persists per session (localStorage or React state).
-- [ ] This filter affects:
-  - Status column: a module can be "ready" by range but "unverified" by strict check.
-  - Recommendation column: show the best verified-only candidate vs. the current range-based one.
-  - Update path: highlight when the installed version's verified field doesn't match the current Foundry/system.
-- [ ] Visual indicator on the filter bar when "Verified Only" is active (e.g., shield icon).
+- [x] Add a default-on checkbox filter: **"Verified versions only"**.
+- [x] Checkbox state persists per session (sessionStorage).
+- [x] Visual indicator on the filter bar when active (shield icon).
+- [x] Applied to both Current and Planning tabs.
+
+---
+
+## Priority 2 — Version Lock Groups
+
+### 2.1 Backend: Lock Group Store + API (done)
+- [x] `LockGroupStore` — CRUD persistence in `state/version-lock-groups.json`.
+- [x] Data model: `LockGroup` with `entries[]` of `{ packageId, packageKind (module|system), version, verified, required, notes }`.
+- [x] REST API: `GET/POST /api/v1/lock-groups`, `GET/PUT/DELETE /api/v1/lock-groups/{id}`, `POST /api/v1/lock-groups/from-current`.
+- [x] Thread-safe file I/O with `threading.Lock`.
+- [x] Entry validation: deduplication, kind normalization, empty-version filtering.
+- [x] Registered in `AppRuntime` and API router.
+- [x] 12 unit tests (test_lock_groups.py).
+
+### 2.2 Frontend: Lock Group UI (done)
+- [x] TypeScript types: `LockGroup`, `LockGroupEntry`.
+- [x] API client methods: `lockGroups`, `createLockGroup`, `updateLockGroup`, `deleteLockGroup`, `createLockGroupFromCurrent`.
+- [x] Group selector dropdown in Current + Planning filter bars (purple theme when active).
+- [x] `lockGroupIndex` computed map for O(1) lookup of pinned modules.
+- [x] 🔒 badge on module names when member of active group (with tooltip: pinned version, verified status, notes).
+
+### 2.3 Frontend: Module Actions Modal (done)
+- [x] Action column shows compact clickable status summary badge (`Ready ⋯`, `Update ⋯`, etc.).
+- [x] Clicking opens contextual modal with all available actions per module:
+  - Install / Update / Force Compatibility (current tab only).
+  - Find Source / Set URL (for blocked modules without source).
+  - Refresh Versions (from GitHub/GitLab).
+  - Lock Group management: shows membership, add/remove from any group.
+  - Pin status display when module is in active group.
+  - Link to Manage Groups modal.
+
+### 2.4 Frontend: Lock Group Management Modal (done)
+- [x] Create new group (empty or from current installation snapshot).
+- [x] Edit group: inline table with version, verified, required toggles per entry.
+- [x] Delete group with safety check.
+- [x] Activate/deactivate group from management view.
+- [x] "Create from Current" snapshots all installed modules + systems.
+
+### 2.5 Future: Lock Group Enhancements
+- [ ] Import/export lock groups as JSON.
+- [ ] Lock group version override in update path column (show pinned version instead of latest).
+- [ ] "Fix All" scoped to active lock group (install pinned versions).
+- [ ] Planning tab auto-targets Foundry/system version from active group.
+- [ ] Conflict detection: warn when installed version is newer than pinned (downgrade).
+- [ ] System entry in lock group constrains system compatibility evaluation.

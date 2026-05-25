@@ -93,6 +93,39 @@ Typed wrapper around `fetch()`:
 ### `UpgradePanel.tsx`
 - Aggregated action panel: "Fix All" button for modules with configured sources
 
+## Version Lock Groups
+
+Lock groups are curated sets of module+version pairs known to work together for a given Foundry + system combo.
+
+### Data Flow
+
+1. `lockGroups` state loaded on mount via `GET /api/v1/lock-groups`
+2. `activeLockGroupId` selects the active group (dropdown in filter bar)
+3. `lockGroupIndex` computed map provides O(1) lookup by moduleId
+4. `renderModuleTableRow` renders 🔒 badge for modules in active group
+5. Module Actions Modal provides add/remove from any group
+
+### State Variables
+
+| Variable | Purpose |
+|---|---|
+| `lockGroups` | All lock groups from API |
+| `activeLockGroupId` | Currently selected group ID |
+| `lockGroupModalOpen` | Management modal visibility |
+| `lockGroupEditId` | Group being edited ("new" for creation) |
+| `lockGroupEditName` | Name input for edit form |
+| `lockGroupEditEntries` | Entries being edited |
+| `moduleActionsTarget` | Module whose action modal is open |
+
+### Module Actions Modal
+
+Replaces the inline action buttons with a compact clickable status summary (`Ready ⋯`, `Update ⋯`). Opens a contextual modal with:
+- Install/Update/Force Compat actions (current tab)
+- Find Source / Set URL (blocked modules)
+- Refresh Versions
+- Lock group membership management
+- Pin status display
+
 ## Visual/UX Rules
 
 - **Status ordering**: `missing` > `blocked` > `update` > `ready`

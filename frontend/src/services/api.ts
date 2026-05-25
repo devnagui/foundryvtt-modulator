@@ -89,6 +89,24 @@ export type SuggestModulesBatchResponse = {
   rows?: Array<{ moduleId?: string; suggestion?: Record<string, unknown>; error?: string; errorCode?: string; hint?: string; retryable?: boolean; rawError?: string }>;
 };
 
+export type LockGroupEntry = {
+  packageId: string;
+  packageKind: "module" | "system";
+  version: string;
+  verified: boolean;
+  required: boolean;
+  notes?: string;
+};
+
+export type LockGroup = {
+  id: string;
+  name: string;
+  foundryVersion: string;
+  entries: LockGroupEntry[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PlanningContextRow = {
   contextKey?: string;
   foundryVersion?: string;
@@ -309,5 +327,26 @@ export const api = {
       }
     );
     return payload as SuggestModulesBatchResponse;
-  }
+  },
+
+  // Lock Groups
+  lockGroups: () => request<{ ok: boolean; groups: LockGroup[] }>("/api/v1/lock-groups"),
+  lockGroup: (id: string) => request<{ ok: boolean; group: LockGroup }>(`/api/v1/lock-groups/${encodeURIComponent(id)}`),
+  createLockGroup: (data: Omit<LockGroup, "id" | "createdAt" | "updatedAt">) =>
+    request<{ ok: boolean; group: LockGroup }>("/api/v1/lock-groups", {
+      method: "POST",
+      body: JSON.stringify(data)
+    }),
+  updateLockGroup: (id: string, data: Omit<LockGroup, "id" | "createdAt" | "updatedAt">) =>
+    request<{ ok: boolean; group: LockGroup }>(`/api/v1/lock-groups/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data)
+    }),
+  deleteLockGroup: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/lock-groups/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createLockGroupFromCurrent: (name: string, moduleIds?: string[]) =>
+    request<{ ok: boolean; group: LockGroup }>("/api/v1/lock-groups/from-current", {
+      method: "POST",
+      body: JSON.stringify({ name, moduleIds, includeSystems: true })
+    })
 };
